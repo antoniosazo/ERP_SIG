@@ -1,0 +1,48 @@
+import type { Metadata } from "next";
+import { Figtree, Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
+import { leerUiTheme } from "@/lib/ui-theme";
+import "./globals.css";
+
+// Geist queda enganchada al token Tailwind `font-sans` (--font-sans).
+const fontSans = Geist({
+  variable: "--font-sans",
+  subsets: ["latin"],
+});
+
+// Geist Mono disponible como `font-mono` (--font-mono).
+const fontMono = Geist_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+});
+
+// Figtree es la fuente de UI por defecto (todo el texto visible via className en el <body>).
+const figtree = Figtree({
+  variable: "--font-figtree",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "ERP Contable",
+  description: "Administración de firmas y empresas cliente",
+};
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const ui = await leerUiTheme();
+  return (
+    <html lang="es" data-ui={ui} className="h-full">
+      <body
+        className={cn(
+          fontSans.variable,
+          fontMono.variable,
+          figtree.className,
+          "min-h-full flex flex-col antialiased",
+        )}
+      >
+        {children}
+        <Toaster />
+      </body>
+    </html>
+  );
+}

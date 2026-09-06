@@ -1,0 +1,244 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-figtree: var(--font-figtree);
+  --font-heading: var(--font-figtree);
+  --color-chrome: var(--chrome);
+  --color-chrome-foreground: var(--chrome-foreground);
+  --color-chrome-muted: var(--chrome-muted);
+  --color-toolbar: var(--toolbar);
+  --color-toolbar-border: var(--toolbar-border);
+  --color-tree: var(--tree);
+  --color-tree-active-bar: var(--tree-active-bar);
+  --color-grid-header: var(--grid-header);
+  --color-grid-line: var(--grid-line);
+  --color-field-readonly: var(--field-readonly);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-5xl: calc(var(--radius) * 3);
+  --radius-6xl: calc(var(--radius) * 3.4);
+}
+
+@theme {
+  --text-xxs: 0.625rem;
+  --container-8xl: 90rem;
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.25 0.053 137.9);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0.053 137.9);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.25 0.053 137.9);
+  --primary: oklch(0.679 0.177 137.9);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.955 0.018 137.9);
+  --secondary-foreground: oklch(0.25 0.088 137.9);
+  --muted: oklch(0.97 0.004 137.9);
+  --muted-foreground: oklch(0.52 0.035 137.9);
+  --accent: oklch(0.965 0.005 137.9);
+  --accent-foreground: oklch(0.25 0.053 137.9);
+  --destructive: oklch(0.584 0.239 28.5);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.925 0.009 137.9);
+  --input: oklch(0.925 0.009 137.9);
+  --ring: oklch(0.679 0.177 137.9 / 0.9);
+  --chart-1: oklch(0.25 0.177 137.9);
+  --chart-2: oklch(0.35 0.177 137.9);
+  --chart-3: oklch(0.55 0.177 137.9);
+  --chart-4: oklch(0.75 0.177 137.9);
+  --chart-5: oklch(0.85 0.13 137.9);
+  --radius: 0.625rem;
+  /* Cromo de escritorio — en Moderno mapea al look actual (barras claras y sobrias). */
+  --chrome: oklch(1 0 0);
+  --chrome-foreground: oklch(0.25 0.053 137.9);
+  --chrome-muted: oklch(0.52 0.035 137.9);
+  --toolbar: oklch(1 0 0);
+  --toolbar-border: oklch(0.925 0.009 137.9);
+  --tree: oklch(1 0 0);
+  --tree-active-bar: oklch(0.679 0.177 137.9);
+  --grid-header: oklch(0.97 0.004 137.9);
+  --grid-line: oklch(0.925 0.009 137.9);
+  --field-readonly: oklch(0.97 0.004 137.9);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.25 0.053 137.9);
+  --sidebar-primary: oklch(0.679 0.177 137.9);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.965 0.005 137.9);
+  --sidebar-accent-foreground: oklch(0.25 0.053 137.9);
+  --sidebar-border: oklch(0.925 0.009 137.9);
+  --sidebar-ring: oklch(0.925 0.009 137.9);
+}
+
+.dark {
+  --background: oklch(0.11 0.012 137.9);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.11 0.012 137.9);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.15 0.018 137.9);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.679 0.177 137.9);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.759 0.177 137.9 / 0.25);
+  --secondary-foreground: oklch(0.9 0.177 137.9);
+  --muted: oklch(0.25 0.012 137.9);
+  --muted-foreground: oklch(0.75 0.026 137.9);
+  --accent: oklch(0.38 0.018 137.9);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.69 0.2 23.9);
+  --destructive-foreground: oklch(0 0 0);
+  --border: oklch(0.29 0.012 137.9);
+  --input: oklch(0.29 0.012 137.9);
+  --ring: oklch(0.759 0.177 137.9);
+  --chart-1: oklch(0.35 0.177 137.9);
+  --chart-2: oklch(0.55 0.177 137.9);
+  --chart-3: oklch(0.75 0.177 137.9);
+  --chart-4: oklch(0.9 0.15 137.9);
+  --chart-5: oklch(0.99 0.11 137.9);
+  --sidebar: oklch(0.11 0.012 137.9);
+  --sidebar-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(1 0 0);
+  --sidebar-primary-foreground: oklch(0.2 0.012 137.9);
+  --sidebar-accent: oklch(0.24 0.012 137.9);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(0.28 0.012 137.9);
+  --sidebar-ring: oklch(0.759 0.177 137.9);
+}
+
+/* ── Vista Clásica (ERP de escritorio) ───────────────────────────────────── */
+:root[data-ui="classic"] {
+  --radius: 0.25rem;
+  --border: oklch(0.87 0.01 137.9);
+  --input: oklch(0.87 0.01 137.9);
+  --text-sm: 0.8125rem;
+  --text-xs: 0.6875rem;
+
+  --chrome: oklch(0.33 0.03 245);
+  --chrome-foreground: oklch(0.96 0.005 245);
+  --chrome-muted: oklch(0.78 0.02 245);
+  --toolbar: oklch(0.965 0.006 245);
+  --toolbar-border: oklch(0.9 0.008 245);
+  --tree: oklch(0.975 0.005 245);
+  --tree-active-bar: oklch(0.62 0.16 150);
+  --grid-header: oklch(0.955 0.006 245);
+  --grid-line: oklch(0.9 0.008 245);
+  --field-readonly: oklch(0.965 0.004 137.9);
+}
+
+/* Tablas densas en Clásico */
+:root[data-ui="classic"] [data-slot="table"] {
+  font-size: 0.78rem;
+}
+:root[data-ui="classic"] [data-slot="table-head"] {
+  height: 1.9rem;
+  padding: 0.28rem 0.6rem;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted-foreground);
+  background: var(--grid-header);
+}
+:root[data-ui="classic"] [data-slot="table-cell"] {
+  padding: 0.28rem 0.6rem;
+}
+:root[data-ui="classic"] [data-slot="table-row"] {
+  border-color: var(--grid-line);
+}
+
+/* Grilla tipo hoja de cálculo (opt-in con .erp-grid) */
+:root[data-ui="classic"] .erp-grid {
+  border: 1px solid var(--grid-line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+:root[data-ui="classic"] .erp-grid th,
+:root[data-ui="classic"] .erp-grid td {
+  border-right: 1px solid var(--grid-line);
+}
+:root[data-ui="classic"] .erp-grid [data-slot="table-row"]:hover td {
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+}
+
+/* Documento de venta: cabecera compacta (solo Clásico) */
+:root[data-ui="classic"] .doc-hdr {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 1rem;
+}
+@container (min-width: 48rem) {
+  :root[data-ui="classic"] .doc-hdr {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+:root[data-ui="classic"] .doc-hdr label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+:root[data-ui="classic"] .doc-hdr :is(input, [data-slot="select-trigger"]) {
+  height: 1.7rem;
+  font-size: 0.78rem;
+}
+:root[data-ui="classic"] .doc-hdr input:disabled {
+  background: var(--field-readonly);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button,
+  a,
+  [role="button"] {
+    @apply cursor-pointer;
+  }
+}
