@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { IrACuenta } from "./ir-a-cuenta";
 
 export type Opcion = { id: string; label: string };
 export type GrupoLite = {
@@ -49,6 +50,24 @@ export type GrupoLite = {
   cuentaCostoVentaDefaultId: string | null;
   cuentaGastoCompraDefaultId: string | null;
   impuestoCompraDefaultId: string | null;
+  // Resto de cuentas de determinación — ver nota en el schema de productos_grupos.
+  cuentaDotacionDefaultId: string | null;
+  cuentaDesviacionDefaultId: string | null;
+  cuentaDiferenciaPrecioDefaultId: string | null;
+  cuentaAjusteStockNegativoDefaultId: string | null;
+  cuentaCompensacionStockReduccionDefaultId: string | null;
+  cuentaCompensacionStockAumentoDefaultId: string | null;
+  cuentaDevolucionVentaDefaultId: string | null;
+  cuentaIngresoExtranjeroDefaultId: string | null;
+  cuentaCostoExtranjeroDefaultId: string | null;
+  cuentaDiferenciaCambioDefaultId: string | null;
+  cuentaCompensacionMercaderiaDefaultId: string | null;
+  cuentaReduccionLibroMayorDefaultId: string | null;
+  cuentaAumentoLibroMayorDefaultId: string | null;
+  cuentaStockWipDefaultId: string | null;
+  cuentaDesviacionStockWipDefaultId: string | null;
+  cuentaPygCompensacionWipDefaultId: string | null;
+  cuentaPygCompensacionStockDefaultId: string | null;
 };
 
 type FormValues = z.input<typeof crearProductoGrupoSchema>;
@@ -103,39 +122,38 @@ export function ProductosGruposManager({
   });
 
   const sel = (
-    name:
-      | "cuentaIngresoDefaultId"
-      | "impuestoDefaultId"
-      | "centroCostoDefaultId"
-      | "categoriaContableDefaultId"
-      | "cuentaInventarioDefaultId"
-      | "cuentaCostoVentaDefaultId"
-      | "cuentaGastoCompraDefaultId"
-      | "impuestoCompraDefaultId",
+    name: Exclude<keyof FormValues, "nombre">,
     label: string,
     opciones: Opcion[],
     placeholder: string,
-  ) => (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Select
-        value={(watch(name) as string | undefined) ?? NINGUNA}
-        onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
-          {opciones.map((o) => (
-            <SelectItem key={o.id} value={o.id}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
+    esCuenta = false,
+  ) => {
+    const valor = watch(name) as string | undefined;
+    return (
+      <div className="space-y-2">
+        <Label>{label}</Label>
+        <div className="flex items-center gap-2">
+          <Select
+            value={valor ?? NINGUNA}
+            onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
+              {opciones.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {esCuenta && <IrACuenta empresaId={empresaId} cuentaId={valor} />}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -193,7 +211,7 @@ export function ProductosGruposManager({
       )}
 
       <Dialog open={abierto} onOpenChange={setAbierto}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{enEdicion ? "Editar grupo" : "Nuevo grupo de productos"}</DialogTitle>
           </DialogHeader>
@@ -205,7 +223,7 @@ export function ProductosGruposManager({
             </div>
             <p className="text-xs font-medium text-muted-foreground">Venta</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              {sel("cuentaIngresoDefaultId", "Cuenta de ingreso por defecto", cuentas, "Sin cuenta")}
+              {sel("cuentaIngresoDefaultId", "Cuenta de ingreso por defecto", cuentas, "Sin cuenta", true)}
               {sel("impuestoDefaultId", "Impuesto por defecto", impuestos, "Sin impuesto")}
               {sel("centroCostoDefaultId", "Centro de costo por defecto", centrosCosto, "Sin centro de costo")}
               {sel("categoriaContableDefaultId", "Categoría contable por defecto", categorias, "Sin categoría")}
@@ -213,11 +231,51 @@ export function ProductosGruposManager({
 
             <p className="text-xs font-medium text-muted-foreground">Compra / Inventario</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              {sel("cuentaInventarioDefaultId", "Cuenta de existencias (inventario)", cuentas, "Sin cuenta")}
-              {sel("cuentaCostoVentaDefaultId", "Cuenta de costo de venta", cuentas, "Sin cuenta")}
-              {sel("cuentaGastoCompraDefaultId", "Cuenta de gasto de compra", cuentas, "Sin cuenta")}
+              {sel("cuentaInventarioDefaultId", "Cuenta de existencias (inventario)", cuentas, "Sin cuenta", true)}
+              {sel("cuentaCostoVentaDefaultId", "Cuenta de costo de venta", cuentas, "Sin cuenta", true)}
+              {sel("cuentaGastoCompraDefaultId", "Cuenta de gasto de compra", cuentas, "Sin cuenta", true)}
               {sel("impuestoCompraDefaultId", "Impuesto de compra por defecto", impuestos, "Sin impuesto")}
             </div>
+
+            <details className="rounded-lg ring-1 ring-foreground/10">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground">
+                Resto de cuentas — sin lógica de posteo todavía, solo se guardan
+              </summary>
+              <div className="space-y-4 border-t px-3 py-4">
+                <p className="text-xs font-medium text-muted-foreground">Ajustes de inventario</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {sel("cuentaDotacionDefaultId", "Cuenta de dotación", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaDesviacionDefaultId", "Cuenta de desviación", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaDiferenciaPrecioDefaultId", "Cuenta de diferencias de precio", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaAjusteStockNegativoDefaultId", "Cuenta de ajuste de stock negativo", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaCompensacionStockReduccionDefaultId", "Compensación de stocks — reducción", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaCompensacionStockAumentoDefaultId", "Compensación de stocks — aumento", cuentas, "Sin cuenta", true)}
+                </div>
+
+                <p className="text-xs font-medium text-muted-foreground">Devoluciones y moneda extranjera</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {sel("cuentaDevolucionVentaDefaultId", "Cuenta de devoluciones por ventas", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaIngresoExtranjeroDefaultId", "Cuenta de ingresos — extranjero", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaCostoExtranjeroDefaultId", "Cuenta de costos — extranjero", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaDiferenciaCambioDefaultId", "Cuenta de diferencias de tipo de cambio", cuentas, "Sin cuenta", true)}
+                </div>
+
+                <p className="text-xs font-medium text-muted-foreground">Otros ajustes de mercancías</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {sel("cuentaCompensacionMercaderiaDefaultId", "Cuenta compensación mercancías", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaReduccionLibroMayorDefaultId", "Cuenta de reducción del libro mayor", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaAumentoLibroMayorDefaultId", "Cuenta de aumento del libro mayor", cuentas, "Sin cuenta", true)}
+                </div>
+
+                <p className="text-xs font-medium text-muted-foreground">Trabajo en curso (WIP)</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {sel("cuentaStockWipDefaultId", "Cuenta de stocks de trabajo en curso", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaDesviacionStockWipDefaultId", "Cuenta de desviación de stock WIP", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaPygCompensacionWipDefaultId", "Cuenta PyG de compensación WIP", cuentas, "Sin cuenta", true)}
+                  {sel("cuentaPygCompensacionStockDefaultId", "Cuenta PyG de compensación de stocks", cuentas, "Sin cuenta", true)}
+                </div>
+              </div>
+            </details>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAbierto(false)}>
                 Cancelar
@@ -244,5 +302,22 @@ function valoresDe(g: GrupoLite | null): FormValues {
     cuentaCostoVentaDefaultId: g?.cuentaCostoVentaDefaultId ?? undefined,
     cuentaGastoCompraDefaultId: g?.cuentaGastoCompraDefaultId ?? undefined,
     impuestoCompraDefaultId: g?.impuestoCompraDefaultId ?? undefined,
+    cuentaDotacionDefaultId: g?.cuentaDotacionDefaultId ?? undefined,
+    cuentaDesviacionDefaultId: g?.cuentaDesviacionDefaultId ?? undefined,
+    cuentaDiferenciaPrecioDefaultId: g?.cuentaDiferenciaPrecioDefaultId ?? undefined,
+    cuentaAjusteStockNegativoDefaultId: g?.cuentaAjusteStockNegativoDefaultId ?? undefined,
+    cuentaCompensacionStockReduccionDefaultId: g?.cuentaCompensacionStockReduccionDefaultId ?? undefined,
+    cuentaCompensacionStockAumentoDefaultId: g?.cuentaCompensacionStockAumentoDefaultId ?? undefined,
+    cuentaDevolucionVentaDefaultId: g?.cuentaDevolucionVentaDefaultId ?? undefined,
+    cuentaIngresoExtranjeroDefaultId: g?.cuentaIngresoExtranjeroDefaultId ?? undefined,
+    cuentaCostoExtranjeroDefaultId: g?.cuentaCostoExtranjeroDefaultId ?? undefined,
+    cuentaDiferenciaCambioDefaultId: g?.cuentaDiferenciaCambioDefaultId ?? undefined,
+    cuentaCompensacionMercaderiaDefaultId: g?.cuentaCompensacionMercaderiaDefaultId ?? undefined,
+    cuentaReduccionLibroMayorDefaultId: g?.cuentaReduccionLibroMayorDefaultId ?? undefined,
+    cuentaAumentoLibroMayorDefaultId: g?.cuentaAumentoLibroMayorDefaultId ?? undefined,
+    cuentaStockWipDefaultId: g?.cuentaStockWipDefaultId ?? undefined,
+    cuentaDesviacionStockWipDefaultId: g?.cuentaDesviacionStockWipDefaultId ?? undefined,
+    cuentaPygCompensacionWipDefaultId: g?.cuentaPygCompensacionWipDefaultId ?? undefined,
+    cuentaPygCompensacionStockDefaultId: g?.cuentaPygCompensacionStockDefaultId ?? undefined,
   };
 }

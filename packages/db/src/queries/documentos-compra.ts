@@ -20,6 +20,8 @@ import {
   productos,
   stockMovimientos,
   terceros,
+  tercerosGrupos,
+  tiposDocumento,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { siguienteCorrelativoAsiento } from "./asientos";
@@ -149,6 +151,30 @@ export async function obtenerDocumentoCompraConLineas(id: string, empresaId: str
       .where(eq(asientosContables.id, documento.asientoId));
   }
   return { documento, lineas, asiento: asiento ?? null };
+}
+
+/**
+ * RUT del proveedor, código de tipo de documento SII y folio de un documento de
+ * compra — lo que necesita el Web Service de Aceptación/Reclamo de DTE del SII
+ * (`aceptarOReclamarDocumento`/`listarEventosDocumento`). `null` si el documento no
+ * existe, o si le falta folio o tipo de documento (p. ej. un pedido interno sin DTE).
+ */
+export async function obtenerDatosSiiDocumentoCompra(
+  documentoCompraId: string,
+  empresaId: string,
+): Promise<{ rutProveedor: string; codigoSiiDoc: string; folio: string } | null> {
+  const [row] = await db
+    .select({
+      folio: documentosCompra.folio,
+      rutProveedor: terceros.rut,
+      codigoSiiDoc: tiposDocumento.codigoSii,
+    })
+    .from(documentosCompra)
+    .innerJoin(terceros, eq(documentosCompra.terceroId, terceros.id))
+    .innerJoin(tiposDocumento, eq(documentosCompra.tipoDocumentoId, tiposDocumento.id))
+    .where(and(eq(documentosCompra.id, documentoCompraId), eq(documentosCompra.empresaId, empresaId)));
+  if (!row || !row.folio) return null;
+  return { rutProveedor: row.rutProveedor, codigoSiiDoc: row.codigoSiiDoc, folio: row.folio };
 }
 
 /**
@@ -798,13 +824,23 @@ async function construirAsientoCompra(
   const esInventarioPorId = new Map<string, boolean>();
   if (idsProd.length) {
     const prods = await tx
-      .select({ id: productos.id, esInventario: productos.esInventario, codigo: productos.codigo })
+      .select({
+        id: productos.id,
+        esInventario: productos.esInventario,
+        esCompra: productos.esCompra,
+        codigo: productos.codigo,
+      })
       .from(productos)
       .where(inArray(productos.id, idsProd));
     for (const p of prods) esInventarioPorId.set(p.id, p.esInventario);
+    const esCompraPorId = new Map(prods.map((p) => [p.id, p.esCompra]));
     for (const l of lineas) {
-      if (l.productoId && esInventarioPorId.get(l.productoId) && !lineaEsDesdeGrpo(l)) {
-        const cod = prods.find((p) => p.id === l.productoId)?.codigo ?? "";
+      if (!l.productoId) continue;
+      const cod = prods.find((p) => p.id === l.productoId)?.codigo ?? "";
+      if (esCompraPorId.get(l.productoId) === false) {
+        errores.push(`El artículo ${cod} no está habilitado para compra.`);
+      }
+      if (esInventarioPorId.get(l.productoId) && !lineaEsDesdeGrpo(l)) {
         errores.push(
           `El artículo ${cod} es de inventario: usa una Entrada de Mercadería y luego "Traer a factura".`,
         );
@@ -818,11 +854,19 @@ async function construirAsientoCompra(
     .where(eq(empresas.id, empresaId));
 
   const [tercero] = await tx.select().from(terceros).where(eq(terceros.id, doc.terceroId));
+  // Cuenta puente: 1) del proveedor, 2) de su grupo de socios de negocio, 3) fallback
+  // GENERAL de "Determinación de cuentas".
+  const grupoTercero = tercero?.grupoId
+    ? (await tx.select().from(tercerosGrupos).where(eq(tercerosGrupos.id, tercero.grupoId)))[0]
+    : undefined;
   const cuentaPuente =
     tercero?.cuentaContableAsociadaId ??
+    grupoTercero?.cuentaContableAsociadaId ??
     (await resolverCuentaGeneral(tx, empresaId, "compra", "cuenta_por_pagar"));
   if (!cuentaPuente) {
-    errores.push("El proveedor no tiene cuenta puente y no hay regla GENERAL de cuenta por pagar.");
+    errores.push(
+      "El proveedor no tiene cuenta puente, su grupo tampoco, y no hay regla GENERAL de cuenta por pagar.",
+    );
   }
 
   // Cuenta de IVA crédito por impuesto usado.
@@ -918,6 +962,8 @@ async function construirAsientoCompra(
       .select({
         id: planCuentas.id,
         codigo: planCuentas.codigoCuenta,
+        clase: planCuentas.clase,
+        tipoCuenta: planCuentas.tipoCuenta,
         nivelImputable: planCuentas.nivelImputable,
         requiereAnalisisTerceros: planCuentas.requiereAnalisisTerceros,
         modoMoneda: planCuentas.modoMoneda,
@@ -938,6 +984,12 @@ async function construirAsientoCompra(
       if (!c.nivelImputable) errores.push(`La cuenta ${etq} no es imputable (es de agrupación).`);
       if (c.requiereAnalisisTerceros && !f.terceroId) {
         errores.push(`La cuenta de control ${etq} exige un tercero en la línea.`);
+      }
+      // La cuenta puente del proveedor debe ser Pasivo/Proveedor — si alguien la cambió
+      // directo en la base de datos (el selector de la ficha del tercero ya filtra esto),
+      // el asiento quedaría con la cuenta por pagar mal clasificada.
+      if (f.cuentaId === cuentaPuente && (c.clase !== "Pasivo" || c.tipoCuenta !== "Proveedor")) {
+        errores.push(`La cuenta puente del proveedor (${etq}) debe ser de tipo Pasivo/Proveedor.`);
       }
       if (c.modoMoneda === "Funcional" || c.modoMoneda === "Local") {
         if (empresa && doc.monedaId !== empresa.monedaFuncionalId) {
@@ -1048,10 +1100,18 @@ async function construirAsientoEntradaMercaderia(
   const esInventarioPorId = new Map<string, boolean>();
   if (idsProd.length) {
     const prods = await tx
-      .select({ id: productos.id, esInventario: productos.esInventario })
+      .select({
+        id: productos.id,
+        esInventario: productos.esInventario,
+        esCompra: productos.esCompra,
+        codigo: productos.codigo,
+      })
       .from(productos)
       .where(inArray(productos.id, idsProd));
-    for (const p of prods) esInventarioPorId.set(p.id, p.esInventario);
+    for (const p of prods) {
+      esInventarioPorId.set(p.id, p.esInventario);
+      if (!p.esCompra) errores.push(`El artículo ${p.codigo} no está habilitado para compra.`);
+    }
   }
 
   const lineasInventario = lineas

@@ -20,6 +20,8 @@ import {
   LIBRO_CONTABLE,
   MONEDA_TIPO,
   METODO_VALORACION,
+  SII_AMBIENTE,
+  SII_METODO_AUTH,
   STOCK_MOVIMIENTO_TIPO,
   NATURALEZA_CUENTA,
   PERIODO_ESTADO,
@@ -81,6 +83,8 @@ export const metodoValoracionEnum = pgEnum("metodo_valoracion", [...METODO_VALOR
 export const stockMovimientoTipoEnum = pgEnum("stock_movimiento_tipo", [
   ...STOCK_MOVIMIENTO_TIPO,
 ]);
+export const siiAmbienteEnum = pgEnum("sii_ambiente", [...SII_AMBIENTE]);
+export const siiMetodoAuthEnum = pgEnum("sii_metodo_auth", [...SII_METODO_AUTH]);
 export const cuentaModoMonedaEnum = pgEnum("cuenta_modo_moneda", [...CUENTA_MODO_MONEDA]);
 export const determinacionContextoEnum = pgEnum("determinacion_contexto", [
   ...DETERMINACION_CONTEXTO,

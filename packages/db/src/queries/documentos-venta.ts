@@ -15,13 +15,24 @@ import {
   impuestos,
   monedas,
   planCuentas,
+  productos,
+  productosGrupos,
+  stockMovimientos,
   terceros,
+  tercerosGrupos,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { siguienteCorrelativoAsiento } from "./asientos";
 import { resolverCuentaGeneral } from "./reglas-determinacion-cuenta";
 import { periodoDe } from "./periodos";
 import { siguienteCodigo } from "./series";
+import {
+  aplicarEntradaStock,
+  aplicarReversaEntrada,
+  aplicarReversaSalida,
+  aplicarSalidaStock,
+  obtenerStock,
+} from "./stock";
 
 const redondear = (x: number, decimales: number) => {
   const f = 10 ** decimales;
@@ -495,12 +506,19 @@ async function construirAsientoVenta(
     .where(eq(empresas.id, empresaId));
 
   const [tercero] = await tx.select().from(terceros).where(eq(terceros.id, doc.terceroId));
-  // Fallback: cuenta por cobrar GENERAL si el cliente no tiene cuenta puente.
+  // Cuenta puente: 1) del cliente, 2) de su grupo de socios de negocio, 3) fallback
+  // GENERAL de "Determinación de cuentas".
+  const grupoTercero = tercero?.grupoId
+    ? (await tx.select().from(tercerosGrupos).where(eq(tercerosGrupos.id, tercero.grupoId)))[0]
+    : undefined;
   const cuentaPuente =
     tercero?.cuentaContableAsociadaId ??
+    grupoTercero?.cuentaContableAsociadaId ??
     (await resolverCuentaGeneral(tx, empresaId, "venta", "cuenta_por_cobrar"));
   if (!cuentaPuente) {
-    errores.push("El cliente no tiene cuenta puente y no hay regla GENERAL de cuenta por cobrar.");
+    errores.push(
+      "El cliente no tiene cuenta puente, su grupo tampoco, y no hay regla GENERAL de cuenta por cobrar.",
+    );
   }
 
   const idsImp = [...new Set(lineas.map((l) => l.impuestoId).filter((x): x is string => !!x))];
@@ -589,6 +607,101 @@ async function construirAsientoVenta(
     });
   }
 
+  // ── Costo de venta / existencias por líneas de producto de inventario ──
+  const idsProd = [...new Set(lineas.map((l) => l.productoId).filter((x): x is string => !!x))];
+  if (idsProd.length) {
+    const prods = await tx
+      .select({
+        id: productos.id,
+        codigo: productos.codigo,
+        esVenta: productos.esVenta,
+        esInventario: productos.esInventario,
+        grupoId: productos.grupoId,
+      })
+      .from(productos)
+      .where(inArray(productos.id, idsProd));
+    const prodPorId = new Map(prods.map((p) => [p.id, p]));
+    const gruposIds = [...new Set(prods.map((p) => p.grupoId))];
+    const grupos = gruposIds.length
+      ? await tx
+          .select({
+            id: productosGrupos.id,
+            gInv: productosGrupos.cuentaInventarioDefaultId,
+            gCosto: productosGrupos.cuentaCostoVentaDefaultId,
+          })
+          .from(productosGrupos)
+          .where(inArray(productosGrupos.id, gruposIds))
+      : [];
+    const grupoPorId = new Map(grupos.map((g) => [g.id, g]));
+
+    // Cantidad total por producto de inventario (para validar disponibilidad).
+    const cantPorProd = new Map<string, number>();
+    for (const l of lineas) {
+      const p = l.productoId ? prodPorId.get(l.productoId) : undefined;
+      if (!p) continue;
+      if (!p.esVenta) errores.push(`El artículo ${p.codigo} no está habilitado para venta.`);
+      if (p.esInventario) {
+        cantPorProd.set(l.productoId!, (cantPorProd.get(l.productoId!) ?? 0) + Number(l.cantidad));
+      }
+    }
+
+    const costoPorClave = new Map<
+      string,
+      { cuentaCosto: string; cuentaExist: string; monto: number }
+    >();
+    for (const l of lineas) {
+      const p = l.productoId ? prodPorId.get(l.productoId) : undefined;
+      if (!p || !p.esInventario || Number(l.cantidad) === 0) continue;
+      const g = grupoPorId.get(p.grupoId);
+      const cuentaExist =
+        g?.gInv ?? (await resolverCuentaGeneral(tx, empresaId, "compra", "inventario"));
+      const cuentaCosto =
+        g?.gCosto ?? (await resolverCuentaGeneral(tx, empresaId, "venta", "costo_venta"));
+      if (!cuentaExist) {
+        errores.push(`El artículo ${p.codigo}: falta la cuenta de Existencias (Determinación de cuentas).`);
+        continue;
+      }
+      if (!cuentaCosto) {
+        errores.push(`El artículo ${p.codigo}: falta la cuenta de Costo de venta (Determinación de cuentas).`);
+        continue;
+      }
+      const stock = await obtenerStock(tx, empresaId, l.productoId!);
+      const necesita = cantPorProd.get(l.productoId!) ?? 0;
+      if (!esCredito && necesita > (stock?.cantidad ?? 0) + 0.000001) {
+        errores.push(
+          `No hay stock suficiente de ${p.codigo} (disponible ${stock?.cantidad ?? 0}, se necesitan ${necesita}).`,
+        );
+        continue;
+      }
+      const costoLinea = redondear(Number(l.cantidad) * (stock?.costoPromedio ?? 0), 4);
+      if (costoLinea === 0) continue;
+      const clave = `${cuentaCosto}::${cuentaExist}`;
+      const acc =
+        costoPorClave.get(clave) ?? { cuentaCosto, cuentaExist, monto: 0 };
+      acc.monto += costoLinea;
+      costoPorClave.set(clave, acc);
+    }
+    for (const c of costoPorClave.values()) {
+      // Venta: Debe Costo / Haber Existencias.  NC (devolución): invertido.
+      filas.push({
+        cuentaId: c.cuentaCosto,
+        centroCostoId: null,
+        terceroId: null,
+        glosa: "Costo de venta",
+        debe: esCredito ? 0 : c.monto,
+        haber: esCredito ? c.monto : 0,
+      });
+      filas.push({
+        cuentaId: c.cuentaExist,
+        centroCostoId: null,
+        terceroId: null,
+        glosa: "Existencias",
+        debe: esCredito ? c.monto : 0,
+        haber: esCredito ? 0 : c.monto,
+      });
+    }
+  }
+
   // Validación de las cuentas usadas (RN-01 imputable, RN-02 control, RN-06 moneda).
   const cuentaIds = [...new Set(filas.map((f) => f.cuentaId))];
   if (cuentaIds.length) {
@@ -596,6 +709,8 @@ async function construirAsientoVenta(
       .select({
         id: planCuentas.id,
         codigo: planCuentas.codigoCuenta,
+        clase: planCuentas.clase,
+        tipoCuenta: planCuentas.tipoCuenta,
         nivelImputable: planCuentas.nivelImputable,
         requiereAnalisisTerceros: planCuentas.requiereAnalisisTerceros,
         modoMoneda: planCuentas.modoMoneda,
@@ -616,6 +731,11 @@ async function construirAsientoVenta(
       if (!c.nivelImputable) errores.push(`La cuenta ${etq} no es imputable (es de agrupación).`);
       if (c.requiereAnalisisTerceros && !f.terceroId) {
         errores.push(`La cuenta de control ${etq} exige un tercero en la línea.`);
+      }
+      // La cuenta puente del cliente debe ser Activo/Cliente — simétrico a la validación
+      // de Pasivo/Proveedor del lado de compras.
+      if (f.cuentaId === cuentaPuente && (c.clase !== "Activo" || c.tipoCuenta !== "Cliente")) {
+        errores.push(`La cuenta puente del cliente (${etq}) debe ser de tipo Activo/Cliente.`);
       }
       if (c.modoMoneda === "Funcional" || c.modoMoneda === "Local") {
         if (empresa && doc.monedaId !== empresa.monedaFuncionalId) {
@@ -827,6 +947,53 @@ export async function contabilizarDocumentoVenta(
       .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
       .returning();
     if (!doc) throw new Error("No se pudo contabilizar el documento");
+
+    // Salida (o entrada, si es NC) de stock por las líneas de producto de inventario.
+    const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
+    const esCredito = doc.clase === "Nota de Crédito";
+    const lineasDoc = await tx
+      .select({ productoId: documentosVentaLineas.productoId, cantidad: documentosVentaLineas.cantidad })
+      .from(documentosVentaLineas)
+      .where(eq(documentosVentaLineas.documentoVentaId, id));
+    const idsLinea = [...new Set(lineasDoc.map((l) => l.productoId).filter((x): x is string => !!x))];
+    if (idsLinea.length) {
+      const invRows = await tx
+        .select({ id: productos.id })
+        .from(productos)
+        .where(and(inArray(productos.id, idsLinea), eq(productos.esInventario, true)));
+      const esInv = new Set(invRows.map((r) => r.id));
+      for (const l of lineasDoc) {
+        if (!l.productoId || !esInv.has(l.productoId) || Number(l.cantidad) === 0) continue;
+        if (esCredito) {
+          const stock = await obtenerStock(tx, empresaId, l.productoId);
+          await aplicarEntradaStock(tx, empresaId, l.productoId, {
+            cantidad: Number(l.cantidad),
+            costoUnitario: stock?.costoPromedio ?? 0,
+            fecha: fechaContab,
+            origenTabla: "documentos_venta",
+            origenId: id,
+            glosa: etiquetaDoc(doc),
+          });
+        } else {
+          await aplicarSalidaStock(tx, empresaId, l.productoId, {
+            cantidad: Number(l.cantidad),
+            fecha: fechaContab,
+            origenTabla: "documentos_venta",
+            origenId: id,
+            glosa: etiquetaDoc(doc),
+          });
+        }
+      }
+      await tx
+        .update(stockMovimientos)
+        .set({ asientoId: asiento.id })
+        .where(
+          and(
+            eq(stockMovimientos.origenTabla, "documentos_venta"),
+            eq(stockMovimientos.origenId, id),
+          ),
+        );
+    }
     if (ctx) {
       await registrarAuditoria(tx, {
         empresaId,
@@ -907,6 +1074,23 @@ export async function anularDocumentoVenta(
           documentoReferenciaId: id,
         })),
       );
+
+      // Revertir los movimientos de stock de este documento.
+      const movs = await tx
+        .select({ id: stockMovimientos.id, tipo: stockMovimientos.tipo })
+        .from(stockMovimientos)
+        .where(
+          and(
+            eq(stockMovimientos.empresaId, empresaId),
+            eq(stockMovimientos.origenTabla, "documentos_venta"),
+            eq(stockMovimientos.origenId, id),
+          ),
+        );
+      const hoy = new Date().toISOString().slice(0, 10);
+      for (const m of movs) {
+        if (m.tipo === "salida") await aplicarReversaSalida(tx, empresaId, m.id, hoy);
+        else if (m.tipo === "entrada") await aplicarReversaEntrada(tx, empresaId, m.id, hoy);
+      }
     }
 
     const [actualizado] = await tx

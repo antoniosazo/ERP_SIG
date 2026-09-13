@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { MAX_PROFUNDIDAD_CUENTA } from "@erp/shared";
 import { Badge } from "@/components/ui/badge";
@@ -73,8 +74,8 @@ export function PlanCuentasManager({
     [cuentas, porPadre],
   );
 
-  // Por defecto todo expandido (mismo comportamiento que la lista plana anterior).
-  const [expandidos, setExpandidos] = useState<Set<string>>(() => new Set(idsConHijos));
+  // Por defecto todo colapsado — se expande cuenta por cuenta al hacer clic.
+  const [expandidos, setExpandidos] = useState<Set<string>>(() => new Set());
 
   const filas = useMemo(
     () => filasVisibles(cuentas, porPadre, expandidos),
@@ -107,6 +108,17 @@ export function PlanCuentasManager({
     setPadreParaNueva(null);
     setDialogAbierto(true);
   }
+
+  // Deep-link "ir a configurar la cuenta" (ej. desde Grupos de artículos): ?cuenta=<id>
+  // abre directo el diálogo de edición de esa cuenta.
+  const params = useSearchParams();
+  useEffect(() => {
+    const id = params.get("cuenta");
+    if (!id) return;
+    const cuenta = cuentas.find((c) => c.id === id);
+    if (cuenta) abrirEdicion(cuenta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   return (
     <div className="space-y-4">

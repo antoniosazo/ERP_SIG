@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,6 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FilaGrupo, useAgrupado, useExpandidos } from "./tabla-agrupada";
 
 export type TerceroFila = {
   id: string;
@@ -62,6 +63,8 @@ export function TercerosManager({
   const [isPending, startTransition] = useTransition();
   const [abierto, setAbierto] = useState(false);
   const grupoLabel = new Map(grupos.map((g) => [g.id, g.label]));
+  const porTipo = useAgrupado(terceros, (t) => t.tipoTercero);
+  const { expandidos: tiposAbiertos, alternar: alternarTipo } = useExpandidos();
 
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm({
     resolver: zodResolver(crearTerceroSchema),
@@ -97,49 +100,58 @@ export function TercerosManager({
               <TableRow>
                 <TableHead className="w-28">Código</TableHead>
                 <TableHead>Razón social</TableHead>
-                <TableHead>Tipo</TableHead>
                 <TableHead>RUT</TableHead>
                 <TableHead>Grupo</TableHead>
                 <TableHead>Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {terceros.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-mono font-medium">
-                    <Link
-                      href={`/panel/${empresaId}/maestros/terceros/${t.id}`}
-                      className="hover:underline"
-                    >
-                      {t.codigo ?? "—"}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      href={`/panel/${empresaId}/maestros/terceros/${t.id}`}
-                      className="hover:underline"
-                    >
-                      {t.razonSocial}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{t.tipoTercero}</TableCell>
-                  <TableCell className="font-mono text-muted-foreground">
-                    {formatearRut(t.rut)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {t.grupoId ? grupoLabel.get(t.grupoId) ?? "—" : "—"}
-                  </TableCell>
-                  <TableCell>
-                    {t.bloqueado ? (
-                      <Badge variant="destructive">Bloqueado</Badge>
-                    ) : t.activo ? (
-                      <Badge>Activo</Badge>
-                    ) : (
-                      <Badge variant="secondary">Inactivo</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {[...porTipo.entries()].map(([tipo, items]) => {
+                const abierto = tiposAbiertos.has(tipo);
+                return (
+                  <Fragment key={tipo}>
+                    <FilaGrupo abierto={abierto} onToggle={() => alternarTipo(tipo)} colSpan={5}>
+                      {tipo} ({items.length})
+                    </FilaGrupo>
+                    {abierto &&
+                      items.map((t) => (
+                        <TableRow key={t.id}>
+                          <TableCell className="font-mono font-medium">
+                            <Link
+                              href={`/panel/${empresaId}/maestros/terceros/${t.id}`}
+                              className="hover:underline"
+                            >
+                              {t.codigo ?? "—"}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Link
+                              href={`/panel/${empresaId}/maestros/terceros/${t.id}`}
+                              className="hover:underline"
+                            >
+                              {t.razonSocial}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {formatearRut(t.rut)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {t.grupoId ? grupoLabel.get(t.grupoId) ?? "—" : "—"}
+                          </TableCell>
+                          <TableCell>
+                            {t.bloqueado ? (
+                              <Badge variant="destructive">Bloqueado</Badge>
+                            ) : t.activo ? (
+                              <Badge>Activo</Badge>
+                            ) : (
+                              <Badge variant="secondary">Inactivo</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

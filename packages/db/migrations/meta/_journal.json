@@ -162,6 +162,69 @@
       "when": 1788487745638,
       "tag": "0022_bored_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788712313303,
+      "tag": "0023_lame_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788820234955,
+      "tag": "0024_crazy_pete_wisdom",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788895517125,
+      "tag": "0025_narrow_stingray",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789091273520,
+      "tag": "0026_nostalgic_victor_mancha",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789132707148,
+      "tag": "0027_strange_trish_tilby",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789133885107,
+      "tag": "0028_useful_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789248737178,
+      "tag": "0029_classy_doctor_spectrum",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789249793633,
+      "tag": "0030_pale_songbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789251338032,
+      "tag": "0031_greedy_hellcat",
+      "breakpoints": true
     }
   ]
 }

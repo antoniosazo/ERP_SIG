@@ -49,11 +49,12 @@ const GRUPOS: Grupo[] = [
       { href: "/configuracion/periodos", label: "Períodos contables", icon: CalendarDaysIcon },
       { href: "/configuracion/centros-costo", label: "Centros de costo", icon: NetworkIcon },
       { href: "/configuracion/categorias", label: "Categorías contables", icon: TagsIcon },
+      { href: "/configuracion/sii", label: "Conexión SII", icon: NetworkIcon },
       { href: "/configuracion/auditoria", label: "Auditoría", icon: HistoryIcon },
     ],
   },
   {
-    label: "Maestros",
+    label: "Socios de Negocio",
     items: [
       { href: "/maestros/terceros", label: "Socios de negocio", icon: UsersIcon },
       { href: "/maestros/grupos-terceros", label: "Grupos de socios", icon: TagsIcon },
@@ -70,6 +71,7 @@ const GRUPOS: Grupo[] = [
   {
     label: "Ventas",
     items: [
+      { href: "/ventas/importar-sii", label: "Importar del SII", icon: TrendingUpIcon },
       { href: "/ventas/facturas", label: "Facturas", icon: FileTextIcon },
       { href: "/ventas/notas-credito", label: "Notas de crédito", icon: FileTextIcon },
       { href: "/ventas/notas-debito", label: "Notas de débito", icon: FileTextIcon },
@@ -78,6 +80,7 @@ const GRUPOS: Grupo[] = [
   {
     label: "Compras",
     items: [
+      { href: "/compras/importar-sii", label: "Importar del SII", icon: TrendingUpIcon },
       { href: "/compras/pedidos", label: "Pedidos", icon: FileTextIcon },
       { href: "/compras/entradas", label: "Entradas de mercadería", icon: PackageIcon },
       { href: "/compras/facturas", label: "Facturas", icon: FileTextIcon },

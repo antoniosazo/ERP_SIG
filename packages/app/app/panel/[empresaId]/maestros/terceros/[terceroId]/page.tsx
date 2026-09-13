@@ -28,6 +28,27 @@ export default async function TerceroDetallePage({
   if (!detalle) notFound();
   const { tercero, contactos, direcciones, cuentasBancarias } = detalle;
 
+  // `cuentaContableAsociadaId` es la cuenta puente (cuenta por cobrar/pagar) del
+  // tercero: debe ser una cuenta de último nivel y, para Cliente/Proveedor, del tipo
+  // correspondiente — si no, se podría asociar por error una cuenta de otra clase (ej.
+  // un gasto) y el asiento de venta/compra quedaría mal armado.
+  const TIPO_CUENTA_POR_TERCERO: Partial<Record<string, { clase: string; tipoCuenta: string }>> = {
+    Cliente: { clase: "Activo", tipoCuenta: "Cliente" },
+    Proveedor: { clase: "Pasivo", tipoCuenta: "Proveedor" },
+  };
+  const tipoCuentaEsperado = TIPO_CUENTA_POR_TERCERO[tercero.tipoTercero];
+
+  // La categoría contable por defecto alimenta cuentaGastoId (compra) o cuentaIngresoId
+  // (venta) según de dónde venga el documento — mostrar solo las categorías compatibles
+  // con el tipo de tercero evita elegir, por ejemplo, una categoría "Venta" para un
+  // Proveedor que nunca tendría cuenta de gasto configurada.
+  const APLICA_A_POR_TERCERO: Partial<Record<string, string[]>> = {
+    Cliente: ["Venta", "Ambos"],
+    Proveedor: ["Compra", "Ambos"],
+    "Prestador Honorarios": ["Honorario", "Ambos"],
+  };
+  const aplicaAEsperado = APLICA_A_POR_TERCERO[tercero.tipoTercero];
+
   const [cuentas, categorias, monedas, impuestos, grupos, bancos] = await Promise.all([
     listarPlanCuentasDeEmpresa(empresaId),
     listarCategorias(empresaId),
@@ -55,8 +76,15 @@ export default async function TerceroDetallePage({
         codigo={tercero.codigo}
         cuentas={cuentas
           .filter((c) => c.nivelImputable && c.activa)
+          .filter(
+            (c) =>
+              !tipoCuentaEsperado ||
+              (c.clase === tipoCuentaEsperado.clase && c.tipoCuenta === tipoCuentaEsperado.tipoCuenta),
+          )
           .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}` }))}
-        categorias={categorias.map((c) => ({ id: c.id, label: c.nombre }))}
+        categorias={categorias
+          .filter((c) => !aplicaAEsperado || aplicaAEsperado.includes(c.aplicaA))
+          .map((c) => ({ id: c.id, label: c.nombre }))}
         monedas={monedas.map((m) => ({ id: m.id, label: `${m.codigo} — ${m.nombre}` }))}
         impuestos={impuestos.map((i) => ({ id: i.id, label: `${i.codigo} — ${i.nombre}` }))}
         grupos={grupos.map((g) => ({ id: g.id, label: `${g.codigo} — ${g.nombre}` }))}

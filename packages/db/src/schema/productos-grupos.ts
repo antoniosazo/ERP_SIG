@@ -7,8 +7,16 @@ import { impuestos } from "./impuestos";
 import { planCuentas } from "./plan-cuentas";
 
 /**
- * Grupo de productos por empresa: "determinación de cuentas" (equivalente al Item Group
- * de SAP). Un producto hereda estos valores por defecto y puede sobrescribirlos.
+ * Grupo de productos por empresa: "determinación de cuentas" por defecto. Un producto
+ * hereda estos valores y puede sobrescribirlos.
+ *
+ * Las primeras 8 cuentas (ingreso/inventario/costo de venta/gasto de compra + impuestos y
+ * centro de costo/categoría) son las que efectivamente consume la contabilización de
+ * documentos hoy (ver `documentos-compra.ts`/`documentos-venta.ts`). El resto es un
+ * catálogo más amplio de cuentas de ajuste de inventario, moneda extranjera y trabajo en
+ * curso — hoy no hay módulo de conteo de inventario, costeo WIP ni diferencias de tipo de
+ * cambio automatizadas en este sistema, así que esas cuentas quedan capturadas pero sin
+ * lógica de posteo todavía.
  */
 export const productosGrupos = pgTable(
   "productos_grupos",
@@ -46,6 +54,69 @@ export const productosGrupos = pgTable(
     impuestoCompraDefaultId: uuid("impuesto_compra_default_id").references(() => impuestos.id, {
       onDelete: "set null",
     }),
+
+    // ── Resto del catálogo de cuentas de determinación — ver nota arriba ──
+    cuentaDotacionDefaultId: uuid("cuenta_dotacion_default_id").references(() => planCuentas.id, {
+      onDelete: "restrict",
+    }),
+    cuentaDesviacionDefaultId: uuid("cuenta_desviacion_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaDiferenciaPrecioDefaultId: uuid("cuenta_diferencia_precio_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaAjusteStockNegativoDefaultId: uuid("cuenta_ajuste_stock_negativo_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaCompensacionStockReduccionDefaultId: uuid(
+      "cuenta_compensacion_stock_reduccion_default_id",
+    ).references(() => planCuentas.id, { onDelete: "restrict" }),
+    cuentaCompensacionStockAumentoDefaultId: uuid(
+      "cuenta_compensacion_stock_aumento_default_id",
+    ).references(() => planCuentas.id, { onDelete: "restrict" }),
+    cuentaDevolucionVentaDefaultId: uuid("cuenta_devolucion_venta_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaIngresoExtranjeroDefaultId: uuid("cuenta_ingreso_extranjero_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaCostoExtranjeroDefaultId: uuid("cuenta_costo_extranjero_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaDiferenciaCambioDefaultId: uuid("cuenta_diferencia_cambio_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaCompensacionMercaderiaDefaultId: uuid(
+      "cuenta_compensacion_mercaderia_default_id",
+    ).references(() => planCuentas.id, { onDelete: "restrict" }),
+    cuentaReduccionLibroMayorDefaultId: uuid("cuenta_reduccion_libro_mayor_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaAumentoLibroMayorDefaultId: uuid("cuenta_aumento_libro_mayor_default_id").references(
+      () => planCuentas.id,
+      { onDelete: "restrict" },
+    ),
+    cuentaStockWipDefaultId: uuid("cuenta_stock_wip_default_id").references(() => planCuentas.id, {
+      onDelete: "restrict",
+    }),
+    cuentaDesviacionStockWipDefaultId: uuid(
+      "cuenta_desviacion_stock_wip_default_id",
+    ).references(() => planCuentas.id, { onDelete: "restrict" }),
+    cuentaPygCompensacionWipDefaultId: uuid(
+      "cuenta_pyg_compensacion_wip_default_id",
+    ).references(() => planCuentas.id, { onDelete: "restrict" }),
+    cuentaPygCompensacionStockDefaultId: uuid(
+      "cuenta_pyg_compensacion_stock_default_id",
+    ).references(() => planCuentas.id, { onDelete: "restrict" }),
+
     ...timestampsColumns,
   },
   (t) => [uniqueIndex("productos_grupos_empresa_nombre_unique").on(t.empresaId, t.nombre)],

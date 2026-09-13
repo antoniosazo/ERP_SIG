@@ -10,3 +10,6 @@ dist/
 .DS_Store
 npm-debug.log*
 pnpm-debug.log*
+
+# Capturas de red (debug de integraciones, ej. SII) — pueden llevar cookies/tokens.
+*.har

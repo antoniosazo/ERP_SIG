@@ -1,0 +1,4 @@
+ALTER TABLE "terceros_grupos" ADD COLUMN "cuenta_contable_asociada_id" uuid;--> statement-breakpoint
+ALTER TABLE "terceros_grupos" ADD COLUMN "categoria_contable_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "terceros_grupos" ADD CONSTRAINT "terceros_grupos_cuenta_contable_asociada_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_contable_asociada_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "terceros_grupos" ADD CONSTRAINT "terceros_grupos_categoria_contable_default_id_categorias_contables_id_fk" FOREIGN KEY ("categoria_contable_default_id") REFERENCES "public"."categorias_contables"("id") ON DELETE set null ON UPDATE no action;

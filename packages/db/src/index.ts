@@ -7,6 +7,7 @@ export * from "./queries/auditoria";
 export * from "./queries/documentos-venta";
 export * from "./queries/documentos-compra";
 export * from "./queries/stock";
+export * from "./queries/sii";
 export * from "./queries/productos";
 export * from "./queries/productos-grupos";
 export * from "./queries/impuestos";

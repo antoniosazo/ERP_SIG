@@ -28,6 +28,8 @@ export * from "./documentos-compra";
 export * from "./documentos-compra-lineas";
 export * from "./producto-stock";
 export * from "./stock-movimientos";
+export * from "./sii-credenciales";
+export * from "./sii-importaciones";
 export * from "./usuarios";
 export * from "./usuario-empresa";
 export * from "./tokens-acceso";

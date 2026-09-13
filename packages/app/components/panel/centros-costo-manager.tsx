@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import type { z } from "zod";
 import { crearCentroCostoSchema } from "@erp/shared";
 import {
@@ -49,6 +50,43 @@ export type CentroCostoLite = {
 type FormValues = z.input<typeof crearCentroCostoSchema>;
 const SIN_PADRE = "__none__";
 
+type FilaArbol = { centro: CentroCostoLite; nivel: number; tieneHijos: boolean };
+
+function indexarHijos(centros: CentroCostoLite[]): Map<string | null, CentroCostoLite[]> {
+  const porPadre = new Map<string | null, CentroCostoLite[]>();
+  for (const c of centros) {
+    const arr = porPadre.get(c.centroPadreId) ?? [];
+    arr.push(c);
+    porPadre.set(c.centroPadreId, arr);
+  }
+  for (const arr of porPadre.values()) {
+    arr.sort((a, b) => a.codigo.localeCompare(b.codigo, "es", { numeric: true }));
+  }
+  return porPadre;
+}
+
+/** Filas a mostrar: recorre el árbol y solo baja por los nodos expandidos. */
+function filasVisibles(
+  centros: CentroCostoLite[],
+  porPadre: Map<string | null, CentroCostoLite[]>,
+  expandidos: Set<string>,
+): FilaArbol[] {
+  const ids = new Set(centros.map((c) => c.id));
+  const salida: FilaArbol[] = [];
+  const emitir = (centro: CentroCostoLite, nivel: number) => {
+    const hijos = porPadre.get(centro.id) ?? [];
+    salida.push({ centro, nivel, tieneHijos: hijos.length > 0 });
+    if (hijos.length > 0 && expandidos.has(centro.id)) {
+      for (const h of hijos) emitir(h, nivel + 1);
+    }
+  };
+  const raices = centros
+    .filter((c) => c.centroPadreId === null || !ids.has(c.centroPadreId))
+    .sort((a, b) => a.codigo.localeCompare(b.codigo, "es", { numeric: true }));
+  for (const r of raices) emitir(r, 0);
+  return salida;
+}
+
 export function CentrosCostoManager({
   empresaId,
   centros,
@@ -77,10 +115,18 @@ export function CentrosCostoManager({
     if (abierto) reset(valoresDe(enEdicion));
   }, [abierto, enEdicion, reset]);
 
-  const nombrePorId = useMemo(
-    () => new Map(centros.map((c) => [c.id, `${c.codigo} — ${c.nombre}`])),
-    [centros],
-  );
+  const porPadre = useMemo(() => indexarHijos(centros), [centros]);
+  // Todo colapsado por defecto — se expande centro por centro al hacer clic.
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const filas = useMemo(() => filasVisibles(centros, porPadre, expandidos), [centros, porPadre, expandidos]);
+  function alternar(id: string) {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
@@ -119,40 +165,64 @@ export function CentrosCostoManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-32">Código</TableHead>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Depende de</TableHead>
+                <TableHead className="w-64">Código / Nombre</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {centros.map((centro) => (
-                <TableRow key={centro.id}>
-                  <TableCell className="font-mono text-muted-foreground">{centro.codigo}</TableCell>
-                  <TableCell>{centro.nombre}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {centro.centroPadreId ? nombrePorId.get(centro.centroPadreId) ?? "—" : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={centro.estado === "Activo" ? "default" : "secondary"}>
-                      {centro.estado}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEnEdicion(centro);
-                        setAbierto(true);
-                      }}
-                    >
-                      Editar
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filas.map(({ centro, nivel, tieneHijos }) => {
+                const abierto = expandidos.has(centro.id);
+                return (
+                  <TableRow key={centro.id}>
+                    <TableCell>
+                      <div
+                        className="flex items-center gap-1"
+                        style={{ paddingLeft: `${nivel * 1.25}rem` }}
+                      >
+                        {tieneHijos ? (
+                          <button
+                            type="button"
+                            onClick={() => alternar(centro.id)}
+                            aria-label={abierto ? "Colapsar" : "Expandir"}
+                            aria-expanded={abierto}
+                            className="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            {abierto ? (
+                              <ChevronDownIcon className="size-3.5" />
+                            ) : (
+                              <ChevronRightIcon className="size-3.5" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="inline-block size-4 shrink-0" />
+                        )}
+                        <span className="font-mono text-muted-foreground">{centro.codigo}</span>
+                        <span className={nivel === 0 ? "font-semibold" : undefined}>
+                          {centro.nombre}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={centro.estado === "Activo" ? "default" : "secondary"}>
+                        {centro.estado}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEnEdicion(centro);
+                          setAbierto(true);
+                        }}
+                      >
+                        Editar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

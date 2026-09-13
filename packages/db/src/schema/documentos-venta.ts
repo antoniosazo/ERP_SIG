@@ -70,6 +70,8 @@ export const documentosVenta = pgTable(
       onDelete: "set null",
     }),
     motivoAnulacion: text("motivo_anulacion"),
+    /** Estado del documento en el Registro de Ventas del SII (importación RCV). */
+    estadoRcv: text("estado_rcv"),
     ...timestampsColumns,
   },
   (t) => [

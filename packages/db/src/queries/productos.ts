@@ -2,14 +2,7 @@ import type { CrearProductoInput, EditarProductoInput } from "@erp/shared";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
-import {
-  categoriasContables,
-  centrosCosto,
-  impuestos,
-  planCuentas,
-  productos,
-  productosGrupos,
-} from "../schema";
+import { productos, productosGrupos } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { sembrarSeriesProducto, siguienteCodigo } from "./series";
 
@@ -30,46 +23,13 @@ export async function listarProductos(
     .orderBy(asc(productos.codigo));
 }
 
-/** Valida que el grupo y las referencias contables opcionales sean de la empresa. */
+/** Valida que el grupo sea de la empresa (la imputación contable ya no vive en el producto). */
 async function validarRefs(tx: Tx, empresaId: string, input: CrearProductoInput | EditarProductoInput) {
   const [grupo] = await tx
     .select({ id: productosGrupos.id })
     .from(productosGrupos)
     .where(and(eq(productosGrupos.id, input.grupoId), eq(productosGrupos.empresaId, empresaId)));
   if (!grupo) throw new Error("El grupo de productos no existe en esta empresa");
-
-  const chequear = async (
-    id: string | null | undefined,
-    tabla: typeof planCuentas | typeof impuestos | typeof centrosCosto | typeof categoriasContables,
-    msg: string,
-  ) => {
-    if (!id) return;
-    const [row] = await tx
-      .select({ id: tabla.id })
-      .from(tabla)
-      .where(and(eq(tabla.id, id), eq(tabla.empresaId, empresaId)));
-    if (!row) throw new Error(msg);
-  };
-  await chequear(input.cuentaIngresoId, planCuentas, "La cuenta de ingreso no es de esta empresa");
-  await chequear(input.impuestoId, impuestos, "El impuesto no es de esta empresa");
-  await chequear(input.centroCostoId, centrosCosto, "El centro de costo no es de esta empresa");
-  await chequear(
-    input.categoriaContableId,
-    categoriasContables,
-    "La categoría contable no es de esta empresa",
-  );
-  await chequear(input.cuentaInventarioId, planCuentas, "La cuenta de inventario no es de esta empresa");
-  await chequear(
-    input.cuentaCostoVentaId,
-    planCuentas,
-    "La cuenta de costo de venta no es de esta empresa",
-  );
-  await chequear(
-    input.cuentaGastoCompraId,
-    planCuentas,
-    "La cuenta de gasto de compra no es de esta empresa",
-  );
-  await chequear(input.impuestoCompraId, impuestos, "El impuesto de compra no es de esta empresa");
 }
 
 /** Campos comunes de INSERT/UPDATE (el `codigo` se maneja aparte en cada función). */
@@ -90,14 +50,6 @@ function valores(input: CrearProductoInput | EditarProductoInput) {
     esInventario,
     metodoValoracion: input.metodoValoracion,
     costoEstandar: input.costoEstandar.toString(),
-    cuentaIngresoId: input.cuentaIngresoId ?? null,
-    impuestoId: input.impuestoId ?? null,
-    centroCostoId: input.centroCostoId ?? null,
-    categoriaContableId: input.categoriaContableId ?? null,
-    cuentaInventarioId: input.cuentaInventarioId ?? null,
-    cuentaCostoVentaId: input.cuentaCostoVentaId ?? null,
-    cuentaGastoCompraId: input.cuentaGastoCompraId ?? null,
-    impuestoCompraId: input.impuestoCompraId ?? null,
   };
 }
 
@@ -169,8 +121,9 @@ export async function actualizarProducto(
 }
 
 /**
- * Productos activos con sus valores efectivos (producto ?? grupo), para el selector de
- * línea del formulario de documento.
+ * Productos activos con la imputación contable de su grupo, para el selector de línea
+ * del formulario de documento. La imputación ya no se puede sobrescribir por producto:
+ * siempre sale del grupo (ver nota en el schema de `productos`).
  */
 export async function listarProductosParaDocumento(empresaId: string) {
   const rows = await db
@@ -181,22 +134,22 @@ export async function listarProductosParaDocumento(empresaId: string) {
       precioUnitario: productos.precioUnitario,
       glosaSugerida: productos.glosaSugerida,
       esInventario: productos.esInventario,
-      pCuenta: productos.cuentaIngresoId,
-      pImpuesto: productos.impuestoId,
-      pCentro: productos.centroCostoId,
-      pCategoria: productos.categoriaContableId,
-      pInventario: productos.cuentaInventarioId,
-      pCostoVenta: productos.cuentaCostoVentaId,
-      gCuenta: productosGrupos.cuentaIngresoDefaultId,
-      gImpuesto: productosGrupos.impuestoDefaultId,
-      gCentro: productosGrupos.centroCostoDefaultId,
-      gCategoria: productosGrupos.categoriaContableDefaultId,
-      gInventario: productosGrupos.cuentaInventarioDefaultId,
-      gCostoVenta: productosGrupos.cuentaCostoVentaDefaultId,
+      cuentaIngresoId: productosGrupos.cuentaIngresoDefaultId,
+      impuestoId: productosGrupos.impuestoDefaultId,
+      centroCostoId: productosGrupos.centroCostoDefaultId,
+      categoriaContableId: productosGrupos.categoriaContableDefaultId,
+      cuentaInventarioId: productosGrupos.cuentaInventarioDefaultId,
+      cuentaCostoVentaId: productosGrupos.cuentaCostoVentaDefaultId,
     })
     .from(productos)
-    .leftJoin(productosGrupos, eq(productos.grupoId, productosGrupos.id))
-    .where(and(eq(productos.empresaId, empresaId), eq(productos.estado, "Activo")))
+    .innerJoin(productosGrupos, eq(productos.grupoId, productosGrupos.id))
+    .where(
+      and(
+        eq(productos.empresaId, empresaId),
+        eq(productos.estado, "Activo"),
+        eq(productos.esVenta, true),
+      ),
+    )
     .orderBy(asc(productos.codigo));
 
   return rows.map((r) => ({
@@ -206,18 +159,19 @@ export async function listarProductosParaDocumento(empresaId: string) {
     precioUnitario: Number(r.precioUnitario),
     glosaSugerida: r.glosaSugerida,
     esInventario: r.esInventario,
-    cuentaIngresoId: r.pCuenta ?? r.gCuenta ?? null,
-    impuestoId: r.pImpuesto ?? r.gImpuesto ?? null,
-    centroCostoId: r.pCentro ?? r.gCentro ?? null,
-    categoriaContableId: r.pCategoria ?? r.gCategoria ?? null,
-    cuentaInventarioId: r.pInventario ?? r.gInventario ?? null,
-    cuentaCostoVentaId: r.pCostoVenta ?? r.gCostoVenta ?? null,
+    cuentaIngresoId: r.cuentaIngresoId,
+    impuestoId: r.impuestoId,
+    centroCostoId: r.centroCostoId,
+    categoriaContableId: r.categoriaContableId,
+    cuentaInventarioId: r.cuentaInventarioId,
+    cuentaCostoVentaId: r.cuentaCostoVentaId,
   }));
 }
 
 /**
- * Productos comprables con sus valores efectivos de compra (producto ?? grupo), para el
- * selector de línea del formulario de documento de compra.
+ * Productos comprables con la imputación de compra de su grupo, para el selector de
+ * línea del formulario de documento de compra. Igual que en venta, ya no hay override
+ * por producto.
  */
 export async function listarProductosParaCompra(empresaId: string) {
   const rows = await db
@@ -229,11 +183,6 @@ export async function listarProductosParaCompra(empresaId: string) {
       precioUnitario: productos.precioUnitario,
       glosaSugerida: productos.glosaSugerida,
       esInventario: productos.esInventario,
-      pGasto: productos.cuentaGastoCompraId,
-      pInventario: productos.cuentaInventarioId,
-      pImpuesto: productos.impuestoCompraId,
-      pCentro: productos.centroCostoId,
-      pCategoria: productos.categoriaContableId,
       gGasto: productosGrupos.cuentaGastoCompraDefaultId,
       gInventario: productosGrupos.cuentaInventarioDefaultId,
       gImpuesto: productosGrupos.impuestoCompraDefaultId,
@@ -241,7 +190,7 @@ export async function listarProductosParaCompra(empresaId: string) {
       gCategoria: productosGrupos.categoriaContableDefaultId,
     })
     .from(productos)
-    .leftJoin(productosGrupos, eq(productos.grupoId, productosGrupos.id))
+    .innerJoin(productosGrupos, eq(productos.grupoId, productosGrupos.id))
     .where(
       and(
         eq(productos.empresaId, empresaId),
@@ -261,12 +210,10 @@ export async function listarProductosParaCompra(empresaId: string) {
       glosaSugerida: r.glosaSugerida,
       esInventario: r.esInventario,
       // En la Fase A las líneas de inventario se rechazan; igual dejamos la cuenta resuelta.
-      cuentaImputacionId: r.esInventario
-        ? (r.pInventario ?? r.gInventario ?? null)
-        : (r.pGasto ?? r.gGasto ?? null),
-      impuestoId: r.pImpuesto ?? r.gImpuesto ?? null,
-      centroCostoId: r.pCentro ?? r.gCentro ?? null,
-      categoriaContableId: r.pCategoria ?? r.gCategoria ?? null,
+      cuentaImputacionId: r.esInventario ? r.gInventario : r.gGasto,
+      impuestoId: r.gImpuesto,
+      centroCostoId: r.gCentro,
+      categoriaContableId: r.gCategoria,
     };
   });
 }

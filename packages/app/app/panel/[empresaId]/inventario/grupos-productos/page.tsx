@@ -43,6 +43,23 @@ export default async function GruposProductosPage({
           cuentaCostoVentaDefaultId: g.cuentaCostoVentaDefaultId,
           cuentaGastoCompraDefaultId: g.cuentaGastoCompraDefaultId,
           impuestoCompraDefaultId: g.impuestoCompraDefaultId,
+          cuentaDotacionDefaultId: g.cuentaDotacionDefaultId,
+          cuentaDesviacionDefaultId: g.cuentaDesviacionDefaultId,
+          cuentaDiferenciaPrecioDefaultId: g.cuentaDiferenciaPrecioDefaultId,
+          cuentaAjusteStockNegativoDefaultId: g.cuentaAjusteStockNegativoDefaultId,
+          cuentaCompensacionStockReduccionDefaultId: g.cuentaCompensacionStockReduccionDefaultId,
+          cuentaCompensacionStockAumentoDefaultId: g.cuentaCompensacionStockAumentoDefaultId,
+          cuentaDevolucionVentaDefaultId: g.cuentaDevolucionVentaDefaultId,
+          cuentaIngresoExtranjeroDefaultId: g.cuentaIngresoExtranjeroDefaultId,
+          cuentaCostoExtranjeroDefaultId: g.cuentaCostoExtranjeroDefaultId,
+          cuentaDiferenciaCambioDefaultId: g.cuentaDiferenciaCambioDefaultId,
+          cuentaCompensacionMercaderiaDefaultId: g.cuentaCompensacionMercaderiaDefaultId,
+          cuentaReduccionLibroMayorDefaultId: g.cuentaReduccionLibroMayorDefaultId,
+          cuentaAumentoLibroMayorDefaultId: g.cuentaAumentoLibroMayorDefaultId,
+          cuentaStockWipDefaultId: g.cuentaStockWipDefaultId,
+          cuentaDesviacionStockWipDefaultId: g.cuentaDesviacionStockWipDefaultId,
+          cuentaPygCompensacionWipDefaultId: g.cuentaPygCompensacionWipDefaultId,
+          cuentaPygCompensacionStockDefaultId: g.cuentaPygCompensacionStockDefaultId,
         }))}
         cuentas={cuentas
           .filter((c) => c.nivelImputable && c.activa)
@@ -53,7 +70,9 @@ export default async function GruposProductosPage({
         centrosCosto={centros
           .filter((c) => c.estado === "Activo")
           .map((c) => ({ id: c.id, label: `${c.codigo} — ${c.nombre}` }))}
-        categorias={categorias.map((c) => ({ id: c.id, label: c.nombre }))}
+        categorias={categorias
+          .filter((c) => c.aplicaA === "Venta" || c.aplicaA === "Ambos")
+          .map((c) => ({ id: c.id, label: c.nombre }))}
       />
     </>
   );

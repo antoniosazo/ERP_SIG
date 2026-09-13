@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
-import { productoStock, productos, stockMovimientos } from "../schema";
+import { productoStock, productos, productosGrupos, stockMovimientos } from "../schema";
 
 const redondear = (x: number, decimales = 4) => {
   const f = 10 ** decimales;
@@ -155,6 +155,128 @@ export async function aplicarReversaEntrada(
   return { saldoCantidad: nuevaQty, saldoCostoPromedio: nuevoProm };
 }
 
+/**
+ * Salida de stock al costo promedio vigente (venta de inventario). El promedio no cambia.
+ * Debe llamarse dentro de una transacción.
+ */
+export async function aplicarSalidaStock(
+  tx: Tx,
+  empresaId: string,
+  productoId: string,
+  salida: { cantidad: number } & OrigenMov,
+) {
+  const [saldo] = await tx
+    .select()
+    .from(productoStock)
+    .where(and(eq(productoStock.empresaId, empresaId), eq(productoStock.productoId, productoId)))
+    .for("update");
+
+  const qtyPrev = saldo ? Number(saldo.cantidad) : 0;
+  const prom = saldo ? Number(saldo.costoPromedio) : 0;
+  if (salida.cantidad > qtyPrev + 0.000001) {
+    const [prod] = await tx
+      .select({ codigo: productos.codigo })
+      .from(productos)
+      .where(eq(productos.id, productoId));
+    throw new Error(
+      `No hay stock suficiente de ${prod?.codigo ?? productoId} (disponible ${qtyPrev}, se necesitan ${salida.cantidad}).`,
+    );
+  }
+
+  const costoUnitario = prom;
+  const costoTotal = redondear(salida.cantidad * costoUnitario);
+  const nuevaQty = redondear(qtyPrev - salida.cantidad, 6);
+
+  if (saldo) {
+    await tx
+      .update(productoStock)
+      .set({ cantidad: nuevaQty.toString(), updatedAt: new Date() })
+      .where(eq(productoStock.id, saldo.id));
+  } else {
+    await tx
+      .insert(productoStock)
+      .values({ empresaId, productoId, cantidad: nuevaQty.toString(), costoPromedio: "0" });
+  }
+
+  await tx.insert(stockMovimientos).values({
+    empresaId,
+    productoId,
+    fecha: salida.fecha,
+    tipo: "salida",
+    cantidad: salida.cantidad.toString(),
+    costoUnitario: costoUnitario.toString(),
+    costoTotal: costoTotal.toString(),
+    saldoCantidad: nuevaQty.toString(),
+    saldoCostoPromedio: prom.toString(),
+    origenTabla: salida.origenTabla ?? null,
+    origenId: salida.origenId ?? null,
+    asientoId: salida.asientoId ?? null,
+    glosa: salida.glosa ?? null,
+  });
+
+  return { costoUnitario, costoTotal, saldoCantidad: nuevaQty };
+}
+
+/**
+ * Revierte una salida previa (anulación de una venta de inventario): repone la cantidad
+ * a su costo original y recalcula el promedio.
+ */
+export async function aplicarReversaSalida(
+  tx: Tx,
+  empresaId: string,
+  movimientoOrigenId: string,
+  fecha: string,
+) {
+  const [mov] = await tx
+    .select()
+    .from(stockMovimientos)
+    .where(and(eq(stockMovimientos.id, movimientoOrigenId), eq(stockMovimientos.empresaId, empresaId)));
+  if (!mov) throw new Error("El movimiento de stock a revertir no existe");
+  if (mov.tipo !== "salida") throw new Error("Solo se revierten movimientos de salida");
+
+  const [saldo] = await tx
+    .select()
+    .from(productoStock)
+    .where(and(eq(productoStock.empresaId, empresaId), eq(productoStock.productoId, mov.productoId)))
+    .for("update");
+
+  const qtyPrev = saldo ? Number(saldo.cantidad) : 0;
+  const promPrev = saldo ? Number(saldo.costoPromedio) : 0;
+  const cant = Number(mov.cantidad);
+  const costoTotal = Number(mov.costoTotal);
+  const nuevaQty = redondear(qtyPrev + cant, 6);
+  const nuevoProm =
+    nuevaQty > 0 ? redondear((qtyPrev * promPrev + costoTotal) / nuevaQty) : 0;
+
+  if (saldo) {
+    await tx
+      .update(productoStock)
+      .set({ cantidad: nuevaQty.toString(), costoPromedio: nuevoProm.toString(), updatedAt: new Date() })
+      .where(eq(productoStock.id, saldo.id));
+  } else {
+    await tx
+      .insert(productoStock)
+      .values({ empresaId, productoId: mov.productoId, cantidad: nuevaQty.toString(), costoPromedio: nuevoProm.toString() });
+  }
+
+  await tx.insert(stockMovimientos).values({
+    empresaId,
+    productoId: mov.productoId,
+    fecha,
+    tipo: "entrada",
+    cantidad: cant.toString(),
+    costoUnitario: mov.costoUnitario,
+    costoTotal: costoTotal.toString(),
+    saldoCantidad: nuevaQty.toString(),
+    saldoCostoPromedio: nuevoProm.toString(),
+    origenTabla: mov.origenTabla,
+    origenId: mov.origenId,
+    glosa: `Reversa de salida — ${mov.glosa ?? ""}`.trim(),
+  });
+
+  return { saldoCantidad: nuevaQty, saldoCostoPromedio: nuevoProm };
+}
+
 /** Movimientos de un producto, más recientes primero. */
 export async function listarKardex(empresaId: string, productoId: string) {
   return db
@@ -176,12 +298,15 @@ export async function listarStockDeEmpresa(empresaId: string) {
       productoId: productoStock.productoId,
       codigo: productos.codigo,
       nombre: productos.nombre,
+      grupoId: productos.grupoId,
+      grupoNombre: productosGrupos.nombre,
       cantidad: productoStock.cantidad,
       costoPromedio: productoStock.costoPromedio,
       valor: sql<string>`(${productoStock.cantidad} * ${productoStock.costoPromedio})`,
     })
     .from(productoStock)
     .innerJoin(productos, eq(productoStock.productoId, productos.id))
+    .innerJoin(productosGrupos, eq(productos.grupoId, productosGrupos.id))
     .where(eq(productoStock.empresaId, empresaId))
     .orderBy(asc(productos.codigo));
 }

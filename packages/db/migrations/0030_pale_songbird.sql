@@ -1,0 +1,34 @@
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_dotacion_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_desviacion_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_diferencia_precio_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_ajuste_stock_negativo_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_compensacion_stock_reduccion_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_compensacion_stock_aumento_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_devolucion_venta_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_ingreso_extranjero_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_costo_extranjero_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_diferencia_cambio_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_compensacion_mercaderia_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_reduccion_libro_mayor_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_aumento_libro_mayor_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_stock_wip_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_desviacion_stock_wip_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_pyg_compensacion_wip_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD COLUMN "cuenta_pyg_compensacion_stock_default_id" uuid;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_dotacion_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_dotacion_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_desviacion_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_desviacion_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_diferencia_precio_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_diferencia_precio_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_ajuste_stock_negativo_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_ajuste_stock_negativo_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_compensacion_stock_reduccion_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_compensacion_stock_reduccion_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_compensacion_stock_aumento_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_compensacion_stock_aumento_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_devolucion_venta_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_devolucion_venta_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_ingreso_extranjero_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_ingreso_extranjero_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_costo_extranjero_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_costo_extranjero_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_diferencia_cambio_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_diferencia_cambio_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_compensacion_mercaderia_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_compensacion_mercaderia_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_reduccion_libro_mayor_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_reduccion_libro_mayor_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_aumento_libro_mayor_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_aumento_libro_mayor_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_stock_wip_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_stock_wip_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_desviacion_stock_wip_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_desviacion_stock_wip_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_pyg_compensacion_wip_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_pyg_compensacion_wip_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "productos_grupos" ADD CONSTRAINT "productos_grupos_cuenta_pyg_compensacion_stock_default_id_plan_cuentas_id_fk" FOREIGN KEY ("cuenta_pyg_compensacion_stock_default_id") REFERENCES "public"."plan_cuentas"("id") ON DELETE restrict ON UPDATE no action;

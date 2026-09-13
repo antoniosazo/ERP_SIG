@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FilaGrupo, useAgrupado, useExpandidos } from "./tabla-agrupada";
 
 export type DocFila = {
   id: string;
@@ -76,6 +77,8 @@ export function DocumentosCompraLista({
   const singular = COMPRA_TIPO_META[docTipo].singular;
   const esPedido = docTipo === "pedido";
   const esRecepcion = docTipo === "entrada_mercaderia";
+  const porEstado = useAgrupado(documentos, (d) => d.estado);
+  const { expandidos: estadosAbiertos, alternar: alternarEstado } = useExpandidos();
 
   function filtrar(estado: string) {
     router.push(estado === TODOS ? pathname : `${pathname}?estado=${estado}`);
@@ -119,7 +122,7 @@ export function DocumentosCompraLista({
               href={`/panel/${empresaId}/maestros/terceros`}
               className="text-sm text-destructive hover:underline"
             >
-              Crea primero un socio de negocio de tipo "Proveedor".
+              Crea primero un socio de negocio de tipo {`"Proveedor"`}.
             </Link>
           )}
           <Button onClick={() => setAbierto(true)} disabled={proveedores.length === 0}>
@@ -141,34 +144,44 @@ export function DocumentosCompraLista({
                 <TableHead>Proveedor</TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead>Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {documentos.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-mono font-medium">
-                    <Link
-                      href={`/panel/${empresaId}/compras/documentos/${d.id}`}
-                      className="hover:underline"
-                    >
-                      {d.numeroInterno ?? "—"}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{d.tipoDocumento}</TableCell>
-                  <TableCell className="font-mono text-muted-foreground">{d.folio ?? "—"}</TableCell>
-                  <TableCell>{d.proveedor}</TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {d.fechaEmision}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {Number(d.montoTotal).toLocaleString("es-CL")}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={badge(d.estado)}>{d.estado}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {[...porEstado.entries()].map(([estado, items]) => {
+                const abierto = estadosAbiertos.has(estado);
+                return (
+                  <Fragment key={estado}>
+                    <FilaGrupo abierto={abierto} onToggle={() => alternarEstado(estado)} colSpan={6}>
+                      <Badge variant={badge(estado)}>{estado}</Badge>
+                      <span className="text-muted-foreground">({items.length})</span>
+                    </FilaGrupo>
+                    {abierto &&
+                      items.map((d) => (
+                        <TableRow key={d.id}>
+                          <TableCell className="font-mono font-medium">
+                            <Link
+                              href={`/panel/${empresaId}/compras/documentos/${d.id}`}
+                              className="hover:underline"
+                            >
+                              {d.numeroInterno ?? "—"}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{d.tipoDocumento}</TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {d.folio ?? "—"}
+                          </TableCell>
+                          <TableCell>{d.proveedor}</TableCell>
+                          <TableCell className="text-muted-foreground tabular-nums">
+                            {d.fechaEmision}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {Number(d.montoTotal).toLocaleString("es-CL")}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

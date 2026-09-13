@@ -65,6 +65,9 @@ export const documentosCompra = pgTable(
       onDelete: "set null",
     }),
     motivoAnulacion: text("motivo_anulacion"),
+    /** Estado del documento en el Registro de Compras del SII (importación RCV). */
+    estadoRcv: text("estado_rcv"),
+    siiTrackId: text("sii_track_id"),
     ...timestampsColumns,
   },
   (t) => [

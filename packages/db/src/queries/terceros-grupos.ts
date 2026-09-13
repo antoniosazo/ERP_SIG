@@ -22,7 +22,13 @@ export async function crearGrupoTercero(
   return db.transaction(async (tx) => {
     const [grupo] = await tx
       .insert(tercerosGrupos)
-      .values({ empresaId, codigo: input.codigo, nombre: input.nombre })
+      .values({
+        empresaId,
+        codigo: input.codigo,
+        nombre: input.nombre,
+        cuentaContableAsociadaId: input.cuentaContableAsociadaId ?? null,
+        categoriaContableDefaultId: input.categoriaContableDefaultId ?? null,
+      })
       .returning();
     if (!grupo) throw new Error("No se pudo crear el grupo");
     if (ctx) {
@@ -54,7 +60,13 @@ export async function actualizarGrupoTercero(
     if (!antes) throw new Error("El grupo no existe en esta empresa");
     const [grupo] = await tx
       .update(tercerosGrupos)
-      .set({ codigo: input.codigo, nombre: input.nombre, updatedAt: new Date() })
+      .set({
+        codigo: input.codigo,
+        nombre: input.nombre,
+        cuentaContableAsociadaId: input.cuentaContableAsociadaId ?? null,
+        categoriaContableDefaultId: input.categoriaContableDefaultId ?? null,
+        updatedAt: new Date(),
+      })
       .where(and(eq(tercerosGrupos.id, grupoId), eq(tercerosGrupos.empresaId, empresaId)))
       .returning();
     if (!grupo) throw new Error("El grupo no existe en esta empresa");

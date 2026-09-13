@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -23,6 +23,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -30,29 +37,98 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { IrACuenta } from "./ir-a-cuenta";
 
-export type GrupoLite = { id: string; codigo: string; nombre: string };
+export type Opcion = { id: string; label: string };
+export type GrupoLite = {
+  id: string;
+  codigo: string;
+  nombre: string;
+  cuentaContableAsociadaId: string | null;
+  categoriaContableDefaultId: string | null;
+};
 type FormValues = z.input<typeof crearGrupoTerceroSchema>;
+const NINGUNA = "__none__";
+
+function valoresDe(g: GrupoLite | null): FormValues {
+  return {
+    codigo: g?.codigo ?? "",
+    nombre: g?.nombre ?? "",
+    cuentaContableAsociadaId: g?.cuentaContableAsociadaId ?? undefined,
+    categoriaContableDefaultId: g?.categoriaContableDefaultId ?? undefined,
+  };
+}
 
 export function GruposTercerosManager({
   empresaId,
   grupos,
+  cuentas,
+  categorias,
 }: {
   empresaId: string;
   grupos: GrupoLite[];
+  cuentas: Opcion[];
+  categorias: Opcion[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [abierto, setAbierto] = useState(false);
   const [edicion, setEdicion] = useState<GrupoLite | null>(null);
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm({
     resolver: zodResolver(crearGrupoTerceroSchema),
-    defaultValues: { codigo: "", nombre: "" } satisfies FormValues,
+    defaultValues: valoresDe(null),
   });
 
   useEffect(() => {
-    if (abierto) reset(edicion ? { codigo: edicion.codigo, nombre: edicion.nombre } : { codigo: "", nombre: "" });
+    if (abierto) reset(valoresDe(edicion));
   }, [abierto, edicion, reset]);
+
+  const nom = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of [...cuentas, ...categorias]) m.set(o.id, o.label);
+    return m;
+  }, [cuentas, categorias]);
+
+  const sel = (
+    name: "cuentaContableAsociadaId" | "categoriaContableDefaultId",
+    label: string,
+    opciones: Opcion[],
+    placeholder: string,
+    esCuenta = false,
+  ) => {
+    const valor = watch(name) as string | undefined;
+    return (
+      <div className="space-y-2">
+        <Label>{label}</Label>
+        <div className="flex items-center gap-2">
+          <Select
+            value={valor ?? NINGUNA}
+            onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
+              {opciones.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {esCuenta && <IrACuenta empresaId={empresaId} cuentaId={valor} />}
+        </div>
+      </div>
+    );
+  };
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
@@ -100,6 +176,8 @@ export function GruposTercerosManager({
               <TableRow>
                 <TableHead className="w-28">Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Cuenta puente</TableHead>
+                <TableHead>Categoría contable</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -108,6 +186,12 @@ export function GruposTercerosManager({
                 <TableRow key={g.id}>
                   <TableCell className="font-mono font-medium">{g.codigo}</TableCell>
                   <TableCell>{g.nombre}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {g.cuentaContableAsociadaId ? (nom.get(g.cuentaContableAsociadaId) ?? "—") : "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {g.categoriaContableDefaultId ? (nom.get(g.categoriaContableDefaultId) ?? "—") : "—"}
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
@@ -136,7 +220,7 @@ export function GruposTercerosManager({
       )}
 
       <Dialog open={abierto} onOpenChange={setAbierto}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{edicion ? "Editar grupo" : "Nuevo grupo"}</DialogTitle>
           </DialogHeader>
@@ -156,6 +240,14 @@ export function GruposTercerosManager({
                   <p className="text-sm text-destructive">{errors.nombre.message}</p>
                 )}
               </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Se usan cuando un socio del grupo no tiene su propia cuenta/categoría asignada, antes
+              de caer al fallback GENERAL de Determinación de cuentas.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {sel("cuentaContableAsociadaId", "Cuenta puente por defecto", cuentas, "Sin cuenta", true)}
+              {sel("categoriaContableDefaultId", "Categoría contable por defecto", categorias, "Sin categoría")}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAbierto(false)}>

@@ -187,6 +187,13 @@ export const METODO_VALORACION = ["Promedio", "FIFO"] as const;
 // stock_movimientos.tipo — Kardex de inventario (1 almacén implícito por empresa).
 export const STOCK_MOVIMIENTO_TIPO = ["entrada", "salida", "ajuste"] as const;
 
+// sii_credenciales.ambiente — certificación (maullín) vs producción (palena).
+export const SII_AMBIENTE = ["certificacion", "produccion"] as const;
+// sii_credenciales.metodo_auth — con qué se autentica contra el SII.
+export const SII_METODO_AUTH = ["clave", "certificado"] as const;
+// Estado de un documento dentro del Registro de Compras y Ventas del SII.
+export const SII_ESTADO_RCV = ["REGISTRO", "PENDIENTE", "NO_INCLUIR", "RECLAMADO"] as const;
+
 // plan_cuentas.modo_moneda — restricción de moneda para contabilizar contra la cuenta.
 export const CUENTA_MODO_MONEDA = ["Local", "Funcional", "Extranjera fija", "Cualquiera"] as const;
 
@@ -205,6 +212,7 @@ export const DETERMINACION_ROL = [
   "gasto",
   "inventario",
   "gr_ir",
+  "costo_venta",
 ] as const;
 
 export type PlanContratado = (typeof PLAN_CONTRATADO)[number];
@@ -250,6 +258,9 @@ export type DocumentoCompraEstado = (typeof DOCUMENTO_COMPRA_ESTADO)[number];
 export type ProductoTipo = (typeof PRODUCTO_TIPO)[number];
 export type MetodoValoracion = (typeof METODO_VALORACION)[number];
 export type StockMovimientoTipo = (typeof STOCK_MOVIMIENTO_TIPO)[number];
+export type SiiAmbiente = (typeof SII_AMBIENTE)[number];
+export type SiiMetodoAuth = (typeof SII_METODO_AUTH)[number];
+export type SiiEstadoRcv = (typeof SII_ESTADO_RCV)[number];
 export type CuentaModoMoneda = (typeof CUENTA_MODO_MONEDA)[number];
 export type DeterminacionContexto = (typeof DETERMINACION_CONTEXTO)[number];
 export type DeterminacionRol = (typeof DETERMINACION_ROL)[number];

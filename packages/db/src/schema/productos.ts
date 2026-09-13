@@ -2,17 +2,15 @@ import { boolean, index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg
 import { sql } from "drizzle-orm";
 import { idColumn, montoColumn, timestampsColumns } from "./columns.helpers";
 import { metodoValoracionEnum, productoTipoEnum } from "./enums";
-import { categoriasContables } from "./categorias-contables";
-import { centrosCosto } from "./centros-costo";
 import { empresas } from "./empresas";
-import { impuestos } from "./impuestos";
-import { planCuentas } from "./plan-cuentas";
 import { productosGrupos } from "./productos-grupos";
 
 /**
- * Catálogo de productos/servicios por empresa. Este ERP no lleva inventario: el producto
- * es una plantilla de imputación contable para las líneas de documento (cuenta de ingreso,
- * impuesto, precio, centro de costo, categoría). Los campos nulos heredan del grupo.
+ * Catálogo de productos/servicios por empresa. Este ERP no lleva inventario propio del
+ * producto: la imputación contable (cuenta de ingreso, impuesto, centro de costo,
+ * categoría, existencias, costo de venta, gasto de compra) sale siempre de `grupoId` —
+ * el producto no tiene cuenta propia, para no terminar con imputaciones dispersas
+ * producto por producto en vez de administradas por grupo.
  */
 export const productos = pgTable(
   "productos",
@@ -37,28 +35,6 @@ export const productos = pgTable(
     esInventario: boolean("es_inventario").notNull().default(false),
     metodoValoracion: metodoValoracionEnum("metodo_valoracion").notNull().default("Promedio"),
     costoEstandar: montoColumn("costo_estandar").notNull().default("0"),
-    cuentaIngresoId: uuid("cuenta_ingreso_id").references(() => planCuentas.id, {
-      onDelete: "restrict",
-    }),
-    impuestoId: uuid("impuesto_id").references(() => impuestos.id, { onDelete: "set null" }),
-    centroCostoId: uuid("centro_costo_id").references(() => centrosCosto.id, {
-      onDelete: "set null",
-    }),
-    categoriaContableId: uuid("categoria_contable_id").references(() => categoriasContables.id, {
-      onDelete: "set null",
-    }),
-    cuentaInventarioId: uuid("cuenta_inventario_id").references(() => planCuentas.id, {
-      onDelete: "restrict",
-    }),
-    cuentaCostoVentaId: uuid("cuenta_costo_venta_id").references(() => planCuentas.id, {
-      onDelete: "restrict",
-    }),
-    cuentaGastoCompraId: uuid("cuenta_gasto_compra_id").references(() => planCuentas.id, {
-      onDelete: "restrict",
-    }),
-    impuestoCompraId: uuid("impuesto_compra_id").references(() => impuestos.id, {
-      onDelete: "set null",
-    }),
     ...timestampsColumns,
   },
   (t) => [

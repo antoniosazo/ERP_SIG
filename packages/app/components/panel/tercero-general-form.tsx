@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { IrACuenta } from "./ir-a-cuenta";
 
 export type Opcion = { id: string; label: string };
 type FormValues = z.input<typeof editarTerceroSchema>;
@@ -66,24 +67,35 @@ export function TerceroGeneralForm({
     });
   });
 
-  const opt = (name: keyof FormValues, opciones: Opcion[], placeholder: string) => (
-    <Select
-      value={(watch(name) as string | undefined) ?? NINGUNA}
-      onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
-        {opciones.map((o) => (
-          <SelectItem key={o.id} value={o.id}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
+  const opt = (
+    name: keyof FormValues,
+    opciones: Opcion[],
+    placeholder: string,
+    esCuenta = false,
+  ) => {
+    const valor = watch(name) as string | undefined;
+    return (
+      <div className="flex items-center gap-2">
+        <Select
+          value={valor ?? NINGUNA}
+          onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
+            {opciones.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {esCuenta && <IrACuenta empresaId={empresaId} cuentaId={valor} />}
+      </div>
+    );
+  };
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -194,12 +206,12 @@ export function TerceroGeneralForm({
         <CardContent className="space-y-4">
           <div className="grid gap-4 @xl:grid-cols-2">
             <div className="space-y-2">
-              <Label>Cuenta contable asociada</Label>
-              {opt("cuentaContableAsociadaId", cuentas, "Sin cuenta")}
+              <Label>Cuenta contable asociada (cuenta puente)</Label>
+              {opt("cuentaContableAsociadaId", cuentas, "Hereda del grupo o la regla general", true)}
             </div>
             <div className="space-y-2">
               <Label>Categoría contable por defecto</Label>
-              {opt("categoriaContableDefaultId", categorias, "Sin categoría")}
+              {opt("categoriaContableDefaultId", categorias, "Hereda del grupo o la regla general")}
             </div>
             <div className="space-y-2">
               <Label>Moneda por defecto</Label>

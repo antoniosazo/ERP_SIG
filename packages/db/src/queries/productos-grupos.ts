@@ -24,6 +24,23 @@ function valores(input: CrearProductoGrupoInput | EditarProductoGrupoInput) {
     cuentaCostoVentaDefaultId: input.cuentaCostoVentaDefaultId ?? null,
     cuentaGastoCompraDefaultId: input.cuentaGastoCompraDefaultId ?? null,
     impuestoCompraDefaultId: input.impuestoCompraDefaultId ?? null,
+    cuentaDotacionDefaultId: input.cuentaDotacionDefaultId ?? null,
+    cuentaDesviacionDefaultId: input.cuentaDesviacionDefaultId ?? null,
+    cuentaDiferenciaPrecioDefaultId: input.cuentaDiferenciaPrecioDefaultId ?? null,
+    cuentaAjusteStockNegativoDefaultId: input.cuentaAjusteStockNegativoDefaultId ?? null,
+    cuentaCompensacionStockReduccionDefaultId: input.cuentaCompensacionStockReduccionDefaultId ?? null,
+    cuentaCompensacionStockAumentoDefaultId: input.cuentaCompensacionStockAumentoDefaultId ?? null,
+    cuentaDevolucionVentaDefaultId: input.cuentaDevolucionVentaDefaultId ?? null,
+    cuentaIngresoExtranjeroDefaultId: input.cuentaIngresoExtranjeroDefaultId ?? null,
+    cuentaCostoExtranjeroDefaultId: input.cuentaCostoExtranjeroDefaultId ?? null,
+    cuentaDiferenciaCambioDefaultId: input.cuentaDiferenciaCambioDefaultId ?? null,
+    cuentaCompensacionMercaderiaDefaultId: input.cuentaCompensacionMercaderiaDefaultId ?? null,
+    cuentaReduccionLibroMayorDefaultId: input.cuentaReduccionLibroMayorDefaultId ?? null,
+    cuentaAumentoLibroMayorDefaultId: input.cuentaAumentoLibroMayorDefaultId ?? null,
+    cuentaStockWipDefaultId: input.cuentaStockWipDefaultId ?? null,
+    cuentaDesviacionStockWipDefaultId: input.cuentaDesviacionStockWipDefaultId ?? null,
+    cuentaPygCompensacionWipDefaultId: input.cuentaPygCompensacionWipDefaultId ?? null,
+    cuentaPygCompensacionStockDefaultId: input.cuentaPygCompensacionStockDefaultId ?? null,
   };
 }
 

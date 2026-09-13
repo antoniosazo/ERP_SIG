@@ -51,6 +51,8 @@ const MODULOS: Record<string, string> = {
   documentos_venta: "Documentos de venta",
   documentos_compra: "Documentos de compra",
   stock_movimientos: "Movimientos de stock",
+  sii_credenciales: "Conexión SII",
+  sii_importaciones: "Importaciones SII",
   periodos_contables: "Períodos contables",
   empresas: "Empresa",
 };

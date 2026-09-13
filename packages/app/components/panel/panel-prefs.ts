@@ -20,16 +20,17 @@ export function subscribePanelPrefs(l: () => void) {
   };
 }
 
-// ── Árbol colapsado (booleano) ──────────────────────────────────────────────
+// ── Árbol colapsado (booleano) — colapsado por defecto al entrar a una empresa ──
 export function getTreeCollapsed(): boolean {
   try {
-    return localStorage.getItem(TREE_COLLAPSED) === "1";
+    const raw = localStorage.getItem(TREE_COLLAPSED);
+    return raw === null ? true : raw === "1";
   } catch {
-    return false;
+    return true;
   }
 }
 export function getTreeCollapsedServer(): boolean {
-  return false;
+  return true;
 }
 export function setTreeCollapsed(v: boolean) {
   try {
@@ -46,7 +47,7 @@ export function toggleTreeCollapsed() {
 // ── Grupos expandidos del árbol (mapa) ──────────────────────────────────────
 export const GRUPOS_DEFAULT: Readonly<Record<string, boolean>> = Object.freeze({
   Configuración: false,
-  Maestros: true,
+  "Socios de Negocio": true,
   Inventario: true,
   Ventas: true,
   Compras: true,

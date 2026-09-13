@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -34,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FilaGrupo, useAgrupado, useExpandidos } from "./tabla-agrupada";
 
 export type Opcion = { id: string; label: string };
 export type ProductoLite = {
@@ -53,35 +54,18 @@ export type ProductoLite = {
   esInventario: boolean;
   metodoValoracion: string;
   costoEstandar: number;
-  cuentaIngresoId: string | null;
-  impuestoId: string | null;
-  centroCostoId: string | null;
-  categoriaContableId: string | null;
-  cuentaInventarioId: string | null;
-  cuentaCostoVentaId: string | null;
-  cuentaGastoCompraId: string | null;
-  impuestoCompraId: string | null;
 };
 
 type FormValues = z.input<typeof crearProductoSchema>;
-const NINGUNA = "__none__";
 
 export function ProductosManager({
   empresaId,
   productos,
   grupos,
-  cuentas,
-  impuestos,
-  centrosCosto,
-  categorias,
 }: {
   empresaId: string;
   productos: ProductoLite[];
   grupos: Opcion[];
-  cuentas: Opcion[];
-  impuestos: Opcion[];
-  centrosCosto: Opcion[];
-  categorias: Opcion[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -99,9 +83,10 @@ export function ProductosManager({
   }, [abierto, enEdicion, grupos, reset]);
 
   const clp = useMemo(() => new Intl.NumberFormat("es-CL"), []);
+  const porGrupo = useAgrupado(productos, (p) => p.grupoId);
+  const { expandidos: gruposAbiertos, alternar: alternarGrupo } = useExpandidos();
 
   const esServicio = watch("tipo") === "Servicio";
-  const esCompra = !!watch("esCompra");
   const esInventario = !esServicio && !!watch("esInventario");
 
   const onSubmit = handleSubmit((data) => {
@@ -117,47 +102,12 @@ export function ProductosManager({
     });
   });
 
-  const selOpt = (
-    name:
-      | "cuentaIngresoId"
-      | "impuestoId"
-      | "centroCostoId"
-      | "categoriaContableId"
-      | "cuentaInventarioId"
-      | "cuentaCostoVentaId"
-      | "cuentaGastoCompraId"
-      | "impuestoCompraId",
-    label: string,
-    opciones: Opcion[],
-    placeholder: string,
-  ) => (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Select
-        value={(watch(name) as string | undefined) ?? NINGUNA}
-        onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
-          {opciones.map((o) => (
-            <SelectItem key={o.id} value={o.id}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         {sinGrupos ? (
           <p className="text-sm text-destructive">
-            Crea primero un grupo de productos (Maestros → Grupos de productos).
+            Crea primero un grupo de productos (Inventario → Grupos de artículos).
           </p>
         ) : (
           <span />
@@ -182,7 +132,6 @@ export function ProductosManager({
               <TableRow>
                 <TableHead className="w-32">Código</TableHead>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Grupo</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead className="text-right">Precio</TableHead>
                 <TableHead>Estado</TableHead>
@@ -190,40 +139,54 @@ export function ProductosManager({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {productos.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-mono">{p.codigo}</TableCell>
-                  <TableCell className="font-medium">{p.nombre}</TableCell>
-                  <TableCell className="text-muted-foreground">{p.grupoNombre}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {p.tipo}
-                    <span className="ml-2 inline-flex gap-1 align-middle">
-                      {p.esInventario && <Badge variant="ghost">Inventario</Badge>}
-                      {p.esCompra && <Badge variant="ghost">Compra</Badge>}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {clp.format(p.precioUnitario)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={p.estado === "Activo" ? "secondary" : "destructive"}>
-                      {p.estado}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEnEdicion(p);
-                        setAbierto(true);
-                      }}
+              {[...porGrupo.entries()].map(([grupoId, items]) => {
+                const abierto = gruposAbiertos.has(grupoId);
+                return (
+                  <Fragment key={grupoId}>
+                    <FilaGrupo
+                      abierto={abierto}
+                      onToggle={() => alternarGrupo(grupoId)}
+                      colSpan={6}
                     >
-                      Editar
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      {items[0]?.grupoNombre} ({items.length})
+                    </FilaGrupo>
+                    {abierto &&
+                      items.map((p) => (
+                        <TableRow key={p.id}>
+                          <TableCell className="font-mono">{p.codigo}</TableCell>
+                          <TableCell className="font-medium">{p.nombre}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {p.tipo}
+                            <span className="ml-2 inline-flex gap-1 align-middle">
+                              {p.esInventario && <Badge variant="ghost">Inventario</Badge>}
+                              {p.esCompra && <Badge variant="ghost">Compra</Badge>}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {clp.format(p.precioUnitario)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={p.estado === "Activo" ? "secondary" : "destructive"}>
+                              {p.estado}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEnEdicion(p);
+                                setAbierto(true);
+                              }}
+                            >
+                              Editar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -254,7 +217,7 @@ export function ProductosManager({
                 )}
               </div>
               <div className="space-y-2">
-                <Label>Grupo</Label>
+                <Label>Grupo (define la imputación contable)</Label>
                 <Select value={watch("grupoId")} onValueChange={(v) => setValue("grupoId", v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Elige un grupo" />
@@ -325,15 +288,11 @@ export function ProductosManager({
               <Input id="glosaSugerida" {...register("glosaSugerida")} />
             </div>
 
-            <p className="text-xs font-medium text-muted-foreground">
-              Imputación de venta — si se deja vacía, se hereda del grupo.
+            <p className="text-xs text-muted-foreground">
+              La cuenta de ingreso, impuesto, centro de costo, categoría, existencias, costo de
+              venta y gasto de compra las define el grupo — no se pueden fijar por producto (así
+              se administran en un solo lugar). Ajusta el grupo en Inventario → Grupos de artículos.
             </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {selOpt("cuentaIngresoId", "Cuenta de ingreso", cuentas, "Heredar del grupo")}
-              {selOpt("impuestoId", "Impuesto", impuestos, "Heredar del grupo")}
-              {selOpt("centroCostoId", "Centro de costo", centrosCosto, "Heredar del grupo")}
-              {selOpt("categoriaContableId", "Categoría contable", categorias, "Heredar del grupo")}
-            </div>
 
             <div className="flex flex-wrap gap-6 border-t pt-4">
               <label className="flex items-center gap-2 text-sm">
@@ -355,17 +314,8 @@ export function ProductosManager({
               </label>
             </div>
 
-            {esCompra && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {selOpt("cuentaGastoCompraId", "Cuenta de gasto de compra", cuentas, "Heredar del grupo")}
-                {selOpt("impuestoCompraId", "Impuesto de compra", impuestos, "Heredar del grupo")}
-              </div>
-            )}
-
             {esInventario && (
               <div className="grid gap-4 sm:grid-cols-2">
-                {selOpt("cuentaInventarioId", "Cuenta de existencias", cuentas, "Heredar del grupo")}
-                {selOpt("cuentaCostoVentaId", "Cuenta de costo de venta", cuentas, "Heredar del grupo")}
                 <div className="space-y-2">
                   <Label>Método de valoración</Label>
                   <Select
@@ -429,13 +379,5 @@ function valoresDe(p: ProductoLite | null, grupos: Opcion[]): FormValues {
     esInventario: p?.esInventario ?? false,
     metodoValoracion: (p?.metodoValoracion as FormValues["metodoValoracion"]) ?? "Promedio",
     costoEstandar: p?.costoEstandar ?? 0,
-    cuentaIngresoId: p?.cuentaIngresoId ?? undefined,
-    impuestoId: p?.impuestoId ?? undefined,
-    centroCostoId: p?.centroCostoId ?? undefined,
-    categoriaContableId: p?.categoriaContableId ?? undefined,
-    cuentaInventarioId: p?.cuentaInventarioId ?? undefined,
-    cuentaCostoVentaId: p?.cuentaCostoVentaId ?? undefined,
-    cuentaGastoCompraId: p?.cuentaGastoCompraId ?? undefined,
-    impuestoCompraId: p?.impuestoCompraId ?? undefined,
   };
 }
