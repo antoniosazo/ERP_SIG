@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useTransition, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm } from "react-hook-form";
@@ -15,10 +14,12 @@ import {
 import {
   anularDocumentoVentaAction,
   contabilizarDocumentoVentaAction,
+  actualizarFechasDocumentoVentaAction,
   guardarDocumentoVentaAction,
 } from "@/lib/actions/ventas";
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-venta-campos";
 import { VENTA_CLASE_META } from "@/lib/ventas";
+import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,6 +110,10 @@ export function DocumentoVentaForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const readOnly = estado !== "borrador";
+  // Las facturas no pasan por borrador: se contabilizan al guardarse, y ya contabilizadas solo
+  // se editan el vencimiento y la fecha de contabilización.
+  const esFactura = clase === "Factura";
+  const fechasEditables = esFactura && estado === "contabilizado";
   const tasaImpuesto = useMemo(() => new Map(impuestos.map((i) => [i.id, i.tasa])), [impuestos]);
   const cuentaLabel = useMemo(() => new Map(cuentas.map((c) => [c.id, c.label])), [cuentas]);
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
@@ -135,6 +140,22 @@ export function DocumentoVentaForm({
   });
   const { fields, append, remove } = useFieldArray({ control, name: "lineas" });
   const lineas = watch("lineas");
+  const esServicio = (watch("modalidad") ?? "Artículo") === "Servicio";
+  // Como un documento de tipo Servicio de SAP B1: sin artículo del maestro; la descripción
+  // va primero y es obligatoria, junto a la cuenta, el impuesto y el importe.
+  const columnasLinea = useMemo(() => {
+    if (!esServicio) return colsLinea;
+    const glosa = colsLinea.find((c) => c.id === "glosa") ?? {
+      id: "glosa",
+      label: "Glosa",
+      visible: true,
+      estructural: false,
+    };
+    return [
+      { ...glosa, label: "Descripción" },
+      ...colsLinea.filter((c) => c.id !== "productoId" && c.id !== "glosa"),
+    ];
+  }, [colsLinea, esServicio]);
   const descGlobal = watch("descuentoGlobalPct");
 
   const gFactor = 1 - (Number(descGlobal) || 0) / 100;
@@ -180,11 +201,24 @@ export function DocumentoVentaForm({
     startTransition(async () => {
       const r = await guardarDocumentoVentaAction(empresaId, docId, data);
       if (r.ok) {
-        toast.success("Documento guardado");
+        toast.success(r.contabilizado ? "Factura guardada y contabilizada" : "Documento guardado");
         router.refresh();
       } else toast.error(r.error);
     });
   });
+
+  function guardarFechas() {
+    startTransition(async () => {
+      const r = await actualizarFechasDocumentoVentaAction(empresaId, docId, {
+        fechaVencimiento: watch("fechaVencimiento") as string,
+        fechaContabilizacion: watch("fechaContabilizacion") as string,
+      });
+      if (r.ok) {
+        toast.success("Fechas actualizadas");
+        router.refresh();
+      } else toast.error(r.error);
+    });
+  }
 
   function contabilizar() {
     startTransition(async () => {
@@ -266,6 +300,28 @@ export function DocumentoVentaForm({
             </SelectContent>
           </Select>,
         );
+      case "modalidad":
+        return campo(
+          "Tipo (Artículo / Servicio)",
+          <Select
+            value={(watch("modalidad") as string | undefined) ?? "Artículo"}
+            onValueChange={(v) => {
+              setValue("modalidad", v as "Artículo" | "Servicio");
+              if (v === "Servicio") {
+                (watch("lineas") ?? []).forEach((_, i) => setValue(`lineas.${i}.productoId`, undefined));
+              }
+            }}
+            disabled={readOnly}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Artículo">Artículo</SelectItem>
+              <SelectItem value="Servicio">Servicio</SelectItem>
+            </SelectContent>
+          </Select>,
+        );
       case "tipoDocumentoId":
         return campo("Tipo de documento", selOpt("tipoDocumentoId", tiposDocumento, "Tipo"));
       case "fechaEmision":
@@ -282,14 +338,14 @@ export function DocumentoVentaForm({
       case "fechaVencimiento":
         return campo(
           "Fecha de vencimiento",
-          <Input type="date" {...register("fechaVencimiento")} disabled={readOnly} />,
+          <Input type="date" {...register("fechaVencimiento")} disabled={readOnly && !fechasEditables} />,
           undefined,
           errors.fechaVencimiento?.message,
         );
       case "fechaContabilizacion":
         return campo(
           "Fecha de contabilización",
-          <Input type="date" {...register("fechaContabilizacion")} disabled={readOnly} />,
+          <Input type="date" {...register("fechaContabilizacion")} disabled={readOnly && !fechasEditables} />,
           undefined,
           errors.fechaContabilizacion?.message,
         );
@@ -652,7 +708,7 @@ export function DocumentoVentaForm({
           <Table>
             <TableHeader>
               <TableRow>
-                {colsLinea.map((c) => (
+                {columnasLinea.map((c) => (
                   <TableHead key={c.id}>{c.label}</TableHead>
                 ))}
                 <TableHead className="text-right">Neto</TableHead>
@@ -662,7 +718,7 @@ export function DocumentoVentaForm({
             <TableBody>
               {fields.map((f, i) => (
                 <TableRow key={f.id}>
-                  {colsLinea.map((c) => (
+                  {columnasLinea.map((c) => (
                     <TableCell key={c.id}>{renderCeldaLinea(c.id, i)}</TableCell>
                   ))}
                   <TableCell className="text-right tabular-nums">
@@ -715,12 +771,19 @@ export function DocumentoVentaForm({
         {!readOnly && (
           <>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : "Guardar"}
+              {isPending ? "Guardando..." : esFactura ? "Guardar y contabilizar" : "Guardar"}
             </Button>
-            <Button type="button" variant="secondary" disabled={isPending} onClick={contabilizar}>
-              Contabilizar
-            </Button>
+            {!esFactura && (
+              <Button type="button" variant="secondary" disabled={isPending} onClick={contabilizar}>
+                Contabilizar
+              </Button>
+            )}
           </>
+        )}
+        {fechasEditables && (
+          <Button type="button" disabled={isPending} onClick={guardarFechas}>
+            {isPending ? "Guardando..." : "Guardar fechas"}
+          </Button>
         )}
         {estado !== "anulado" && (
           <Button type="button" variant="destructive" disabled={isPending} onClick={anular}>
@@ -732,9 +795,10 @@ export function DocumentoVentaForm({
             Asiento generado: <span className="font-mono">N° {asientoCorrelativo}</span>
           </span>
         )}
-        <Button asChild type="button" variant="outline" className="ml-auto">
-          <Link href={`/panel/${empresaId}/ventas/${VENTA_CLASE_META[clase].slug}`}>← Volver</Link>
-        </Button>
+        <VolverBoton
+          className="ml-auto"
+          fallbackHref={`/panel/${empresaId}/ventas/${VENTA_CLASE_META[clase].slug}`}
+        />
       </div>
     </form>
   );

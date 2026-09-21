@@ -2,25 +2,28 @@
 
 import {
   guardarCredencialesSii,
-  importarDocumentosRcv,
   obtenerCredencialesSii,
   obtenerDatosSiiDocumentoCompra,
 } from "@erp/db";
-import type { SiiAmbiente, SiiMetodoAuth } from "@erp/shared";
+import type { SiiAmbiente, SiiMetodoAuth, TipoFacturador } from "@erp/shared";
 import { revalidatePath } from "next/cache";
-import { auditCtx, requireRolEnEmpresa } from "@/lib/auth-helpers";
-import { cifrar, descifrar, descifrarOpcional } from "@/lib/sii/cripto";
+import { requireRolEnEmpresa } from "@/lib/auth-helpers";
+import { cifrar } from "@/lib/sii/cripto";
+import { credencialesEnClaro } from "@/lib/sii/credenciales";
 import { crearSiiClient } from "@/lib/sii/cliente";
+import { parsearSetDte } from "@/lib/sii/dte-xml";
+import { esRangoSinXml } from "@/lib/sii/sesion-rcv";
 import type { AccionDte, EventoDte } from "@/lib/sii/reclamo-dte";
-import type { CredencialesSii, DocRcv } from "@/lib/sii/tipos";
 
 const ROLES = ["Administrador", "Contador"];
 
 export type EstadoCredencialesSii = {
   configurado: boolean;
   rut: string | null;
+  tipoFacturador: TipoFacturador;
+  nombreFacturador: string | null;
   metodoAuth: SiiMetodoAuth;
-  rutTitularCertificado: string | null;
+  rutTitular: string | null;
   tieneClave: boolean;
   tieneCertificado: boolean;
   ambiente: SiiAmbiente;
@@ -34,8 +37,10 @@ export async function obtenerEstadoSiiAction(empresaId: string): Promise<EstadoC
   return {
     configurado: !!row,
     rut: row?.rut ?? null,
+    tipoFacturador: (row?.tipoFacturador as TipoFacturador) ?? "SII Gratuito",
+    nombreFacturador: row?.nombreFacturador ?? null,
     metodoAuth: (row?.metodoAuth as SiiMetodoAuth) ?? "clave",
-    rutTitularCertificado: row?.rutTitularCertificado ?? null,
+    rutTitular: row?.rutTitular ?? null,
     tieneClave: !!row?.claveCifrada,
     tieneCertificado: !!row?.certificadoCifrado,
     ambiente: (row?.ambiente as SiiAmbiente) ?? "produccion",
@@ -48,8 +53,10 @@ export async function guardarCredencialesSiiAction(
   empresaId: string,
   input: {
     rut: string;
+    tipoFacturador: TipoFacturador;
+    nombreFacturador?: string;
     metodoAuth: SiiMetodoAuth;
-    rutTitularCertificado?: string;
+    rutTitular?: string;
     clave?: string;
     certificadoBase64?: string;
     certPass?: string;
@@ -59,11 +66,16 @@ export async function guardarCredencialesSiiAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireRolEnEmpresa(empresaId, ROLES);
   if (!input.rut?.trim()) return { ok: false, error: "Indica el RUT." };
+  if (input.tipoFacturador === "Facturador comercial" && !input.nombreFacturador?.trim()) {
+    return { ok: false, error: "Indica el nombre del facturador comercial." };
+  }
   try {
     await guardarCredencialesSii(empresaId, {
       rut: input.rut.trim(),
+      tipoFacturador: input.tipoFacturador,
+      nombreFacturador: input.nombreFacturador?.trim() || null,
       metodoAuth: input.metodoAuth,
-      rutTitularCertificado: input.rutTitularCertificado?.trim() || null,
+      rutTitular: input.rutTitular?.trim() || null,
       claveCifrada: input.clave ? cifrar(input.clave) : undefined,
       certificadoCifrado: input.certificadoBase64 ? cifrar(input.certificadoBase64) : undefined,
       certificadoPassCifrada: input.certPass ? cifrar(input.certPass) : undefined,
@@ -75,29 +87,6 @@ export async function guardarCredencialesSiiAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" };
   }
-}
-
-async function credencialesEnClaro(empresaId: string): Promise<CredencialesSii> {
-  const row = await obtenerCredencialesSii(empresaId);
-  if (!row) throw new Error("Configura primero la conexión con el SII.");
-  const ambiente = row.ambiente as SiiAmbiente;
-  if (row.metodoAuth === "certificado") {
-    if (!row.certificadoCifrado) {
-      throw new Error("Configura primero el certificado digital (.pfx / .p12) en Conexión SII.");
-    }
-    return {
-      metodo: "certificado",
-      rut: row.rut,
-      rutTitular: row.rutTitularCertificado || row.rut,
-      ambiente,
-      certificadoBase64: descifrar(row.certificadoCifrado),
-      certPass: descifrarOpcional(row.certificadoPassCifrada),
-    };
-  }
-  if (!row.claveCifrada) {
-    throw new Error("Configura primero el RUT y la Clave Tributaria en Conexión SII.");
-  }
-  return { metodo: "clave", rut: row.rut, ambiente, clave: descifrar(row.claveCifrada) };
 }
 
 export async function probarConexionSiiAction(
@@ -112,66 +101,58 @@ export async function probarConexionSiiAction(
   }
 }
 
-export type ResultadoRcvCrudo = { ok: true; docs: DocRcv[] } | { ok: false; error: string };
-
-/**
- * `periodo` = `YYYY-MM`. Descarga el RCV tal cual lo entrega el SII, sin crear ni
- * validar nada en el sistema — solo para inspeccionar qué trae y confirmar conexión.
- */
-export async function descargarRcvCrudoAction(
-  empresaId: string,
-  periodo: string,
-  origen: "compra" | "venta",
-): Promise<ResultadoRcvCrudo> {
-  await requireRolEnEmpresa(empresaId, ROLES);
-  const ym = periodo.replace("-", "");
-  if (!/^\d{6}$/.test(ym)) return { ok: false, error: "Período inválido." };
-  try {
-    const cred = await credencialesEnClaro(empresaId);
-    const client = crearSiiClient(cred);
-    const docs = origen === "compra" ? await client.rcvCompras(ym) : await client.rcvVentas(ym);
-    return { ok: true, docs };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" };
-  }
-}
-
-export type ResultadoImportacionSii =
+export type ResultadoPruebaXmlDte =
   | {
       ok: true;
-      creados: number;
-      existentes: number;
-      errores: number;
-      detalle: unknown[];
+      detalle: string;
+      documentos: { tipoDte: number; folio: string; fechaEmision: string; rutContraparte: string }[];
     }
-  | { ok: false; error: string };
+  | { ok: false; detalle: string };
 
-const SLUGS_REVALIDAR: Record<"compra" | "venta", string[]> = {
-  compra: ["pedidos", "facturas", "notas-credito", "notas-debito"],
-  venta: ["facturas", "notas-credito", "notas-debito"],
-};
-
-/** `periodo` = `YYYY-MM` (del <input type="month">). Importa solo compras o solo ventas. */
-export async function importarRcvAction(
+/**
+ * Prueba puntual de `descargarXmlCompras`/`descargarXmlVentas` (Sistema de
+ * Facturación Gratuita, `www1.sii.cl`) — descarga los últimos 3 días y solo informa
+ * cuántos documentos trajo, sin crear ni tocar nada en el sistema. Sirve para validar
+ * que la sesión se comparte con ese portal (ver el `// VALIDAR` en `sesion-rcv.ts`)
+ * antes de construir la importación real. Ventana chica a propósito: el portal
+ * rechaza rangos de más de ~20 días (confirmado en vivo), y mezclar ese límite con la
+ * prueba de sesión solo complica el diagnóstico — la importación real (todavía sin
+ * construir) sí va a tener que trocear por rango, no esta prueba.
+ */
+export async function probarDescargaXmlDteAction(
   empresaId: string,
-  periodo: string,
   origen: "compra" | "venta",
-): Promise<ResultadoImportacionSii> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES);
-  const ym = periodo.replace("-", "");
-  if (!/^\d{6}$/.test(ym)) return { ok: false, error: "Período inválido." };
+): Promise<ResultadoPruebaXmlDte> {
+  await requireRolEnEmpresa(empresaId, ROLES);
   try {
     const cred = await credencialesEnClaro(empresaId);
     const client = crearSiiClient(cred);
-    const ctx = auditCtx(session);
-    const docs = origen === "compra" ? await client.rcvCompras(ym) : await client.rcvVentas(ym);
-    const resultado = await importarDocumentosRcv(empresaId, origen, ym, docs, ctx);
-    for (const slug of SLUGS_REVALIDAR[origen]) {
-      revalidatePath(`/panel/${empresaId}/${origen === "compra" ? "compras" : "ventas"}/${slug}`);
+    const hasta = new Date();
+    const desde = new Date(hasta.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    let xml: Buffer;
+    try {
+      xml =
+        origen === "compra"
+          ? await client.descargarXmlCompras(fmt(desde), fmt(hasta))
+          : await client.descargarXmlVentas(fmt(desde), fmt(hasta));
+    } catch (e) {
+      if (!esRangoSinXml(e)) throw e;
+      xml = Buffer.from("<SetDTE></SetDTE>", "latin1");
     }
-    return { ok: true, ...resultado };
+    const documentos = parsearSetDte(xml).map((d) => ({
+      tipoDte: d.tipoDte,
+      folio: d.folio,
+      fechaEmision: d.fechaEmision,
+      rutContraparte: origen === "compra" ? d.rutEmisor : d.rutReceptor,
+    }));
+    return {
+      ok: true,
+      detalle: `Se encontraron ${documentos.length} documento(s) de ${origen === "compra" ? "compra" : "venta"} en los últimos 30 días.`,
+      documentos,
+    };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" };
+    return { ok: false, detalle: e instanceof Error ? e.message : "Error desconocido" };
   }
 }
 

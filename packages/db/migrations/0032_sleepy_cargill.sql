@@ -1,0 +1,1 @@
+ALTER TABLE "sii_credenciales" RENAME COLUMN "rut_titular_certificado" TO "rut_titular";

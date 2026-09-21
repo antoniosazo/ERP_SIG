@@ -10,6 +10,11 @@ import {
   DIRECCION_TIPO,
   DOCUMENTO_COMPRA_ESTADO,
   DOCUMENTO_COMPRA_TIPO,
+  DOCUMENTO_MODALIDAD,
+  METODO_PAGO_SENTIDO,
+  PAGO_ESTADO,
+  PAGO_TIPO,
+  METODO_PAGO_TIPO,
   DOCUMENTO_VENTA_CLASE,
   DOCUMENTO_VENTA_ESTADO,
   EMPRESA_ESTADO,
@@ -23,6 +28,7 @@ import {
   SII_AMBIENTE,
   SII_METODO_AUTH,
   STOCK_MOVIMIENTO_TIPO,
+  TIPO_FACTURADOR,
   NATURALEZA_CUENTA,
   PERIODO_ESTADO,
   PRODUCTO_TIPO,
@@ -85,8 +91,17 @@ export const stockMovimientoTipoEnum = pgEnum("stock_movimiento_tipo", [
 ]);
 export const siiAmbienteEnum = pgEnum("sii_ambiente", [...SII_AMBIENTE]);
 export const siiMetodoAuthEnum = pgEnum("sii_metodo_auth", [...SII_METODO_AUTH]);
+export const tipoFacturadorEnum = pgEnum("tipo_facturador", [...TIPO_FACTURADOR]);
 export const cuentaModoMonedaEnum = pgEnum("cuenta_modo_moneda", [...CUENTA_MODO_MONEDA]);
 export const determinacionContextoEnum = pgEnum("determinacion_contexto", [
   ...DETERMINACION_CONTEXTO,
 ]);
 export const determinacionRolEnum = pgEnum("determinacion_rol", [...DETERMINACION_ROL]);
+
+export const documentoModalidadEnum = pgEnum("documento_modalidad", [...DOCUMENTO_MODALIDAD]);
+
+export const metodoPagoTipoEnum = pgEnum("metodo_pago_tipo", [...METODO_PAGO_TIPO]);
+export const metodoPagoSentidoEnum = pgEnum("metodo_pago_sentido", [...METODO_PAGO_SENTIDO]);
+
+export const pagoTipoEnum = pgEnum("pago_tipo", [...PAGO_TIPO]);
+export const pagoEstadoEnum = pgEnum("pago_estado", [...PAGO_ESTADO]);

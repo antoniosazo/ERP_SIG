@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  actualizarFechasDocumentoCompra,
   abrirPedidoCompra,
   anularDocumentoCompra,
   cerrarPedidoCompra,
@@ -27,7 +28,9 @@ import { revalidatePath } from "next/cache";
 import { auditCtx, requireRolEnEmpresa } from "@/lib/auth-helpers";
 import type { AsientoVistaDTO, HistorialFila } from "@/lib/actions/ventas";
 
-export type DocCompraResultado = { ok: true; docId: string } | { ok: false; error: string };
+export type DocCompraResultado =
+  | { ok: true; docId: string; contabilizado?: boolean }
+  | { ok: false; error: string };
 export type DocCompraAccionResultado = { ok: true } | { ok: false; error: string };
 
 const ROLES = ["Administrador", "Contador"];
@@ -77,9 +80,42 @@ export async function guardarDocumentoCompraAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
   try {
-    await guardarDocumentoCompra(docId, empresaId, parsed.data, auditCtx(session));
+    const ctx = auditCtx(session);
+    const doc = await guardarDocumentoCompra(docId, empresaId, parsed.data, ctx);
+    // Las facturas no pasan por borrador: se contabilizan al guardarse.
+    if (doc.docTipo === "factura") {
+      try {
+        await contabilizarDocumentoCompra(docId, empresaId, ctx);
+      } catch (error) {
+        rev(empresaId, docId);
+        return { ok: false, error: `Se guardó, pero no se pudo contabilizar: ${mensajeError(error)}` };
+      }
+      rev(empresaId, docId);
+      return { ok: true, docId, contabilizado: true };
+    }
     rev(empresaId, docId);
     return { ok: true, docId };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+const fechaIso = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Vencimiento y contabilización: lo único editable de una factura ya contabilizada. */
+export async function actualizarFechasDocumentoCompraAction(
+  empresaId: string,
+  docId: string,
+  input: { fechaVencimiento: string; fechaContabilizacion: string },
+): Promise<DocCompraAccionResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  if (!fechaIso.test(input.fechaVencimiento) || !fechaIso.test(input.fechaContabilizacion)) {
+    return { ok: false, error: "Indica fechas válidas." };
+  }
+  try {
+    await actualizarFechasDocumentoCompra(docId, empresaId, input, auditCtx(session));
+    rev(empresaId, docId);
+    return { ok: true };
   } catch (error) {
     return { ok: false, error: mensajeError(error) };
   }

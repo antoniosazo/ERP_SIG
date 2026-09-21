@@ -13,3 +13,4 @@ pnpm-debug.log*
 
 # Capturas de red (debug de integraciones, ej. SII) — pueden llevar cookies/tokens.
 *.har
+chrome-net-export-log*.json

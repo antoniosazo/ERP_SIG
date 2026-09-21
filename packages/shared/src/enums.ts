@@ -147,10 +147,23 @@ export const IMPUESTO_TIPO = [
 export const DIRECCION_TIPO = ["Facturación", "Despacho"] as const;
 
 // terceros_cuentas_bancarias.tipo_cuenta
+// Pagos recibidos / efectuados (módulo de tesorería, al estilo Pagos recibidos / Pagos efectuados de SAP B1).
+export const METODO_PAGO_TIPO = ["Efectivo", "Cheque", "Transferencia", "Tarjeta"] as const;
+export type MetodoPagoTipo = (typeof METODO_PAGO_TIPO)[number];
+/** Para qué sentido sirve un método de pago: cobros (recibido), pagos (efectuado) o ambos. */
+export const METODO_PAGO_SENTIDO = ["Recibido", "Efectuado", "Ambos"] as const;
+export type MetodoPagoSentido = (typeof METODO_PAGO_SENTIDO)[number];
+
+export const PAGO_TIPO = ["Recibido", "Efectuado"] as const;
+export type PagoTipo = (typeof PAGO_TIPO)[number];
+/** Un pago se contabiliza al registrarse (sin borrador); solo puede anularse. */
+export const PAGO_ESTADO = ["contabilizado", "anulado"] as const;
+export type PagoEstado = (typeof PAGO_ESTADO)[number];
+
 export const CUENTA_BANCARIA_TIPO = ["Corriente", "Vista", "Ahorro", "Otra"] as const;
 
 // series_numeracion.ambito — serie de numeración reutilizable.
-export const SERIE_AMBITO = ["tercero", "venta", "producto", "compra"] as const;
+export const SERIE_AMBITO = ["tercero", "venta", "producto", "compra", "pago"] as const;
 
 // documentos_venta.clase — determina el signo contable (61 = NC, 56 = ND).
 export const DOCUMENTO_VENTA_CLASE = ["Factura", "Nota de Crédito", "Nota de Débito"] as const;
@@ -160,6 +173,11 @@ export const DOCUMENTO_VENTA_ESTADO = ["borrador", "contabilizado", "anulado"] a
 
 // documentos_compra.doc_tipo — flujo documental de compras (SAP: OPOR/OPDN/OPCH).
 // `entrada_mercaderia` se define ya pero su flujo se implementa en la Fase B.
+// documentos_compra/venta.modalidad — como el tipo "Artículo / Servicio" de SAP Business One:
+// "Servicio" lleva líneas de solo descripción + cuenta + impuesto + importe, sin ítem del maestro.
+export const DOCUMENTO_MODALIDAD = ["Artículo", "Servicio"] as const;
+export type DocumentoModalidad = (typeof DOCUMENTO_MODALIDAD)[number];
+
 export const DOCUMENTO_COMPRA_TIPO = [
   "pedido",
   "entrada_mercaderia",
@@ -193,6 +211,9 @@ export const SII_AMBIENTE = ["certificacion", "produccion"] as const;
 export const SII_METODO_AUTH = ["clave", "certificado"] as const;
 // Estado de un documento dentro del Registro de Compras y Ventas del SII.
 export const SII_ESTADO_RCV = ["REGISTRO", "PENDIENTE", "NO_INCLUIR", "RECLAMADO"] as const;
+// sii_credenciales.tipo_facturador — con qué emite/recibe DTE el cliente; determina qué
+// vía de importación tiene sentido ofrecerle (ej. subir XML solo aplica a "SII Gratuito").
+export const TIPO_FACTURADOR = ["SII Gratuito", "Facturador comercial", "No emite DTE"] as const;
 
 // plan_cuentas.modo_moneda — restricción de moneda para contabilizar contra la cuenta.
 export const CUENTA_MODO_MONEDA = ["Local", "Funcional", "Extranjera fija", "Cualquiera"] as const;
@@ -261,6 +282,7 @@ export type StockMovimientoTipo = (typeof STOCK_MOVIMIENTO_TIPO)[number];
 export type SiiAmbiente = (typeof SII_AMBIENTE)[number];
 export type SiiMetodoAuth = (typeof SII_METODO_AUTH)[number];
 export type SiiEstadoRcv = (typeof SII_ESTADO_RCV)[number];
+export type TipoFacturador = (typeof TIPO_FACTURADOR)[number];
 export type CuentaModoMoneda = (typeof CUENTA_MODO_MONEDA)[number];
 export type DeterminacionContexto = (typeof DETERMINACION_CONTEXTO)[number];
 export type DeterminacionRol = (typeof DETERMINACION_ROL)[number];

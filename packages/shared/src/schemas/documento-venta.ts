@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENTO_VENTA_CLASE } from "../enums";
+import { DOCUMENTO_MODALIDAD, DOCUMENTO_VENTA_CLASE } from "../enums";
 import { fechaISO, uuid } from "./primitives";
 
 /** Alta rápida de un documento de venta: clase + tipo SII + cliente. El resto va en el detalle. */
@@ -25,7 +25,9 @@ const lineaSchema = z.object({
 });
 
 /** Guardado completo de un documento en borrador (cabecera + líneas). Totales los recalcula el backend. */
-export const guardarDocumentoVentaSchema = z.object({
+export const guardarDocumentoVentaSchema = z
+  .object({
+  modalidad: z.enum(DOCUMENTO_MODALIDAD).default("Artículo"),
   terceroId: uuid,
   tipoDocumentoId: uuid,
   folio: z.string().trim().max(40).nullish(),
@@ -45,7 +47,15 @@ export const guardarDocumentoVentaSchema = z.object({
   direccionFacturacion: z.string().trim().max(300).nullish(),
   direccionDespacho: z.string().trim().max(300).nullish(),
   lineas: z.array(lineaSchema).min(1, "Agrega al menos una línea").max(200),
-});
+  })
+  .superRefine((v, ctx) => {
+    if (v.modalidad !== "Servicio") return;
+    v.lineas.forEach((l, i) => {
+      if (!l.glosa?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["lineas", i, "glosa"], message: "En un documento de servicio la descripción es obligatoria" });
+      }
+    });
+  });
 export type GuardarDocumentoVentaInput = z.infer<typeof guardarDocumentoVentaSchema>;
 
 export const anularDocumentoVentaSchema = z.object({

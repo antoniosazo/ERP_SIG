@@ -11,6 +11,7 @@ export type CampoResuelto = { id: string; label: string; visible: boolean; estru
 export const CAMPOS_CABECERA: CampoDef[] = [
   { id: "terceroId", label: "Cliente", estructural: true },
   { id: "tipoDocumentoId", label: "Tipo de documento", estructural: true },
+  { id: "modalidad", label: "Tipo (Artículo / Servicio)", estructural: true },
   { id: "fechaEmision", label: "Fecha del documento", estructural: true },
   { id: "fechaVencimiento", label: "Fecha de vencimiento", estructural: true },
   { id: "fechaContabilizacion", label: "Fecha de contabilización", estructural: true },

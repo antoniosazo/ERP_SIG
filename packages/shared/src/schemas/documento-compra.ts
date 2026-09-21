@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENTO_COMPRA_TIPO, IVA_RECUPERABLE } from "../enums";
+import { DOCUMENTO_COMPRA_TIPO, DOCUMENTO_MODALIDAD, IVA_RECUPERABLE } from "../enums";
 import { fechaISO, uuid } from "./primitives";
 
 /** Alta rápida de un documento de compra: tipo interno + tipo SII + proveedor. */
@@ -27,8 +27,10 @@ const lineaCompraSchema = z.object({
 export type LineaCompraInput = z.infer<typeof lineaCompraSchema>;
 
 /** Guardado completo de un documento de compra en borrador. Totales los recalcula el backend. */
-export const guardarDocumentoCompraSchema = z.object({
+export const guardarDocumentoCompraSchema = z
+  .object({
   docTipo: z.enum(DOCUMENTO_COMPRA_TIPO),
+  modalidad: z.enum(DOCUMENTO_MODALIDAD).default("Artículo"),
   terceroId: uuid,
   tipoDocumentoId: uuid,
   folio: z.string().trim().max(40).nullish(),
@@ -43,7 +45,18 @@ export const guardarDocumentoCompraSchema = z.object({
   glosa: z.string().trim().max(1000).nullish(),
   documentoBaseId: uuid.nullish(),
   lineas: z.array(lineaCompraSchema).min(1, "Agrega al menos una línea").max(200),
-});
+  })
+  .superRefine((v, ctx) => {
+    if (v.modalidad !== "Servicio") return;
+    if (v.docTipo === "entrada_mercaderia") {
+      ctx.addIssue({ code: "custom", path: ["modalidad"], message: "Una entrada de mercadería no puede ser de tipo Servicio" });
+    }
+    v.lineas.forEach((l, i) => {
+      if (!l.glosa?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["lineas", i, "glosa"], message: "En un documento de servicio la descripción es obligatoria" });
+      }
+    });
+  });
 export type GuardarDocumentoCompraInput = z.infer<typeof guardarDocumentoCompraSchema>;
 
 export const anularDocumentoCompraSchema = z.object({

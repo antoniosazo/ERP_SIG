@@ -2,7 +2,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { date, index, integer, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { idColumn, montoColumn, timestampsColumns } from "./columns.helpers";
-import { documentoCompraEstadoEnum, documentoCompraTipoEnum } from "./enums";
+import { documentoCompraEstadoEnum, documentoCompraTipoEnum, documentoModalidadEnum } from "./enums";
 import { asientosContables } from "./asientos-contables";
 import { empresas } from "./empresas";
 import { monedas } from "./monedas";
@@ -25,6 +25,7 @@ export const documentosCompra = pgTable(
       .notNull()
       .references(() => empresas.id, { onDelete: "cascade" }),
     docTipo: documentoCompraTipoEnum("doc_tipo").notNull(),
+    modalidad: documentoModalidadEnum("modalidad").notNull().default("Artículo"),
     numeroInterno: text("numero_interno"),
     tipoDocumentoId: uuid("tipo_documento_id")
       .notNull()

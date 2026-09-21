@@ -28,7 +28,11 @@ export async function VentasListaPage({
     <>
       <TypographyHeading
         title={meta.titulo}
-        description="Al contabilizar se genera el asiento (4.2). Solo se edita en borrador."
+        description={
+          clase === "Factura"
+            ? "Las facturas se contabilizan solas al guardarse o cargarse desde el SII (ingreso + IVA débito + cuenta por cobrar)."
+            : "Al contabilizar se genera el asiento (4.2). Solo se edita en borrador."
+        }
       />
       <DocumentosVentaLista
         empresaId={empresaId}

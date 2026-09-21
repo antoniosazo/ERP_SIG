@@ -24,6 +24,7 @@ import {
   tiposDocumento,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
+import { tienePagosAplicados } from "./pagos-saldos";
 import { siguienteCorrelativoAsiento } from "./asientos";
 import { resolverCuentaGeneral } from "./reglas-determinacion-cuenta";
 import { periodoDe } from "./periodos";
@@ -327,6 +328,9 @@ export async function guardarDocumentoCompra(
     if (antes.estado !== "borrador") {
       throw new Error("Solo se puede editar un documento en borrador");
     }
+    if (input.modalidad === "Servicio" && antes.docTipo === "entrada_mercaderia") {
+      throw new Error("Una entrada de mercadería no puede ser de tipo Servicio");
+    }
 
     const [moneda] = await tx
       .select({ decimales: monedas.decimales })
@@ -382,7 +386,8 @@ export async function guardarDocumentoCompra(
       documentoCompraId: id,
       numeroLinea: i,
       glosa: l.glosa ?? null,
-      productoId: previas[i]?.productoId ?? l.productoId ?? null,
+      productoId:
+        input.modalidad === "Servicio" ? null : (previas[i]?.productoId ?? l.productoId ?? null),
       cuentaImputacionId: previas[i]?.cuentaImputacionId ?? l.cuentaImputacionId,
       categoriaContableId: previas[i]?.categoriaContableId ?? l.categoriaContableId ?? null,
       centroCostoId: previas[i]?.centroCostoId ?? l.centroCostoId ?? null,
@@ -410,6 +415,7 @@ export async function guardarDocumentoCompra(
     const [doc] = await tx
       .update(documentosCompra)
       .set({
+        modalidad: input.modalidad,
         terceroId: input.terceroId,
         tipoDocumentoId: input.tipoDocumentoId,
         folio: input.folio || null,
@@ -1458,6 +1464,9 @@ export async function anularDocumentoCompra(
       .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
     if (!doc) throw new Error("El documento no existe en esta empresa");
     if (doc.estado === "anulado") throw new Error("El documento ya está anulado");
+    if (await tienePagosAplicados(tx, empresaId, "compra", id)) {
+      throw new Error("El documento tiene pagos aplicados: anula primero el pago.");
+    }
 
     // Entrada de Mercadería: no se puede anular si ya se facturó parte, y hay que
     // revertir los movimientos de stock antes de la reversa del asiento.
@@ -1593,5 +1602,77 @@ export async function anularDocumentoCompra(
       });
     }
     return act!;
+  });
+}
+
+/**
+ * Fechas editables de una factura ya contabilizada: vencimiento y contabilización. Mover la
+ * fecha de contabilización mueve también la fecha del asiento; el correlativo del asiento es
+ * anual, así que solo se admite dentro del mismo año y entre períodos abiertos.
+ */
+export async function actualizarFechasDocumentoCompra(
+  id: string,
+  empresaId: string,
+  input: { fechaVencimiento: string; fechaContabilizacion: string },
+  ctx?: AuditoriaCtx,
+) {
+  const [antes] = await db
+    .select()
+    .from(documentosCompra)
+    .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
+  if (!antes) throw new Error("El documento no existe en esta empresa");
+  if (antes.estado !== "contabilizado" || !antes.asientoId) {
+    throw new Error("Solo se editan las fechas de un documento contabilizado");
+  }
+  if (input.fechaVencimiento < antes.fechaEmision) {
+    throw new Error("La fecha de vencimiento no puede ser anterior a la de emisión");
+  }
+  const actual = antes.fechaContabilizacion ?? antes.fechaEmision;
+  const mueveAsiento = input.fechaContabilizacion !== actual;
+  if (mueveAsiento) {
+    if (input.fechaContabilizacion.slice(0, 4) !== actual.slice(0, 4)) {
+      throw new Error("La fecha de contabilización debe quedar en el mismo año (el correlativo del asiento es anual)");
+    }
+    for (const [fecha, cual] of [[actual, "actual"], [input.fechaContabilizacion, "nueva"]] as const) {
+      const per = await periodoDe(empresaId, fecha);
+      if (!per) throw new Error(`No hay un período contable para la fecha de contabilización ${cual}.`);
+      if (PERIODO_BLOQUEA_COMPRA.has(per.estado)) {
+        throw new Error(
+          `El período ${per.anio}-${String(per.mes).padStart(2, "0")} (fecha ${cual}) está bloqueado para compras.`,
+        );
+      }
+    }
+  }
+
+  return db.transaction(async (tx) => {
+    if (mueveAsiento) {
+      await tx
+        .update(asientosContables)
+        .set({ fecha: input.fechaContabilizacion, updatedAt: new Date() })
+        .where(and(eq(asientosContables.id, antes.asientoId!), eq(asientosContables.empresaId, empresaId)));
+    }
+    const [doc] = await tx
+      .update(documentosCompra)
+      .set({
+        fechaVencimiento: input.fechaVencimiento,
+        fechaContabilizacion: input.fechaContabilizacion,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
+      .returning();
+    if (!doc) throw new Error("No se pudo actualizar el documento");
+    if (ctx) {
+      await registrarAuditoria(tx, {
+        empresaId,
+        ctx,
+        tabla: "documentos_compra",
+        registroId: doc.id,
+        etiqueta: etiquetaDoc(doc),
+        accion: "editar",
+        antes: { fechaVencimiento: antes.fechaVencimiento, fechaContabilizacion: antes.fechaContabilizacion },
+        despues: { fechaVencimiento: doc.fechaVencimiento, fechaContabilizacion: doc.fechaContabilizacion },
+      });
+    }
+    return doc;
   });
 }

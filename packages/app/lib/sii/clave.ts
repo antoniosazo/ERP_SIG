@@ -13,6 +13,9 @@ export class SiiClaveClient extends SiiSesionCookieClient {
   constructor(
     rut: string,
     private readonly clave: string,
+    /** RUT con el que se hace login cuando difiere del RUT de la empresa (mandatario
+     * operando con su propia Clave Tributaria). El RCV se sigue pidiendo para `rut`. */
+    private readonly rutTitular: string = rut,
   ) {
     super(rut);
   }
@@ -22,7 +25,7 @@ export class SiiClaveClient extends SiiSesionCookieClient {
   }
 
   protected async obtenerCookies(): Promise<string> {
-    const { cuerpo, dv } = partesRut(this.rut);
+    const { cuerpo, dv } = partesRut(this.rutTitular);
     const body = new URLSearchParams({
       referencia: "https://misiir.sii.cl/cgi_misii/siihome.cgi",
       "411": "",
@@ -45,10 +48,22 @@ export class SiiClaveClient extends SiiSesionCookieClient {
     // VALIDAR: el SII devuelve TOKEN + NETSCAPE_* al loguear OK; con clave mala reenvía
     // HTML de error sin esas cookies.
     if (!cookieHeader.includes("TOKEN") && !/s2=/i.test(cookieHeader)) {
+      const texto = (await res.text().catch(() => ""))
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 300);
       throw new Error(
-        "El SII rechazó el login con RUT/Clave (revisa las credenciales y el ambiente).",
+        `El SII rechazó el login con RUT/Clave (status ${res.status}). ` +
+          `${texto ? `Respuesta del SII: ${texto}` : "Revisa las credenciales y el ambiente."}`,
       );
     }
+    // VALIDAR: cuando `rutTitular` representa a terceros, `certificado.ts` (confirmado
+    // en vivo) debe seguir un link "Continuar" para completar la sesión — no está
+    // confirmado si el login por Clave Tributaria pasa por la misma pantalla intermedia
+    // ("Escoja cómo desea ingresar") o si entrega la sesión completa directo en este POST.
     return cookieHeader;
   }
 }

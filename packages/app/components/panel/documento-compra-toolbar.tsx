@@ -11,6 +11,8 @@ import { HistorialDocumentoDialog } from "@/components/panel/historial-documento
 import { ReclamoSiiDialog } from "@/components/panel/reclamo-sii-dialog";
 import { TraerDesdeDialog } from "@/components/panel/traer-desde-dialog";
 import { Button } from "@/components/ui/button";
+import { VerFacturaBoton } from "@/components/panel/factura-vista";
+import type { FacturaDatos } from "@/lib/factura-vista";
 
 type LineaPendiente = {
   id: string;
@@ -26,6 +28,7 @@ type LineaPendiente = {
  */
 export function DocumentoCompraToolbar({
   empresaId,
+  factura,
   docId,
   docTipo,
   estado,
@@ -33,6 +36,7 @@ export function DocumentoCompraToolbar({
   lineasPendientes,
 }: {
   empresaId: string;
+  factura: FacturaDatos;
   docId: string;
   docTipo: string;
   estado: string;
@@ -89,6 +93,7 @@ export function DocumentoCompraToolbar({
           titulo="Traer líneas de la recepción a una factura"
         />
       )}
+      <VerFacturaBoton f={factura} />
       <Button
         asChild
         type="button"

@@ -109,7 +109,7 @@ export function DocumentosCompraLista({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={TODOS}>Todos los estados</SelectItem>
-            <SelectItem value="borrador">Borrador</SelectItem>
+            {docTipo !== "factura" && <SelectItem value="borrador">Borrador</SelectItem>}
             {esPedido && <SelectItem value="abierto">Abierto</SelectItem>}
             {!esPedido && <SelectItem value="contabilizado">Contabilizado</SelectItem>}
             {(esPedido || esRecepcion) && <SelectItem value="cerrado">Cerrado</SelectItem>}
@@ -157,7 +157,14 @@ export function DocumentosCompraLista({
                     </FilaGrupo>
                     {abierto &&
                       items.map((d) => (
-                        <TableRow key={d.id}>
+                        <TableRow
+                          key={d.id}
+                          className="cursor-pointer"
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("a")) return;
+                            router.push(`/panel/${empresaId}/compras/documentos/${d.id}`);
+                          }}
+                        >
                           <TableCell className="font-mono font-medium">
                             <Link
                               href={`/panel/${empresaId}/compras/documentos/${d.id}`}

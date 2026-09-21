@@ -108,7 +108,7 @@ export function DocumentosVentaLista({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={TODOS}>Todos los estados</SelectItem>
-            <SelectItem value="borrador">Borrador</SelectItem>
+            {clase !== "Factura" && <SelectItem value="borrador">Borrador</SelectItem>}
             <SelectItem value="contabilizado">Contabilizado</SelectItem>
             <SelectItem value="anulado">Anulado</SelectItem>
           </SelectContent>
@@ -144,7 +144,14 @@ export function DocumentosVentaLista({
                     </FilaGrupo>
                     {abierto &&
                       items.map((d) => (
-                        <TableRow key={d.id}>
+                        <TableRow
+                          key={d.id}
+                          className="cursor-pointer"
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("a")) return;
+                            router.push(`/panel/${empresaId}/ventas/documentos/${d.id}`);
+                          }}
+                        >
                           <TableCell className="font-mono font-medium">
                             <Link
                               href={`/panel/${empresaId}/ventas/documentos/${d.id}`}

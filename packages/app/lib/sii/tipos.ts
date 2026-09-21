@@ -31,7 +31,16 @@ export type DocRcv = {
 };
 
 export type CredencialesSii =
-  | { metodo: "clave"; rut: string; clave: string; ambiente: SiiAmbiente }
+  | {
+      metodo: "clave";
+      /** RUT de la empresa a la que se le pide el RCV. */
+      rut: string;
+      /** RUT con el que se hace login (puede ser un representante/mandatario, distinto
+       * de `rut`, operando con su propia Clave Tributaria "a nombre de" la empresa). */
+      rutTitular: string;
+      clave: string;
+      ambiente: SiiAmbiente;
+    }
   | {
       metodo: "certificado";
       /** RUT de la empresa a la que se le pide el RCV. */

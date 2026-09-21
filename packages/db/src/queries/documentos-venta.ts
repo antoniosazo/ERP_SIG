@@ -22,6 +22,7 @@ import {
   tercerosGrupos,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
+import { tienePagosAplicados } from "./pagos-saldos";
 import { siguienteCorrelativoAsiento } from "./asientos";
 import { resolverCuentaGeneral } from "./reglas-determinacion-cuenta";
 import { periodoDe } from "./periodos";
@@ -351,7 +352,7 @@ export async function guardarDocumentoVenta(
       documentoVentaId: id,
       numeroLinea: i,
       glosa: l.glosa ?? null,
-      productoId: l.productoId ?? null,
+      productoId: input.modalidad === "Servicio" ? null : (l.productoId ?? null),
       cuentaIngresoId: l.cuentaIngresoId,
       categoriaContableId: l.categoriaContableId ?? null,
       centroCostoId: l.centroCostoId ?? null,
@@ -383,6 +384,7 @@ export async function guardarDocumentoVenta(
     const [doc] = await tx
       .update(documentosVenta)
       .set({
+        modalidad: input.modalidad,
         terceroId: input.terceroId,
         tipoDocumentoId: input.tipoDocumentoId,
         folio: input.folio || null,
@@ -1025,6 +1027,9 @@ export async function anularDocumentoVenta(
       .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)));
     if (!doc) throw new Error("El documento no existe en esta empresa");
     if (doc.estado === "anulado") throw new Error("El documento ya está anulado");
+    if (await tienePagosAplicados(tx, empresaId, "venta", id)) {
+      throw new Error("El documento tiene pagos aplicados: anula primero el pago.");
+    }
 
     if (doc.estado === "contabilizado" && doc.asientoId) {
       const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
@@ -1250,6 +1255,74 @@ export async function crearNotaCreditoDesdeFactura(
         etiqueta: etiquetaDoc(doc),
         accion: "crear",
         despues: doc,
+      });
+    }
+    return doc;
+  });
+}
+
+/** Igual que en compras: vencimiento y contabilización son lo único editable de una factura contabilizada. */
+export async function actualizarFechasDocumentoVenta(
+  id: string,
+  empresaId: string,
+  input: { fechaVencimiento: string; fechaContabilizacion: string },
+  ctx?: AuditoriaCtx,
+) {
+  const [antes] = await db
+    .select()
+    .from(documentosVenta)
+    .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)));
+  if (!antes) throw new Error("El documento no existe en esta empresa");
+  if (antes.estado !== "contabilizado" || !antes.asientoId) {
+    throw new Error("Solo se editan las fechas de un documento contabilizado");
+  }
+  if (input.fechaVencimiento < antes.fechaEmision) {
+    throw new Error("La fecha de vencimiento no puede ser anterior a la de emisión");
+  }
+  const actual = antes.fechaContabilizacion ?? antes.fechaEmision;
+  const mueveAsiento = input.fechaContabilizacion !== actual;
+  if (mueveAsiento) {
+    if (input.fechaContabilizacion.slice(0, 4) !== actual.slice(0, 4)) {
+      throw new Error("La fecha de contabilización debe quedar en el mismo año (el correlativo del asiento es anual)");
+    }
+    for (const [fecha, cual] of [[actual, "actual"], [input.fechaContabilizacion, "nueva"]] as const) {
+      const per = await periodoDe(empresaId, fecha);
+      if (!per) throw new Error(`No hay un período contable para la fecha de contabilización ${cual}.`);
+      if (per.estado === PERIODO_BLOQUEA_VENTA) {
+        throw new Error(
+          `El período ${per.anio}-${String(per.mes).padStart(2, "0")} (fecha ${cual}) está bloqueado para ventas.`,
+        );
+      }
+    }
+  }
+
+  return db.transaction(async (tx) => {
+    if (mueveAsiento) {
+      await tx
+        .update(asientosContables)
+        .set({ fecha: input.fechaContabilizacion, updatedAt: new Date() })
+        .where(and(eq(asientosContables.id, antes.asientoId!), eq(asientosContables.empresaId, empresaId)));
+    }
+    const [doc] = await tx
+      .update(documentosVenta)
+      .set({
+        fechaVencimiento: input.fechaVencimiento,
+        fechaContabilizacion: input.fechaContabilizacion,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
+      .returning();
+    if (!doc) throw new Error("No se pudo actualizar el documento");
+    if (ctx) {
+      await registrarAuditoria(tx, {
+        empresaId,
+        ctx,
+        tabla: "documentos_venta",
+        registroId: doc.id,
+        etiqueta: etiquetaDoc(doc),
+        accion: "editar",
+        antes: { fechaVencimiento: antes.fechaVencimiento, fechaContabilizacion: antes.fechaContabilizacion },
+        despues: { fechaVencimiento: doc.fechaVencimiento, fechaContabilizacion: doc.fechaContabilizacion },
       });
     }
     return doc;

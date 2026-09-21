@@ -14,6 +14,7 @@ export const CLAVE_FORM_DOC_COMPRA = "documento_compra";
 export const CAMPOS_CABECERA: CampoDef[] = [
   { id: "terceroId", label: "Proveedor", estructural: true },
   { id: "tipoDocumentoId", label: "Tipo de documento", estructural: true },
+  { id: "modalidad", label: "Tipo (Artículo / Servicio)", estructural: true },
   { id: "fechaEmision", label: "Fecha del documento", estructural: true },
   { id: "fechaVencimiento", label: "Fecha de vencimiento", estructural: true },
   { id: "fechaContabilizacion", label: "Fecha de contabilización", estructural: true },

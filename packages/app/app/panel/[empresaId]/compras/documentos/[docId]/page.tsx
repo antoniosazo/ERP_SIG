@@ -9,13 +9,20 @@ import {
   listarTerceros,
   listarTiposDocumento,
   obtenerDocumentoCompraConLineas,
+  db,
+  obtenerEmpresa,
   obtenerPreferenciaFormulario,
+  productosPorIds,
+  saldosDocumentos,
 } from "@erp/db";
 import { configFormularioDocSchema } from "@erp/shared";
 import { requireSession } from "@/lib/auth-helpers";
+import { facturaDeDocumento } from "@/lib/factura-documento";
 import { CLAVE_FORM_DOC_COMPRA } from "@/lib/documento-compra-campos";
 import { DocumentoCompraForm } from "@/components/panel/documento-compra-form";
 import { DocumentoCompraToolbar } from "@/components/panel/documento-compra-toolbar";
+import { VolverBoton } from "@/components/panel/volver-boton";
+import { COMPRA_TIPO_META } from "@/lib/compras";
 import { TypographyHeading } from "@/components/ui/typography";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +51,30 @@ export default async function DocumentoCompraDetallePage({
       listarProductosParaCompra(empresaId),
     ]);
 
+  const [empresa, productosDoc] = await Promise.all([
+    obtenerEmpresa(empresaId),
+    productosPorIds(
+      empresaId,
+      lineas.map((l) => l.productoId).filter((x): x is string => !!x),
+    ),
+  ]);
+  const proveedor = terceros.find((t) => t.id === documento.terceroId);
+  const tipoDoc = tiposDoc.find((t) => t.id === documento.tipoDocumentoId);
+  const saldoDoc =
+    documento.estado === "contabilizado" && (documento.docTipo === "factura" || documento.docTipo === "nota_debito")
+      ? (await saldosDocumentos(db, empresaId, "compra", [docId])).get(docId)
+      : undefined;
+  const factura = facturaDeDocumento({
+    origen: "compra",
+    documento,
+    lineas,
+    empresa: { razonSocial: empresa?.razonSocial ?? "", rut: empresa?.rut ?? "" },
+    tercero: proveedor && { razonSocial: proveedor.razonSocial, rut: proveedor.rut },
+    tipoDocumento: tipoDoc?.nombre ?? documento.docTipo,
+    productos: productosDoc,
+    saldo: saldoDoc,
+  });
+
   const cfgParsed = configFormularioDocSchema.safeParse(configRaw ?? {});
   const config = cfgParsed.success ? cfgParsed.data : configFormularioDocSchema.parse({});
 
@@ -58,12 +89,18 @@ export default async function DocumentoCompraDetallePage({
 
   return (
     <>
+      <VolverBoton fallbackHref={`/panel/${empresaId}/compras/${COMPRA_TIPO_META[documento.docTipo].slug}`} />
       <TypographyHeading
         title={`${documento.numeroInterno ?? ""} ${documento.docTipo}`.trim()}
-        description="Documento de compra. Solo se edita en borrador; al contabilizar se genera el asiento."
+        description={
+          documento.docTipo === "factura"
+            ? "Factura contabilizada automáticamente. Una vez contabilizada solo se editan la fecha de vencimiento y la de contabilización."
+            : "Documento de compra. Solo se edita en borrador; al contabilizar se genera el asiento."
+        }
       />
       <DocumentoCompraToolbar
         empresaId={empresaId}
+        factura={factura}
         docId={docId}
         docTipo={documento.docTipo}
         estado={documento.estado}
@@ -123,6 +160,7 @@ export default async function DocumentoCompraDetallePage({
           glosaSugerida: p.glosaSugerida,
         }))}
         valoresIniciales={{
+          modalidad: documento.modalidad,
           docTipo: documento.docTipo,
           terceroId: documento.terceroId,
           tipoDocumentoId: documento.tipoDocumentoId,

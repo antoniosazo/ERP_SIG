@@ -122,3 +122,16 @@ export async function sembrarSeriesTercero(tx: Tx, empresaId: string): Promise<v
       target: [seriesNumeracion.empresaId, seriesNumeracion.ambito, seriesNumeracion.clave],
     });
 }
+
+/** Crea las series de numeración de pagos recibidos (PR) y efectuados (PE) — idempotente. */
+export async function sembrarSeriesPago(tx: Tx, empresaId: string): Promise<void> {
+  await tx
+    .insert(seriesNumeracion)
+    .values([
+      { empresaId, ambito: "pago" as const, clave: "recibido", prefijo: "PR", proximo: 1, digitos: 5 },
+      { empresaId, ambito: "pago" as const, clave: "efectuado", prefijo: "PE", proximo: 1, digitos: 5 },
+    ])
+    .onConflictDoNothing({
+      target: [seriesNumeracion.empresaId, seriesNumeracion.ambito, seriesNumeracion.clave],
+    });
+}

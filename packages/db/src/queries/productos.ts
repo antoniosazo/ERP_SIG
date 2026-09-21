@@ -1,5 +1,5 @@
 import type { CrearProductoInput, EditarProductoInput } from "@erp/shared";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
 import { productos, productosGrupos } from "../schema";
@@ -226,4 +226,14 @@ export async function empresaTieneGruposProducto(empresaId: string): Promise<boo
     .where(eq(productosGrupos.empresaId, empresaId))
     .limit(1);
   return row !== undefined;
+}
+
+/** Código y nombre de los productos indicados (para mostrar líneas de un documento). */
+export async function productosPorIds(empresaId: string, ids: string[]) {
+  if (ids.length === 0) return new Map<string, { codigo: string; nombre: string; tipo: string }>();
+  const rows = await db
+    .select({ id: productos.id, codigo: productos.codigo, nombre: productos.nombre, tipo: productos.tipo })
+    .from(productos)
+    .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, ids)));
+  return new Map(rows.map((r) => [r.id, { codigo: r.codigo, nombre: r.nombre, tipo: r.tipo as string }]));
 }

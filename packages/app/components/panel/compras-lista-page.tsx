@@ -29,7 +29,9 @@ export async function ComprasListaPage({
       <TypographyHeading
         title={meta.titulo}
         description={
-          meta.contabiliza
+          docTipo === "factura"
+            ? "Las facturas se contabilizan solas al guardarse o cargarse desde el SII (gasto + IVA crédito + cuenta por pagar)."
+            : meta.contabiliza
             ? "Al contabilizar se genera el asiento (gasto + IVA crédito + cuenta por pagar)."
             : "El pedido controla el saldo pendiente por línea; se trae a una factura para contabilizar."
         }

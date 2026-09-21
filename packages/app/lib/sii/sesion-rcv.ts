@@ -93,6 +93,42 @@ function parseFilaRcv(f: Record<string, unknown>, estado: SiiEstadoRcv, tipoDte:
   };
 }
 
+/** El portal no entregó XML para el rango: sin documentos, o más de los que permite una descarga. */
+export class RangoSinXmlError extends Error {
+  constructor(
+    readonly desde: string,
+    readonly hasta: string,
+  ) {
+    super(`El portal no entregó XML para ${desde}..${hasta} (rango vacío o con demasiados documentos).`);
+    this.name = "RangoSinXmlError";
+  }
+}
+
+export const esRangoSinXml = (e: unknown): e is RangoSinXmlError =>
+  e instanceof Error && e.name === "RangoSinXmlError";
+
+const UA_NAVEGADOR =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
+
+/** Mezcla las `Set-Cookie` de una respuesta sobre un header `Cookie` (las nuevas pisan a las viejas). */
+function fusionarCookies(cookies: string, setCookies: string[]): string {
+  if (setCookies.length === 0) return cookies;
+  const mapa = new Map<string, string>();
+  for (const par of cookies.split(";")) {
+    const [k, ...resto] = par.trim().split("=");
+    if (k) mapa.set(k, resto.join("="));
+  }
+  for (const c of setCookies) {
+    const [par] = c.split(";");
+    const [k, ...resto] = par!.split("=");
+    if (!k) continue;
+    const valor = resto.join("=");
+    if (valor === "" || /expires=Thu, 01[- ]Jan[- ]1970/i.test(c)) mapa.delete(k.trim());
+    else mapa.set(k.trim(), valor);
+  }
+  return [...mapa.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
 /**
  * Se autentica una sola vez (según lo implemente la subclase) y usa las cookies
  * resultantes tanto para `probar()` como para bajar el RCV de compras/ventas.
@@ -111,8 +147,49 @@ export abstract class SiiSesionCookieClient implements SiiClient {
 
   private async autenticar(): Promise<void> {
     if (this.cookies && Date.now() - this.cookiesTs < SESION_TTL_MS) return;
-    this.cookies = await this.obtenerCookies();
+    const cookiesLogin = await this.obtenerCookies();
+    this.cookies = await this.calentarSesion(cookiesLogin);
     this.cookiesTs = Date.now();
+  }
+
+  /**
+   * Tras el login, un navegador real navega a la home de "Mi SII" antes de tocar
+   * cualquier otro portal — esa carga puede fijar cookies adicionales (ej. `RUT_NS`,
+   * `DV_NS`, `NETSCAPE_LIVEWIRE.*`) que el login por sí solo no entrega. El RCV
+   * (`consdcvinternetui`) solo necesita `TOKEN` y por eso funcionaba igual sin este
+   * paso, pero el Sistema de Facturación Gratuita (`www1.sii.cl`, ver
+   * `descargarXmlCompras`/`descargarXmlVentas`) devolvía HTML de error en vez del XML
+   * — confirmado en vivo que faltaba algo del lado de las cookies. Replicamos ese
+   * salto extra y fusionamos las cookies nuevas con las del login.
+   *
+   * VALIDAR: si tras esto `www1.sii.cl` sigue sin reconocer la sesión, el problema no
+   * es falta de cookies sino otra cosa (ej. certificado TLS en vez de cookie) y hay
+   * que revisar de nuevo.
+   */
+  private async calentarSesion(cookies: string): Promise<string> {
+    const res = await fetch("https://misiir.sii.cl/cgi_misii/siihome.cgi", {
+      headers: { Cookie: cookies, "User-Agent": UA_NAVEGADOR },
+      redirect: "manual",
+    });
+    return fusionarCookies(cookies, res.headers.getSetCookie?.() ?? []);
+  }
+
+  /**
+   * Cierra la sesión en el SII (`autTermino.cgi`, el mismo que usa "Cerrar Sesión" de la
+   * barra). El SII limita las sesiones abiertas por RUT ("ha superado el máximo de sesiones
+   * autenticadas") y no las libera hasta que vencen: un proceso que se autentica seguido,
+   * como la descarga horaria, tiene que cerrar la suya al terminar.
+   */
+  async cerrarSesion(): Promise<void> {
+    const cookies = this.cookies;
+    this.cookies = null;
+    if (!cookies) return;
+    await fetch("https://zeusr.sii.cl/cgi_AUT2000/autTermino.cgi", {
+      headers: { Cookie: cookies, "User-Agent": UA_NAVEGADOR },
+      redirect: "manual",
+    })
+      .then((r) => r.arrayBuffer())
+      .catch(() => undefined);
   }
 
   async probar(): Promise<ResultadoPrueba> {
@@ -241,5 +318,159 @@ export abstract class SiiSesionCookieClient implements SiiClient {
       }
     }
     return out;
+  }
+
+  /**
+   * GET dentro del portal legacy `www1.sii.cl`: manda las cookies acumuladas y absorbe
+   * las `Set-Cookie` de la respuesta (el portal las va fijando a lo largo del recorrido).
+   */
+  private async getPortal(url: string, referer: string): Promise<Response> {
+    const res = await fetch(url, {
+      headers: {
+        Cookie: this.cookies!,
+        "User-Agent": UA_NAVEGADOR,
+        Referer: referer,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-419,es;q=0.9",
+      },
+      redirect: "manual",
+    });
+    this.cookies = fusionarCookies(this.cookies!, res.headers.getSetCookie?.() ?? []);
+    return res;
+  }
+
+  /**
+   * Descarga el XML `SetDTE` del Sistema de Facturación Gratuita (`www1.sii.cl`,
+   * Portal001) para un rango de fechas — a diferencia del RCV, trae el detalle línea
+   * por línea de cada documento (ver `dte-xml.ts`). Solo aplica a empresas cuyo
+   * `tipoFacturador = "SII Gratuito"`; un facturador comercial no publica sus DTE ahí.
+   *
+   * Pedir `mipeDownLoad.cgi` directo devolvía "Error al contribuyente": el portal solo
+   * acepta la descarga tras haber pasado por el launcher y el listado de documentos
+   * (así lo hace el navegador, según la captura de red), por eso se replica ese
+   * recorrido — launcher → listado inicial → listado filtrado → descarga — con
+   * `Referer` encadenado y las cookies que el portal va fijando en cada paso.
+   */
+  private async descargarXmlDte(
+    origen: "RCP" | "ENV",
+    fechaDesde: string,
+    fechaHasta: string,
+  ): Promise<Buffer> {
+    await this.autenticar();
+
+    const cgi = "https://www1.sii.cl/cgi-bin/Portal001";
+    const campoContraparte = origen === "RCP" ? "RUT_EMI" : "RUT_RECP";
+    const cgiListado = origen === "RCP" ? "mipeAdminDocsRcp.cgi" : "mipeAdminDocsEmi.cgi";
+    const opcion = origen === "RCP" ? 1 : 2;
+    const pasos: string[] = [];
+
+    // El launcher no entrega el listado directo: si la sesión no tiene empresa elegida,
+    // redirige (con JS) a `mipeSelEmpresa.cgi`, que elige la empresa del usuario autorizado
+    // (fija las cookies `NETSCAPE_LIVEWIRE.rcmp/dcmp`) y devuelve al launcher. El navegador
+    // sigue esos saltos solo; acá hay que seguirlos a mano. Sin esa empresa, el listado
+    // responde "Error al contribuyente" aunque la sesión sea válida.
+    const launcher = `${cgi}/mipeLaunchPage.cgi?OPCION=${opcion}&TIPO=4`;
+    let urlActual = launcher;
+    let refererActual = "https://www.sii.cl/servicios_online/1039-1183.html";
+    for (let salto = 0; salto < 4; salto++) {
+      const r = await this.getPortal(urlActual, refererActual);
+      const cuerpo = Buffer.from(await r.arrayBuffer()).toString("latin1");
+      pasos.push(`${new URL(urlActual).pathname.split("/").pop()}=${r.status}`);
+      const destino = r.headers.get("location") ?? /location\.replace\("([^"]+)"\)/.exec(cuerpo)?.[1];
+      if (!destino) break;
+      if (/RepresentacionNoAut/i.test(destino)) {
+        throw new Error(
+          `El SII no permite al titular operar como ${this.rut} en Facturación electrónica ` +
+            `(sin aplicación autorizada). Autorízala en el SII o conecta con la clave de la propia empresa.`,
+        );
+      }
+      refererActual = urlActual;
+      urlActual = new URL(destino, urlActual).toString();
+    }
+    const empresaPortal = /NETSCAPE_LIVEWIRE\.rcmp=([^;]+)/.exec(this.cookies!)?.[1];
+    if (empresaPortal && empresaPortal !== partesRut(this.rut).cuerpo) {
+      throw new Error(
+        `El portal de Facturación Gratuita seleccionó la empresa ${empresaPortal}, no ${this.rut}. ` +
+          `Este usuario está autorizado allí para otra empresa; revisa el titular configurado.`,
+      );
+    }
+
+    const filtrosVacios = `${campoContraparte}=&FOLIO=&RZN_SOC=&FEC_DESDE=&FEC_HASTA=&TPO_DOC=&ESTADO=&ORDEN=&NUM_PAG=1`;
+    const listadoInicial = `${cgi}/${cgiListado}?${filtrosVacios}`;
+    const rIni = await this.getPortal(listadoInicial, launcher);
+    pasos.push(`listado=${rIni.status}`);
+    await rIni.arrayBuffer();
+
+    const listadoFiltrado =
+      `${cgi}/${cgiListado}?ORDEN=&NUM_PAG=1&recaptcha-response=&${campoContraparte}=&FOLIO=&RZN_SOC=` +
+      `&FEC_DESDE=${fechaDesde}&FEC_HASTA=${fechaHasta}&TPO_DOC=&ESTADO=`;
+    const rFil = await this.getPortal(listadoFiltrado, listadoInicial);
+    pasos.push(`filtrado=${rFil.status}`);
+    const htmlFiltrado = Buffer.from(await rFil.arrayBuffer()).toString("latin1");
+    const tituloListado = /<title>([\s\S]*?)<\/title>/i.exec(htmlFiltrado)?.[1]?.replace(/\s+/g, " ").trim();
+    pasos.push(`título listado="${tituloListado ?? "?"}"`);
+
+    const params = new URLSearchParams({
+      ORIGEN: origen,
+      [campoContraparte]: "",
+      FOLIO: "",
+      RZN_SOC: "",
+      FEC_DESDE: fechaDesde,
+      FEC_HASTA: fechaHasta,
+      TPO_DOC: "",
+      ESTADO: "",
+      ORDEN: "",
+      DOWNLOAD: "XML",
+    });
+    const res = await this.getPortal(`${cgi}/mipeDownLoad.cgi?${params.toString()}`, listadoFiltrado);
+    pasos.push(`descarga=${res.status}`);
+    if (res.status !== 200) {
+      throw new Error(
+        `El SII respondió ${res.status} al descargar el XML de ${origen === "RCP" ? "compras" : "ventas"}. ` +
+          `Recorrido: ${pasos.join(", ")}.`,
+      );
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    // El portal legacy a veces responde 200 con una página de error HTML en vez del XML
+    // (ej. sesión no reconocida) — se detecta por el content-type, no por el status.
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
+      const texto = buf
+        .toString("latin1")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 600);
+      // Confirmado en vivo: con la empresa ya verificada (rcmp == RUT), el portal responde
+      // "Error al contribuyente" tanto si el rango no tiene documentos como si tiene más
+      // de ~20 (el tope de la descarga). No hay cómo distinguirlos acá: quien llama decide
+      // (ej. partir el rango en tramos más chicos).
+      if (empresaPortal === partesRut(this.rut).cuerpo && /^Error al contribuyente\b/i.test(texto)) {
+        throw new RangoSinXmlError(fechaDesde, fechaHasta);
+      }
+      const nombresCookies = this.cookies!
+        .split(";")
+        .map((c) => c.trim().split("=")[0])
+        .join(",");
+      throw new Error(
+        `El Sistema de Facturación Gratuita no devolvió un XML (content-type: ${contentType}). ` +
+          `Texto de la respuesta: ${texto || "(vacío)"}. ` +
+          `Recorrido: ${pasos.join(", ")}. Cookies enviadas: ${nombresCookies}.`,
+      );
+    }
+    return buf;
+  }
+
+  /** DTE de documentos recibidos (compras) en el rango `fechaDesde`..`fechaHasta` (`YYYY-MM-DD`). */
+  async descargarXmlCompras(fechaDesde: string, fechaHasta: string): Promise<Buffer> {
+    return this.descargarXmlDte("RCP", fechaDesde, fechaHasta);
+  }
+
+  /** DTE de documentos emitidos (ventas) en el rango `fechaDesde`..`fechaHasta` (`YYYY-MM-DD`). */
+  async descargarXmlVentas(fechaDesde: string, fechaHasta: string): Promise<Buffer> {
+    return this.descargarXmlDte("ENV", fechaDesde, fechaHasta);
   }
 }

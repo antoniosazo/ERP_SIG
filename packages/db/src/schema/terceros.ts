@@ -5,6 +5,7 @@ import { tipoTerceroEnum } from "./enums";
 import { categoriasContables } from "./categorias-contables";
 import { empresas } from "./empresas";
 import { impuestos } from "./impuestos";
+import { metodosPago } from "./metodos-pago";
 import { monedas } from "./monedas";
 import { planCuentas } from "./plan-cuentas";
 import { tercerosGrupos } from "./terceros-grupos";
@@ -48,6 +49,9 @@ export const terceros = pgTable(
       () => categoriasContables.id,
       { onDelete: "set null" },
     ),
+    metodoPagoDefaultId: uuid("metodo_pago_default_id").references(() => metodosPago.id, {
+      onDelete: "set null",
+    }),
     condicionPagoDias: integer("condicion_pago_dias").notNull().default(0),
     limiteCredito: montoColumn("limite_credito").notNull().default("0"),
     retencionHonorariosPct: numeric("retencion_honorarios_pct", { precision: 5, scale: 2 }),

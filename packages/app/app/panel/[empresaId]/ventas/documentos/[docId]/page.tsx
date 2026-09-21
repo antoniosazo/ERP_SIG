@@ -13,12 +13,17 @@ import {
   listarUsuariosDeEmpresa,
   notasCreditoDeFactura,
   obtenerDocumentoVentaConLineas,
+  db,
+  obtenerEmpresa,
   obtenerPreferenciaFormulario,
+  productosPorIds,
+  saldosDocumentos,
   obtenerTerceroConDetalle,
   saldosNotaCreditoPorFactura,
 } from "@erp/db";
 import { configFormularioDocSchema } from "@erp/shared";
 import { requireSession } from "@/lib/auth-helpers";
+import { facturaDeDocumento } from "@/lib/factura-documento";
 import { CLAVE_FORM_DOC_VENTA } from "@/lib/documento-venta-campos";
 import { DocumentoVentaForm } from "@/components/panel/documento-venta-form";
 import { DocumentoVentaToolbar } from "@/components/panel/documento-venta-toolbar";
@@ -33,6 +38,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { VolverBoton } from "@/components/panel/volver-boton";
+import { VENTA_CLASE_META } from "@/lib/ventas";
 import { TypographyHeading } from "@/components/ui/typography";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +88,30 @@ export default async function DocumentoVentaDetallePage({
     listarProductosParaDocumento(empresaId),
   ]);
 
+  const [empresa, productosDoc] = await Promise.all([
+    obtenerEmpresa(empresaId),
+    productosPorIds(
+      empresaId,
+      lineas.map((l) => l.productoId).filter((x): x is string => !!x),
+    ),
+  ]);
+  const clienteDoc = terceros.find((t) => t.id === documento.terceroId);
+  const tipoDocVenta = tiposDoc.find((t) => t.id === documento.tipoDocumentoId);
+  const saldoDoc =
+    documento.estado === "contabilizado" && (documento.clase === "Factura" || documento.clase === "Nota de Débito")
+      ? (await saldosDocumentos(db, empresaId, "venta", [docId])).get(docId)
+      : undefined;
+  const factura = facturaDeDocumento({
+    origen: "venta",
+    documento,
+    lineas,
+    empresa: { razonSocial: empresa?.razonSocial ?? "", rut: empresa?.rut ?? "" },
+    tercero: clienteDoc && { razonSocial: clienteDoc.razonSocial, rut: clienteDoc.rut },
+    tipoDocumento: tipoDocVenta?.nombre ?? documento.clase,
+    productos: productosDoc,
+    saldo: saldoDoc,
+  });
+
   const cfgParsed = configFormularioDocSchema.safeParse(configRaw ?? {});
   const config = cfgParsed.success ? cfgParsed.data : configFormularioDocSchema.parse({});
   const contactos = (terceroDetalle?.contactos ?? []).map((c) => ({ id: c.id, label: c.nombre }));
@@ -97,11 +128,16 @@ export default async function DocumentoVentaDetallePage({
 
   return (
     <>
+      <VolverBoton fallbackHref={`/panel/${empresaId}/ventas/${VENTA_CLASE_META[documento.clase].slug}`} />
       <TypographyHeading
         title={`${documento.numeroInterno ?? ""} ${documento.clase}`.trim()}
-        description="Documento de venta. Solo se puede editar en borrador; al contabilizar se genera el asiento."
+        description={
+          documento.clase === "Factura"
+            ? "Factura contabilizada automáticamente. Una vez contabilizada solo se editan la fecha de vencimiento y la de contabilización."
+            : "Documento de venta. Solo se puede editar en borrador; al contabilizar se genera el asiento."
+        }
       />
-      <DocumentoVentaToolbar empresaId={empresaId} docId={docId} config={config} />
+      <DocumentoVentaToolbar empresaId={empresaId} docId={docId} config={config} factura={factura} />
       <DocumentoVentaForm
         empresaId={empresaId}
         docId={docId}
@@ -148,6 +184,7 @@ export default async function DocumentoVentaDetallePage({
           .map((f) => ({ id: f.id, label: `${f.numeroInterno ?? ""} folio ${f.folio ?? "—"}` }))}
         saldosReferencia={saldos}
         valoresIniciales={{
+          modalidad: documento.modalidad,
           terceroId: documento.terceroId,
           tipoDocumentoId: documento.tipoDocumentoId,
           folio: documento.folio ?? "",

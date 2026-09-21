@@ -30,6 +30,12 @@ export interface SiiClient {
     tipoDoc: number,
     folio: string,
   ): Promise<{ respuesta: RespuestaSii; eventos: EventoDte[] }>;
+  /** Cierra la sesión abierta en el SII (si hay una). Seguro de llamar siempre. */
+  cerrarSesion(): Promise<void>;
+  /** XML `SetDTE` de documentos recibidos (compras) del Sistema de Facturación Gratuita. */
+  descargarXmlCompras(fechaDesde: string, fechaHasta: string): Promise<Buffer>;
+  /** XML `SetDTE` de documentos emitidos (ventas) del Sistema de Facturación Gratuita. */
+  descargarXmlVentas(fechaDesde: string, fechaHasta: string): Promise<Buffer>;
 }
 
 /**
@@ -48,7 +54,7 @@ function claveCache(cred: CredencialesSii): string {
     const huellaCert = createHash("sha256").update(cred.certificadoBase64).digest("hex");
     return `certificado:${cred.rut}:${cred.rutTitular}:${cred.certPass ?? ""}:${huellaCert}`;
   }
-  return `clave:${cred.rut}:${cred.clave}`;
+  return `clave:${cred.rut}:${cred.rutTitular}:${cred.clave}`;
 }
 
 /**
@@ -62,7 +68,7 @@ export function crearSiiClient(cred: CredencialesSii): SiiClient {
   const cliente =
     cred.metodo === "certificado"
       ? new SiiCertificadoClient(cred.rut, cred.rutTitular, cred.certificadoBase64, cred.certPass ?? "")
-      : new SiiClaveClient(cred.rut, cred.clave);
+      : new SiiClaveClient(cred.rut, cred.clave, cred.rutTitular);
   cacheClientes.set(key, cliente);
   return cliente;
 }
