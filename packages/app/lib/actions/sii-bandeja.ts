@@ -60,9 +60,9 @@ export async function cambiarEstadoBandejaAction(
   ids: string[],
   estado: "pendiente" | "descartado",
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireRolEnEmpresa(empresaId, ROLES);
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
   try {
-    await cambiarEstadoDtesBandeja(empresaId, ids, estado);
+    await cambiarEstadoDtesBandeja(empresaId, ids, estado, auditCtx(session));
     for (const p of rutasBandeja(empresaId)) revalidatePath(p);
     return { ok: true };
   } catch (e) {

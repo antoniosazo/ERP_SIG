@@ -324,8 +324,9 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
     const cierresCheque = mediosResueltos
       .map((m, i) => ({ m, medio: mediosInsertados.find((x) => x.numeroLinea === i) }))
       .filter((x) => x.m.metodo.tipo === "Cheque" && x.medio);
+    let chequesCreados: { id: string; numero: string; estado: string }[] = [];
     if (cierresCheque.length) {
-      await tx.insert(cheques).values(
+      chequesCreados = await tx.insert(cheques).values(
         cierresCheque.map(({ m, medio }) => ({
           empresaId,
           tipo: esRecibido ? ("Recibido" as const) : ("Emitido" as const),
@@ -339,7 +340,7 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
           fechaCobro: m.fechaCobro ?? null,
           estado: esRecibido ? ("en_cartera" as const) : ("emitido" as const),
         })),
-      );
+      ).returning({ id: cheques.id, numero: cheques.numero, estado: cheques.estado });
     }
     if (input.aplicaciones.length) {
       await tx.insert(pagosDocumentos).values(
@@ -401,15 +402,39 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
       .where(eq(pagos.id, pago.id))
       .returning();
     if (ctx) {
+      const etiquetaPago = `${esRecibido ? "Pago recibido" : "Pago efectuado"} ${numeroInterno}`;
       await registrarAuditoria(tx, {
         empresaId,
         ctx,
         tabla: "pagos",
         registroId: pago.id,
-        etiqueta: numeroInterno,
+        etiqueta: etiquetaPago,
         accion: "crear",
-        despues: { ...final, asiento: correlativo },
+        despues: {
+          ...final,
+          asientoCorrelativo: correlativo,
+          medios: mediosResueltos.map((m) => ({
+            metodo: m.metodo.nombre,
+            tipo: m.metodo.tipo,
+            monto: m.monto,
+            referencia: m.referencia ?? null,
+            chequeNumero: m.chequeNumero ?? null,
+          })),
+          documentosAplicados: input.aplicaciones.map((a) => ({ documentoId: a.documentoId, monto: a.monto })),
+          anticipo: redondear(totalMedios - totalAplicado),
+        },
       });
+      for (const c of chequesCreados) {
+        await registrarAuditoria(tx, {
+          empresaId,
+          ctx,
+          tabla: "cheques",
+          registroId: c.id,
+          etiqueta: `Cheque N° ${c.numero}`,
+          accion: "crear",
+          despues: { estado: c.estado, pago: numeroInterno, tipo: esRecibido ? "Recibido" : "Emitido" },
+        });
+      }
     }
     return { pago: final!, correlativoAsiento: correlativo };
   });
@@ -478,6 +503,20 @@ export async function anularPago(pagoId: string, empresaId: string, motivo: stri
     );
     if (chequesPago.length) {
       await tx.update(cheques).set({ estado: "anulado", updatedAt: new Date() }).where(eq(cheques.pagoId, pagoId));
+      if (ctx) {
+        for (const c of chequesPago) {
+          await registrarAuditoria(tx, {
+            empresaId,
+            ctx: { ...ctx, motivo },
+            tabla: "cheques",
+            registroId: c.id,
+            etiqueta: `Cheque N° ${c.numero}`,
+            accion: "cambio_estado",
+            antes: { estado: c.estado },
+            despues: { estado: "anulado", motivo: `Anulación del pago ${pago.numeroInterno}` },
+          });
+        }
+      }
     }
     const [act] = await tx
       .update(pagos)
@@ -490,7 +529,7 @@ export async function anularPago(pagoId: string, empresaId: string, motivo: stri
         ctx: { ...ctx, motivo },
         tabla: "pagos",
         registroId: pago.id,
-        etiqueta: pago.numeroInterno,
+        etiqueta: `${pago.tipo === "Recibido" ? "Pago recibido" : "Pago efectuado"} ${pago.numeroInterno}`,
         accion: "cambio_estado",
         antes: { estado: pago.estado },
         despues: { estado: "anulado", reversa: correlativo },

@@ -238,10 +238,27 @@ export async function registrarDeposito(empresaId: string, input: RegistrarDepos
         ctx,
         tabla: "depositos",
         registroId: dep.id,
-        etiqueta: numeroInterno,
+        etiqueta: `Depósito ${numeroInterno}`,
         accion: "crear",
-        despues: { ...final, cheques: selec.length, asiento: correlativo },
+        despues: {
+          ...final,
+          asientoCorrelativo: correlativo,
+          cuentaBancaria: cb.numeroCuenta,
+          cheques: selec.map((c) => ({ numero: c.numero, monto: Number(c.monto) })),
+        },
       });
+      for (const c of selec) {
+        await registrarAuditoria(tx, {
+          empresaId,
+          ctx,
+          tabla: "cheques",
+          registroId: c.id,
+          etiqueta: `Cheque N° ${c.numero}`,
+          accion: "cambio_estado",
+          antes: { estado: "en_cartera" },
+          despues: { estado: "depositado", deposito: numeroInterno },
+        });
+      }
     }
     return { deposito: final!, correlativoAsiento: correlativo };
   });
@@ -315,11 +332,23 @@ export async function anularDeposito(depositoId: string, empresaId: string, moti
         ctx: { ...ctx, motivo },
         tabla: "depositos",
         registroId: dep.id,
-        etiqueta: dep.numeroInterno,
+        etiqueta: `Depósito ${dep.numeroInterno}`,
         accion: "cambio_estado",
         antes: { estado: dep.estado },
         despues: { estado: "anulado", reversa: correlativo },
       });
+      for (const c of items) {
+        await registrarAuditoria(tx, {
+          empresaId,
+          ctx: { ...ctx, motivo },
+          tabla: "cheques",
+          registroId: c.id,
+          etiqueta: `Cheque N° ${c.numero}`,
+          accion: "cambio_estado",
+          antes: { estado: "depositado", deposito: dep.numeroInterno },
+          despues: { estado: "en_cartera", motivo: `Anulación del depósito ${dep.numeroInterno}` },
+        });
+      }
     }
     return act!;
   });
@@ -416,6 +445,7 @@ export async function protestarCheque(
     ]);
 
     // ── Reabre la deuda: reversa proporcional de lo aplicado por este pago ──
+    let reabiertos: { documentoId: string; monto: number }[] = [];
     const apl = await tx
       .select()
       .from(pagosDocumentos)
@@ -439,6 +469,10 @@ export async function protestarCheque(
           chequeId: cheque.id,
         }));
       if (filas.length) await tx.insert(pagosDocumentos).values(filas);
+      reabiertos = filas.map((f) => ({
+        documentoId: (f.documentoVentaId ?? f.documentoCompraId) as string,
+        monto: -Number(f.montoAplicado),
+      }));
     }
 
     const [act] = await tx
@@ -458,10 +492,10 @@ export async function protestarCheque(
         ctx: { ...ctx, motivo: input.motivo },
         tabla: "cheques",
         registroId: cheque.id,
-        etiqueta: `Cheque ${cheque.numero}`,
+        etiqueta: `Cheque N° ${cheque.numero}`,
         accion: "cambio_estado",
         antes: { estado: cheque.estado },
-        despues: { estado: "protestado", asiento: correlativo, gastos },
+        despues: { estado: "protestado", asientoCorrelativo: correlativo, gastosProtesto: gastos, deudaReabierta: reabiertos },
       });
     }
     return act!;

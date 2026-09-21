@@ -1,6 +1,6 @@
 "use server";
 
-import { anularDeposito, protestarCheque, registrarDeposito } from "@erp/db";
+import { anularDeposito, listarAuditoriaDeRegistro, protestarCheque, registrarDeposito } from "@erp/db";
 import {
   anularPagoSchema,
   protestarChequeSchema,
@@ -10,6 +10,7 @@ import {
   type RegistrarDepositoInput,
 } from "@erp/shared";
 import { revalidatePath } from "next/cache";
+import type { HistorialResultado } from "@/lib/actions/ventas";
 import { auditCtx, requireRolEnEmpresa } from "@/lib/auth-helpers";
 
 const ROLES = ["Administrador", "Contador"];
@@ -70,6 +71,50 @@ export async function protestarChequeAction(
     await protestarCheque(chequeId, empresaId, parsed.data, auditCtx(session));
     revalidar(empresaId);
     return { ok: true };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+/** Bitácora de modificaciones de este registro de tesorería. */
+export async function historialDepositoAction(empresaId: string, registroId: string): Promise<HistorialResultado> {
+  await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    const filas = await listarAuditoriaDeRegistro(empresaId, "depositos", registroId);
+    return {
+      ok: true,
+      filas: filas.map((f) => ({
+        id: f.id,
+        creadoEn: f.creadoEn.toISOString(),
+        usuarioNombre: f.usuarioNombre,
+        accion: f.accion,
+        motivo: f.motivo,
+        valoresAnteriores: (f.valoresAnteriores as Record<string, unknown> | null) ?? null,
+        valoresNuevos: (f.valoresNuevos as Record<string, unknown> | null) ?? null,
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+/** Bitácora de modificaciones de este registro de tesorería. */
+export async function historialChequeAction(empresaId: string, registroId: string): Promise<HistorialResultado> {
+  await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    const filas = await listarAuditoriaDeRegistro(empresaId, "cheques", registroId);
+    return {
+      ok: true,
+      filas: filas.map((f) => ({
+        id: f.id,
+        creadoEn: f.creadoEn.toISOString(),
+        usuarioNombre: f.usuarioNombre,
+        accion: f.accion,
+        motivo: f.motivo,
+        valoresAnteriores: (f.valoresAnteriores as Record<string, unknown> | null) ?? null,
+        valoresNuevos: (f.valoresNuevos as Record<string, unknown> | null) ?? null,
+      })),
+    };
   } catch (error) {
     return { ok: false, error: mensajeError(error) };
   }

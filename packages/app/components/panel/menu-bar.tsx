@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Menubar } from "radix-ui";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
+import { GRUPOS, RESUMEN, type Item } from "@/components/panel/panel-nav";
 import { logoutAction } from "@/lib/actions/auth";
 import { setUiThemeAction } from "@/lib/actions/ui-theme";
 import type { UiTheme } from "@/lib/ui-theme";
@@ -44,6 +45,19 @@ export function MenuBar({
 
   const irA = (href: string) => router.push(`${base}${href}`);
   const setTema = (t: UiTheme) => startTransition(() => setUiThemeAction(t));
+
+  // Misma opción que en el árbol lateral: mismo ícono, texto y destino.
+  const renderItem = (item: Item) => {
+    const Icono = item.icon;
+    return (
+      <Menubar.Item key={item.href || "resumen"} className={itemCls} onSelect={() => irA(item.href)}>
+        <span className="flex items-center gap-2">
+          <Icono className="size-3.5 shrink-0 text-muted-foreground" />
+          {item.label}
+        </span>
+      </Menubar.Item>
+    );
+  };
 
   return (
     <>
@@ -110,27 +124,34 @@ export function MenuBar({
             <Menubar.Trigger className={triggerCls}>Módulos</Menubar.Trigger>
             <Menubar.Portal>
               <Menubar.Content className={contentCls} align="start" sideOffset={4}>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/configuracion/empresa")}>
-                  Administración
-                </Menubar.Item>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/maestros/terceros")}>
-                  Socios de negocio
-                </Menubar.Item>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/inventario/productos")}>
-                  Inventario
-                </Menubar.Item>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/ventas/facturas")}>
-                  Ventas
-                </Menubar.Item>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/compras/facturas")}>
-                  Compras
-                </Menubar.Item>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/configuracion/plan-cuentas")}>
-                  Plan de cuentas
-                </Menubar.Item>
-                <Menubar.Item className={itemCls} onSelect={() => irA("/configuracion/auditoria")}>
-                  Auditoría
-                </Menubar.Item>
+                {renderItem(RESUMEN)}
+                <Menubar.Separator className={sepCls} />
+                {GRUPOS.map((grupo) => (
+                  <Menubar.Sub key={grupo.label}>
+                    <Menubar.SubTrigger className={itemCls}>
+                      {grupo.label}
+                      <ChevronRightIcon className="size-3.5" />
+                    </Menubar.SubTrigger>
+                    <Menubar.Portal>
+                      <Menubar.SubContent className={contentCls} sideOffset={2} alignOffset={-4}>
+                        {grupo.items?.map(renderItem)}
+                        {grupo.subgrupos?.map((sg) => (
+                          <Menubar.Sub key={sg.label}>
+                            <Menubar.SubTrigger className={itemCls}>
+                              {sg.label}
+                              <ChevronRightIcon className="size-3.5" />
+                            </Menubar.SubTrigger>
+                            <Menubar.Portal>
+                              <Menubar.SubContent className={contentCls} sideOffset={2} alignOffset={-4}>
+                                {sg.items.map(renderItem)}
+                              </Menubar.SubContent>
+                            </Menubar.Portal>
+                          </Menubar.Sub>
+                        ))}
+                      </Menubar.SubContent>
+                    </Menubar.Portal>
+                  </Menubar.Sub>
+                ))}
               </Menubar.Content>
             </Menubar.Portal>
           </Menubar.Menu>

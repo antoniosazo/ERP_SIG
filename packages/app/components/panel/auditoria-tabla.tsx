@@ -53,6 +53,12 @@ const MODULOS: Record<string, string> = {
   stock_movimientos: "Movimientos de stock",
   sii_credenciales: "Conexión SII",
   sii_importaciones: "Importaciones SII",
+  sii_dtes_pendientes: "Bandeja SII",
+  pagos: "Pagos recibidos y efectuados",
+  cheques: "Cheques",
+  depositos: "Depósitos",
+  cuentas_bancarias: "Cuentas bancarias",
+  metodos_pago: "Métodos de pago",
   periodos_contables: "Períodos contables",
   empresas: "Empresa",
 };

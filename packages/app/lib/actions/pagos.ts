@@ -1,6 +1,6 @@
 "use server";
 
-import { anularPago, listarDocumentosAbiertos, registrarPago, type DocumentoAbierto } from "@erp/db";
+import { anularPago, listarAuditoriaDeRegistro, listarDocumentosAbiertos, registrarPago, type DocumentoAbierto } from "@erp/db";
 import {
   anularPagoSchema,
   registrarPagoSchema,
@@ -9,6 +9,7 @@ import {
   type RegistrarPagoInput,
 } from "@erp/shared";
 import { revalidatePath } from "next/cache";
+import type { HistorialResultado } from "@/lib/actions/ventas";
 import { auditCtx, requireRolEnEmpresa } from "@/lib/auth-helpers";
 import { PAGO_META } from "@/lib/pagos";
 
@@ -73,6 +74,28 @@ export async function anularPagoAction(
     revalidar(empresaId);
     revalidatePath(`/panel/${empresaId}/tesoreria`, "layout");
     return { ok: true };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+/** Bitácora de modificaciones de este registro de tesorería. */
+export async function historialPagoAction(empresaId: string, registroId: string): Promise<HistorialResultado> {
+  await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    const filas = await listarAuditoriaDeRegistro(empresaId, "pagos", registroId);
+    return {
+      ok: true,
+      filas: filas.map((f) => ({
+        id: f.id,
+        creadoEn: f.creadoEn.toISOString(),
+        usuarioNombre: f.usuarioNombre,
+        accion: f.accion,
+        motivo: f.motivo,
+        valoresAnteriores: (f.valoresAnteriores as Record<string, unknown> | null) ?? null,
+        valoresNuevos: (f.valoresNuevos as Record<string, unknown> | null) ?? null,
+      })),
+    };
   } catch (error) {
     return { ok: false, error: mensajeError(error) };
   }

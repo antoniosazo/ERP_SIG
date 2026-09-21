@@ -16,7 +16,7 @@ import {
   tercerosGrupos,
   tiposDocumento,
 } from "../schema";
-import type { AuditoriaCtx } from "./auditoria";
+import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { crearTercero } from "./terceros";
 import { contabilizarDocumentoCompra, crearDocumentoCompra, guardarDocumentoCompra } from "./documentos-compra";
 import { contabilizarDocumentoVenta, crearDocumentoVenta, guardarDocumentoVenta } from "./documentos-venta";
@@ -683,6 +683,20 @@ export async function cargarDtesDeBandeja(
           resueltoEn: new Date(),
         })
         .where(eq(siiDtesPendientes.id, f.id));
+      if (ctx) {
+        await db.transaction(async (tx) =>
+          registrarAuditoria(tx, {
+            empresaId,
+            ctx,
+            tabla: "sii_dtes_pendientes",
+            registroId: f.id,
+            etiqueta: `DTE ${f.tipoDte} N° ${f.folio} — ${f.razonSocialContraparte ?? f.rutContraparte}`,
+            accion: "cambio_estado",
+            antes: { estado: "pendiente" },
+            despues: { estado: "cargado", documentoId: r.documentoId, origen: f.origen },
+          }),
+        );
+      }
       out.cargados++;
       out.detalle.push({
         id: f.id,
@@ -706,19 +720,40 @@ export async function cambiarEstadoDtesBandeja(
   empresaId: string,
   ids: string[],
   estado: "pendiente" | "descartado",
+  ctx?: AuditoriaCtx,
 ) {
   if (ids.length === 0) return;
-  await db
-    .update(siiDtesPendientes)
-    .set({ estado, error: null, resueltoEn: estado === "descartado" ? new Date() : null })
-    .where(
-      and(
-        eq(siiDtesPendientes.empresaId, empresaId),
-        inArray(siiDtesPendientes.id, ids),
-        // Un DTE ya cargado no se toca: su documento existe.
-        inArray(siiDtesPendientes.estado, ["pendiente", "descartado"]),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    // Un DTE ya cargado no se toca: su documento existe.
+    const antes = await tx
+      .select()
+      .from(siiDtesPendientes)
+      .where(
+        and(
+          eq(siiDtesPendientes.empresaId, empresaId),
+          inArray(siiDtesPendientes.id, ids),
+          inArray(siiDtesPendientes.estado, ["pendiente", "descartado"]),
+        ),
+      );
+    await tx
+      .update(siiDtesPendientes)
+      .set({ estado, error: null, resueltoEn: estado === "descartado" ? new Date() : null })
+      .where(inArray(siiDtesPendientes.id, antes.map((a) => a.id)));
+    if (ctx) {
+      for (const a of antes.filter((x) => x.estado !== estado)) {
+        await registrarAuditoria(tx, {
+          empresaId,
+          ctx,
+          tabla: "sii_dtes_pendientes",
+          registroId: a.id,
+          etiqueta: `DTE ${a.tipoDte} N° ${a.folio} — ${a.razonSocialContraparte ?? a.rutContraparte}`,
+          accion: "cambio_estado",
+          antes: { estado: a.estado },
+          despues: { estado },
+        });
+      }
+    }
+  });
 }
 
 export async function registrarDescargaXml(empresaId: string, detalle: string) {

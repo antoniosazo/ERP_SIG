@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { depositarChequesAction, protestarChequeAction } from "@/lib/actions/cheques";
+import { depositarChequesAction, historialChequeAction, protestarChequeAction } from "@/lib/actions/cheques";
+import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -157,7 +158,7 @@ export function ChequesLista({
                 <TableHead>Cobro</TableHead>
                 <TableHead>Pago</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-40" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -207,7 +208,10 @@ export function ChequesLista({
                       </Badge>
                       {c.motivoProtesto && <div className="text-xs text-muted-foreground">{c.motivoProtesto}</div>}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="whitespace-nowrap text-right">
+                      <span className="mr-1 inline-block align-middle">
+                        <HistorialDocumentoDialog empresaId={empresaId} docId={c.id} historial={historialChequeAction} />
+                      </span>
                       {c.estado === "depositado" && c.tipo === "Recibido" && (
                         <Button
                           variant="ghost"

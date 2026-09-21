@@ -7,7 +7,9 @@ import {
   listarPlanCuentasDeEmpresa,
   obtenerDepositoConDetalle,
 } from "@erp/db";
+import { historialDepositoAction } from "@/lib/actions/cheques";
 import { AsientoTabla } from "@/components/panel/asiento-tabla";
+import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
 import { ChequesLista } from "@/components/panel/cheques-lista";
 import { DepositoAnularBoton } from "@/components/panel/deposito-anular-boton";
 import { VolverBoton } from "@/components/panel/volver-boton";
@@ -139,6 +141,7 @@ export async function DepositoDetallePage({ empresaId, depositoId }: { empresaId
       <div className="flex flex-wrap items-center gap-3">
         <Badge variant={anulado ? "secondary" : "default"}>{anulado ? "Anulado" : "Contabilizado"}</Badge>
         {!anulado && <DepositoAnularBoton empresaId={empresaId} depositoId={deposito.id} />}
+        <HistorialDocumentoDialog empresaId={empresaId} docId={deposito.id} historial={historialDepositoAction} />
         {anulado && deposito.motivoAnulacion && (
           <span className="text-sm text-muted-foreground">Motivo: {deposito.motivoAnulacion}</span>
         )}

@@ -9,7 +9,9 @@ import {
 } from "@erp/db";
 import type { PagoTipo } from "@erp/shared";
 import { PAGO_META } from "@/lib/pagos";
+import { historialPagoAction } from "@/lib/actions/pagos";
 import { AsientoTabla } from "@/components/panel/asiento-tabla";
+import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
 import { PagoAnularBoton } from "@/components/panel/pago-anular-boton";
 import { PagoForm } from "@/components/panel/pago-form";
 import { PagosLista } from "@/components/panel/pagos-lista";
@@ -109,6 +111,7 @@ export async function PagoDetallePage({
       <div className="flex flex-wrap items-center gap-3">
         <Badge variant={anulado ? "secondary" : "default"}>{anulado ? "Anulado" : "Contabilizado"}</Badge>
         {!anulado && <PagoAnularBoton empresaId={empresaId} pagoId={pago.id} />}
+        <HistorialDocumentoDialog empresaId={empresaId} docId={pago.id} historial={historialPagoAction} />
         {anulado && pago.motivoAnulacion && (
           <span className="text-sm text-muted-foreground">Motivo: {pago.motivoAnulacion}</span>
         )}
