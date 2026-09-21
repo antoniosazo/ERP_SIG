@@ -12,6 +12,7 @@ import { AsientoTabla } from "@/components/panel/asiento-tabla";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
 import { ChequesLista } from "@/components/panel/cheques-lista";
 import { DepositoAnularBoton } from "@/components/panel/deposito-anular-boton";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +51,7 @@ export async function ChequesPage({ empresaId, estado }: { empresaId: string; es
           tipo: c.tipo,
           numero: c.numero,
           tercero: c.tercero,
+          terceroId: c.terceroId,
           banco: c.banco,
           monto: Number(c.monto),
           fechaEmision: c.fechaEmision,
@@ -183,7 +185,11 @@ export async function DepositoDetallePage({ empresaId, depositoId }: { empresaId
               {cheques.map((c) => (
                 <tr key={c.id} className="border-t">
                   <td className="py-1.5 font-mono">{c.numero}</td>
-                  <td>{c.tercero}</td>
+                  <td>
+                    <TerceroEnlace empresaId={empresaId} terceroId={c.terceroId}>
+                      {c.tercero}
+                    </TerceroEnlace>
+                  </td>
                   <td className="text-muted-foreground">{c.banco ?? "—"}</td>
                   <td>{c.estado}</td>
                   <td className="text-right tabular-nums">{fmt(Number(c.monto))}</td>

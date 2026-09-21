@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { depositarChequesAction, historialChequeAction, protestarChequeAction } from "@/lib/actions/cheques";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,6 +20,7 @@ export type ChequeFila = {
   tipo: string;
   numero: string;
   tercero: string;
+  terceroId: string;
   banco: string | null;
   monto: number;
   fechaEmision: string;
@@ -180,7 +182,11 @@ export function ChequesLista({
                     )}
                     <TableCell className="font-mono font-medium">{c.numero}</TableCell>
                     <TableCell className="text-muted-foreground">{c.tipo}</TableCell>
-                    <TableCell>{c.tercero}</TableCell>
+                    <TableCell>
+                      <TerceroEnlace empresaId={empresaId} terceroId={c.terceroId}>
+                        {c.tercero}
+                      </TerceroEnlace>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{c.banco ?? "—"}</TableCell>
                     <TableCell className="text-right tabular-nums">{fmt(c.monto)}</TableCell>
                     <TableCell className="tabular-nums text-muted-foreground">{c.fechaEmision}</TableCell>

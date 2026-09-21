@@ -19,6 +19,7 @@ import {
 } from "@/lib/actions/ventas";
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-venta-campos";
 import { VENTA_CLASE_META } from "@/lib/ventas";
+import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -275,6 +276,14 @@ export function DocumentoVentaForm({
       case "terceroId":
         return campo(
           "Cliente",
+          <div className="flex items-center gap-2">
+            {watch("terceroId") && (
+              <FlechaDetalle
+                href={`/panel/${empresaId}/maestros/terceros/${watch("terceroId") as string}`}
+                title="Ver ficha y cuenta corriente"
+              />
+            )}
+            <div className="min-w-0 flex-1">
           <Select
             value={(watch("terceroId") as string | undefined) ?? NINGUNA}
             onValueChange={(v) => {
@@ -298,7 +307,9 @@ export function DocumentoVentaForm({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>,
+          </Select>
+            </div>
+          </div>,
         );
       case "modalidad":
         return campo(

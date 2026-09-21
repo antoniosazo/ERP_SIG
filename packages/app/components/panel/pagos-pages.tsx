@@ -12,6 +12,7 @@ import { PAGO_META } from "@/lib/pagos";
 import { historialPagoAction } from "@/lib/actions/pagos";
 import { AsientoTabla } from "@/components/panel/asiento-tabla";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { PagoAnularBoton } from "@/components/panel/pago-anular-boton";
 import { PagoForm } from "@/components/panel/pago-form";
 import { PagosLista } from "@/components/panel/pagos-lista";
@@ -43,6 +44,7 @@ export async function PagosListaPage({ empresaId, tipo }: { empresaId: string; t
           numeroInterno: p.numeroInterno,
           fechaPago: p.fechaPago,
           tercero: p.tercero,
+          terceroId: p.terceroId,
           medios: p.medios,
           montoTotal: Number(p.montoTotal),
           montoAplicado: Number(p.montoAplicado),
@@ -105,7 +107,11 @@ export async function PagoDetallePage({
       <VolverBoton fallbackHref={`/panel/${empresaId}/tesoreria/${meta.slug}`} />
       <TypographyHeading
         title={`${meta.titulo.slice(0, -1)} ${pago.numeroInterno}`}
-        description={`${meta.tercero}: ${tercero?.razonSocial ?? "—"} (${tercero?.rut ?? ""})`}
+        description={
+          <TerceroEnlace empresaId={empresaId} terceroId={tercero?.id}>
+            {meta.tercero}: {tercero?.razonSocial ?? "—"} ({tercero?.rut ?? ""})
+          </TerceroEnlace>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-3">

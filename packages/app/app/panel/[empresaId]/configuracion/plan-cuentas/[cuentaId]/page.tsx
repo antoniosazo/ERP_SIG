@@ -4,6 +4,7 @@ import { movimientosCuenta, type MovimientoMayor } from "@erp/db";
 import { FilaEnlace } from "@/components/panel/fila-enlace";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { ETIQUETA_ORIGEN, rutaOrigen } from "@/lib/origen-asiento";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,7 +96,7 @@ export default async function LibroMayorPage({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-28">Fecha</TableHead>
-                <TableHead className="w-20">Asiento</TableHead>
+                <TableHead className="w-32">Asiento</TableHead>
                 {r.incluyeHijas && <TableHead>Cuenta</TableHead>}
                 <TableHead>Glosa</TableHead>
                 <TableHead>Tercero</TableHead>
@@ -103,7 +104,6 @@ export default async function LibroMayorPage({
                 <TableHead className="text-right">Debe</TableHead>
                 <TableHead className="text-right">Haber</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
-                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -112,21 +112,33 @@ export default async function LibroMayorPage({
                   Saldo inicial al {desde}
                 </TableCell>
                 <TableCell className={`text-right tabular-nums ${r.saldoInicial < 0 ? "text-destructive" : ""}`}>{fmt(r.saldoInicial)}</TableCell>
-                <TableCell />
               </TableRow>
               {filas.map(({ m, acumulado }) => {
                 const ruta = rutaOrigen(empresaId, m);
                 return (
                   <FilaEnlace key={m.lineaId} href={ruta} title="Ir al documento">
                     <TableCell className="tabular-nums text-muted-foreground">{m.fecha}</TableCell>
-                    <TableCell className="font-mono">{m.correlativo}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {ruta ? <FlechaDetalle href={ruta} title="Ir al documento" /> : <span className="size-6 shrink-0" />}
+                        <span className="font-mono">{m.correlativo}</span>
+                      </div>
+                    </TableCell>
                     {r.incluyeHijas && (
                       <TableCell className="whitespace-nowrap">
                         <span className="font-mono text-muted-foreground">{m.cuentaCodigo}</span> {m.cuentaNombre}
                       </TableCell>
                     )}
                     <TableCell>{m.glosaLinea || m.glosaAsiento}</TableCell>
-                    <TableCell className="text-muted-foreground">{m.tercero ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {m.tercero ? (
+                        <TerceroEnlace empresaId={empresaId} terceroId={m.terceroId}>
+                          {m.tercero}
+                        </TerceroEnlace>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
                     <TableCell>
                       {ruta ? (
                         <Link href={ruta} className="hover:underline">
@@ -141,9 +153,6 @@ export default async function LibroMayorPage({
                     <TableCell className={`text-right tabular-nums ${acumulado < 0 ? "text-destructive" : ""}`}>
                       {fmt(acumulado)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {ruta && <FlechaDetalle href={ruta} title="Ir al documento" />}
-                    </TableCell>
                   </FilaEnlace>
                 );
               })}
@@ -152,7 +161,6 @@ export default async function LibroMayorPage({
                 <TableCell className="text-right tabular-nums">{fmt(r.totalDebe)}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmt(r.totalHaber)}</TableCell>
                 <TableCell className={`text-right tabular-nums ${r.saldoFinal < 0 ? "text-destructive" : ""}`}>{fmt(r.saldoFinal)}</TableCell>
-                <TableCell />
               </TableRow>
             </TableBody>
           </Table>

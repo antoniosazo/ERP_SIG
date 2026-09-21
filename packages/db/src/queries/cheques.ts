@@ -109,6 +109,7 @@ export async function obtenerDepositoConDetalle(depositoId: string, empresaId: s
       id: cheques.id,
       numero: cheques.numero,
       tercero: terceros.razonSocial,
+      terceroId: cheques.terceroId,
       banco: bancos.nombre,
       monto: depositosCheques.monto,
       fechaCobro: cheques.fechaCobro,

@@ -133,14 +133,13 @@ export async function TerceroCuentaCorriente({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-28">Fecha</TableHead>
-                    <TableHead className="w-20">Asiento</TableHead>
+                    <TableHead className="w-32">Asiento</TableHead>
                     {dosTipos && <TableHead>Cuenta</TableHead>}
                     <TableHead>Glosa</TableHead>
                     <TableHead>Origen</TableHead>
                     <TableHead className="text-right">Debe</TableHead>
                     <TableHead className="text-right">Haber</TableHead>
                     <TableHead className="text-right">Saldo</TableHead>
-                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -149,7 +148,12 @@ export async function TerceroCuentaCorriente({
                     return (
                       <FilaEnlace key={m.lineaId} href={ruta} title="Ir al documento">
                         <TableCell className="tabular-nums text-muted-foreground">{m.fecha}</TableCell>
-                        <TableCell className="font-mono">{m.correlativo}</TableCell>
+                        <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {ruta ? <FlechaDetalle href={ruta} title="Ir al documento" /> : <span className="size-6 shrink-0" />}
+                        <span className="font-mono">{m.correlativo}</span>
+                      </div>
+                    </TableCell>
                         {dosTipos && (
                           <TableCell className="text-muted-foreground">{m.tipoCuenta === "Cliente" ? "Por cobrar" : "Por pagar"}</TableCell>
                         )}
@@ -166,9 +170,6 @@ export async function TerceroCuentaCorriente({
                         <TableCell className="text-right tabular-nums">{m.debe ? fmt(m.debe) : ""}</TableCell>
                         <TableCell className="text-right tabular-nums">{m.haber ? fmt(m.haber) : ""}</TableCell>
                         <TableCell className={`text-right tabular-nums ${total < 0 ? "text-destructive" : ""}`}>{fmt(total)}</TableCell>
-                        <TableCell className="text-right">
-                          {ruta && <FlechaDetalle href={ruta} title="Ir al documento" />}
-                        </TableCell>
                       </FilaEnlace>
                     );
                   })}

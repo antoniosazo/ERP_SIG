@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PagoTipo } from "@erp/shared";
 import { PAGO_META } from "@/lib/pagos";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,6 +14,7 @@ export type PagoFila = {
   numeroInterno: string;
   fechaPago: string;
   tercero: string;
+  terceroId: string;
   medios: string;
   montoTotal: number;
   montoAplicado: number;
@@ -73,7 +75,11 @@ export function PagosLista({
                     </Link>
                   </TableCell>
                   <TableCell className="tabular-nums text-muted-foreground">{p.fechaPago}</TableCell>
-                  <TableCell>{p.tercero}</TableCell>
+                  <TableCell>
+                    <TerceroEnlace empresaId={empresaId} terceroId={p.terceroId}>
+                      {p.tercero}
+                    </TerceroEnlace>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{p.medios || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmt(p.montoTotal)}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmt(p.montoAplicado)}</TableCell>

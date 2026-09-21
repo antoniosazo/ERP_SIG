@@ -45,6 +45,7 @@ export async function VentasListaPage({
           tipoDocumento: tipoNombre.get(d.tipoDocumentoId) ?? "—",
           folio: d.folio,
           cliente: clienteNombre.get(d.terceroId) ?? "—",
+          terceroId: d.terceroId,
           fechaEmision: d.fechaEmision,
           montoTotal: d.montoTotal,
           estado: d.estado,

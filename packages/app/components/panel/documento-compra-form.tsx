@@ -22,6 +22,7 @@ import {
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-compra-campos";
 import { COMPRA_TIPO_META } from "@/lib/compras";
 import { Badge } from "@/components/ui/badge";
+import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -268,6 +269,14 @@ export function DocumentoCompraForm({
       case "terceroId":
         return campo(
           "Proveedor",
+          <div className="flex items-center gap-2">
+            {watch("terceroId") && (
+              <FlechaDetalle
+                href={`/panel/${empresaId}/maestros/terceros/${watch("terceroId") as string}`}
+                title="Ver ficha y cuenta corriente"
+              />
+            )}
+            <div className="min-w-0 flex-1">
           <Select
             value={(watch("terceroId") as string | undefined) ?? NINGUNA}
             onValueChange={(v) => {
@@ -290,7 +299,9 @@ export function DocumentoCompraForm({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>,
+          </Select>
+            </div>
+          </div>,
         );
       case "modalidad":
         return campo(

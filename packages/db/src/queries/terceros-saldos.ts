@@ -13,7 +13,11 @@ export type SaldoTercero = { porCobrar: number; porPagar: number };
  * RUT en las cuentas de tipo Cliente (por cobrar: debe − haber) y Proveedor (por pagar:
  * haber − debe). Incluye documentos, cobros, pagos y anticipos; solo asientos contabilizados.
  */
-export async function saldosDeTerceros(empresaId: string, hasta: string): Promise<Record<string, SaldoTercero>> {
+export async function saldosDeTerceros(
+  empresaId: string,
+  hasta: string,
+  terceroId?: string,
+): Promise<Record<string, SaldoTercero>> {
   const rows = await db
     .select({
       terceroId: asientosLineas.terceroId,
@@ -31,6 +35,7 @@ export async function saldosDeTerceros(empresaId: string, hasta: string): Promis
         lte(asientosContables.fecha, hasta),
         inArray(planCuentas.tipoCuenta, ["Cliente", "Proveedor"]),
         sql`${asientosLineas.terceroId} is not null`,
+        ...(terceroId ? [eq(asientosLineas.terceroId, terceroId)] : []),
       ),
     )
     .groupBy(asientosLineas.terceroId, planCuentas.tipoCuenta);
@@ -101,6 +106,7 @@ export async function cuentaCorrienteTercero(empresaId: string, terceroId: strin
     cuentaCodigo: r.cuentaCodigo,
     cuentaNombre: r.cuentaNombre,
     tercero: null,
+    terceroId: null,
     debe: Number(r.debe),
     haber: Number(r.haber),
     origenTabla: r.origenTabla,

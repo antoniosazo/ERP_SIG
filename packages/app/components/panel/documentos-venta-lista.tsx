@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { DocumentoVentaClase } from "@erp/shared";
 import { crearDocumentoVentaAction } from "@/lib/actions/ventas";
 import { VENTA_CLASE_META } from "@/lib/ventas";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ export type DocFila = {
   tipoDocumento: string;
   folio: string | null;
   cliente: string;
+  terceroId: string;
   fechaEmision: string;
   montoTotal: string;
   estado: string;
@@ -164,7 +166,11 @@ export function DocumentosVentaLista({
                           <TableCell className="font-mono text-muted-foreground">
                             {d.folio ?? "—"}
                           </TableCell>
-                          <TableCell>{d.cliente}</TableCell>
+                          <TableCell>
+                            <TerceroEnlace empresaId={empresaId} terceroId={d.terceroId}>
+                              {d.cliente}
+                            </TerceroEnlace>
+                          </TableCell>
                           <TableCell className="text-muted-foreground tabular-nums">
                             {d.fechaEmision}
                           </TableCell>

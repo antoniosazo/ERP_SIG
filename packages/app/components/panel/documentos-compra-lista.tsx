@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { DocumentoCompraTipo } from "@erp/shared";
 import { crearDocumentoCompraAction } from "@/lib/actions/compras";
 import { COMPRA_TIPO_META } from "@/lib/compras";
+import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,7 @@ export type DocFila = {
   tipoDocumento: string;
   folio: string | null;
   proveedor: string;
+  terceroId: string;
   fechaEmision: string;
   montoTotal: string;
   estado: string;
@@ -177,7 +179,11 @@ export function DocumentosCompraLista({
                           <TableCell className="font-mono text-muted-foreground">
                             {d.folio ?? "—"}
                           </TableCell>
-                          <TableCell>{d.proveedor}</TableCell>
+                          <TableCell>
+                            <TerceroEnlace empresaId={empresaId} terceroId={d.terceroId}>
+                              {d.proveedor}
+                            </TerceroEnlace>
+                          </TableCell>
                           <TableCell className="text-muted-foreground tabular-nums">
                             {d.fechaEmision}
                           </TableCell>

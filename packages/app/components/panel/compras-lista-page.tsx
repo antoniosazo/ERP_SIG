@@ -46,6 +46,7 @@ export async function ComprasListaPage({
           tipoDocumento: tipoNombre.get(d.tipoDocumentoId) ?? "—",
           folio: d.folio,
           proveedor: provNombre.get(d.terceroId) ?? "—",
+          terceroId: d.terceroId,
           fechaEmision: d.fechaEmision,
           montoTotal: d.montoTotal,
           estado: d.estado,

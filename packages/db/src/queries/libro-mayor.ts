@@ -88,6 +88,7 @@ export type MovimientoMayor = {
   cuentaCodigo: string;
   cuentaNombre: string;
   tercero: string | null;
+  terceroId: string | null;
   debe: number;
   haber: number;
   origenTabla: string | null;
@@ -136,6 +137,7 @@ export async function movimientosCuenta(empresaId: string, cuentaId: string, des
       cuentaCodigo: planCuentas.codigoCuenta,
       cuentaNombre: planCuentas.nombreCuenta,
       tercero: terceros.razonSocial,
+      terceroId: asientosLineas.terceroId,
       debe: asientosLineas.montoDebeFuncional,
       haber: asientosLineas.montoHaberFuncional,
       origenTabla: asientosContables.documentoOrigenTabla,

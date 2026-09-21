@@ -150,8 +150,8 @@ export function TercerosManager({
                                 <div className="flex items-center justify-end gap-1.5">
                                   {v !== 0 && (
                                     <FlechaDetalle
-                                      href={`/panel/${empresaId}/maestros/terceros/${t.id}`}
-                                      title="Ver cuenta corriente"
+                                      href={`/panel/${empresaId}/maestros/terceros/${t.id}/cuenta`}
+                                      title="Ver detalle de la cuenta"
                                     />
                                   )}
                                   <span className={v < 0 ? "text-destructive" : v === 0 ? "text-muted-foreground" : ""}>
