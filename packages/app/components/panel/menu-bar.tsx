@@ -111,7 +111,7 @@ export function MenuBar({
             <Menubar.Portal>
               <Menubar.Content className={contentCls} align="start" sideOffset={4}>
                 <Menubar.Item className={itemCls} onSelect={() => irA("/configuracion/empresa")}>
-                  Configuración
+                  Administración
                 </Menubar.Item>
                 <Menubar.Item className={itemCls} onSelect={() => irA("/maestros/terceros")}>
                   Socios de negocio

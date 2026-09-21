@@ -160,6 +160,13 @@ export type PagoTipo = (typeof PAGO_TIPO)[number];
 export const PAGO_ESTADO = ["contabilizado", "anulado"] as const;
 export type PagoEstado = (typeof PAGO_ESTADO)[number];
 
+// Cheques: nacen de los pagos (recibidos → cartera; efectuados → emitidos).
+export const CHEQUE_TIPO = ["Recibido", "Emitido"] as const;
+export type ChequeTipo = (typeof CHEQUE_TIPO)[number];
+/** Recibido: en_cartera → depositado → (protestado). Emitido: emitido → cobrado. `anulado` en ambos. */
+export const CHEQUE_ESTADO = ["en_cartera", "depositado", "protestado", "emitido", "cobrado", "anulado"] as const;
+export type ChequeEstado = (typeof CHEQUE_ESTADO)[number];
+
 export const CUENTA_BANCARIA_TIPO = ["Corriente", "Vista", "Ahorro", "Otra"] as const;
 
 // series_numeracion.ambito — serie de numeración reutilizable.

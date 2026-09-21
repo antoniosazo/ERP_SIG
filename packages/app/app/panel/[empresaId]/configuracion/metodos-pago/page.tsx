@@ -43,7 +43,7 @@ export default async function MetodosPagoPage({
           .filter(
             (c) => c.nivelImputable && c.activa && ["Banco", "Caja", "Otra"].includes(c.tipoCuenta),
           )
-          .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}` }))}
+          .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}`, tipo: c.tipoCuenta }))}
       />
     </>
   );

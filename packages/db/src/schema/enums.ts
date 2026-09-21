@@ -10,6 +10,8 @@ import {
   DIRECCION_TIPO,
   DOCUMENTO_COMPRA_ESTADO,
   DOCUMENTO_COMPRA_TIPO,
+  CHEQUE_ESTADO,
+  CHEQUE_TIPO,
   DOCUMENTO_MODALIDAD,
   METODO_PAGO_SENTIDO,
   PAGO_ESTADO,
@@ -105,3 +107,6 @@ export const metodoPagoSentidoEnum = pgEnum("metodo_pago_sentido", [...METODO_PA
 
 export const pagoTipoEnum = pgEnum("pago_tipo", [...PAGO_TIPO]);
 export const pagoEstadoEnum = pgEnum("pago_estado", [...PAGO_ESTADO]);
+
+export const chequeTipoEnum = pgEnum("cheque_tipo", [...CHEQUE_TIPO]);
+export const chequeEstadoEnum = pgEnum("cheque_estado", [...CHEQUE_ESTADO]);

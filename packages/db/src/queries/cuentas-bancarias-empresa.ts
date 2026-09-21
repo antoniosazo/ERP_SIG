@@ -183,8 +183,14 @@ async function validarMetodoPago(empresaId: string, input: CrearMetodoPagoInput)
     if (!cb.activa) throw new Error("La cuenta bancaria está inactiva");
   }
   if (input.cuentaContableId) {
-    // Efectivo va a una cuenta Caja; el resto puede ir a Banco, Caja o una cuenta transitoria (Otra).
-    const tipos = input.tipo === "Efectivo" ? ["Caja", "Banco"] : ["Banco", "Caja", "Otra"];
+    // Efectivo va a Caja; el cheque recibido a una cuenta transitoria (Otra: cheques en cartera),
+    // nunca directo al banco; el resto puede ir a Banco, Caja o una cuenta transitoria.
+    const tipos =
+      input.tipo === "Efectivo"
+        ? ["Caja", "Banco"]
+        : input.tipo === "Cheque" && input.sentido === "Recibido"
+          ? ["Otra"]
+          : ["Banco", "Caja", "Otra"];
     await validarCuentaContable(empresaId, input.cuentaContableId, tipos, "Cuenta contable");
   }
 }

@@ -130,6 +130,7 @@ export async function sembrarSeriesPago(tx: Tx, empresaId: string): Promise<void
     .values([
       { empresaId, ambito: "pago" as const, clave: "recibido", prefijo: "PR", proximo: 1, digitos: 5 },
       { empresaId, ambito: "pago" as const, clave: "efectuado", prefijo: "PE", proximo: 1, digitos: 5 },
+      { empresaId, ambito: "pago" as const, clave: "deposito", prefijo: "DP", proximo: 1, digitos: 5 },
     ])
     .onConflictDoNothing({
       target: [seriesNumeracion.empresaId, seriesNumeracion.ambito, seriesNumeracion.clave],

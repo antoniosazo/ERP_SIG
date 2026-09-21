@@ -22,6 +22,7 @@ export * from "./queries/centros-costo";
 export * from "./queries/cuentas-bancarias-empresa";
 export * from "./queries/pagos";
 export * from "./queries/pagos-saldos";
+export * from "./queries/cheques";
 export * from "./queries/categorias-contables";
 export * from "./queries/terceros";
 export * from "./queries/periodos";

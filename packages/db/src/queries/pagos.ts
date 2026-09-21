@@ -5,6 +5,7 @@ import {
   asientosContables,
   asientosLineas,
   bancos,
+  cheques,
   cuentasBancarias,
   documentosCompra,
   documentosVenta,
@@ -187,6 +188,24 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
     for (const c of cuentasMedios) {
       if (!c.activa || !c.imp) throw new Error(`La cuenta ${c.codigo} de un medio de pago no está disponible`);
     }
+    // Un cheque recibido no va directo al banco: queda en cartera (cuenta transitoria) hasta depositarlo.
+    if (esRecibido) {
+      const tipoCuenta = new Map(
+        (
+          await tx
+            .select({ id: planCuentas.id, tipo: planCuentas.tipoCuenta })
+            .from(planCuentas)
+            .where(inArray(planCuentas.id, mediosResueltos.map((m) => m.cuentaId)))
+        ).map((c) => [c.id, c.tipo]),
+      );
+      for (const m of mediosResueltos) {
+        if (m.metodo.tipo === "Cheque" && tipoCuenta.get(m.cuentaId) === "Banco") {
+          throw new Error(
+            `El método "${m.metodo.nombre}" registra el cheque directo en el banco: usa la cuenta transitoria Cheques en cartera.`,
+          );
+        }
+      }
+    }
 
     // ── Documentos a los que se aplica (bloqueados para evitar pagos simultáneos) ──
     const docIds = input.aplicaciones.map((a) => a.documentoId);
@@ -287,7 +306,7 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
       .returning();
     if (!pago) throw new Error("No se pudo registrar el pago");
 
-    await tx.insert(pagosMedios).values(
+    const mediosInsertados = await tx.insert(pagosMedios).values(
       mediosResueltos.map((m, i) => ({
         pagoId: pago.id,
         numeroLinea: i,
@@ -300,7 +319,28 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
         chequeBancoId: m.chequeBancoId ?? null,
         fechaCobro: m.fechaCobro ?? null,
       })),
-    );
+    ).returning({ id: pagosMedios.id, numeroLinea: pagosMedios.numeroLinea });
+    // Cada línea de cheque queda en el registro de cheques: recibido → en cartera; emitido → emitido.
+    const cierresCheque = mediosResueltos
+      .map((m, i) => ({ m, medio: mediosInsertados.find((x) => x.numeroLinea === i) }))
+      .filter((x) => x.m.metodo.tipo === "Cheque" && x.medio);
+    if (cierresCheque.length) {
+      await tx.insert(cheques).values(
+        cierresCheque.map(({ m, medio }) => ({
+          empresaId,
+          tipo: esRecibido ? ("Recibido" as const) : ("Emitido" as const),
+          pagoId: pago.id,
+          pagoMedioId: medio!.id,
+          terceroId: input.terceroId,
+          numero: m.chequeNumero!.trim(),
+          bancoId: m.chequeBancoId ?? null,
+          monto: m.monto.toString(),
+          fechaEmision: input.fechaPago,
+          fechaCobro: m.fechaCobro ?? null,
+          estado: esRecibido ? ("en_cartera" as const) : ("emitido" as const),
+        })),
+      );
+    }
     if (input.aplicaciones.length) {
       await tx.insert(pagosDocumentos).values(
         input.aplicaciones.map((a) => ({
@@ -392,6 +432,14 @@ export async function anularPago(pagoId: string, empresaId: string, motivo: stri
     if (per && periodoBloqueado(pago.tipo, per.estado)) {
       throw new Error("El período del pago está bloqueado; reábrelo para anularlo.");
     }
+    // Un pago con cheques solo se anula mientras estén en cartera (o emitidos sin cobrar).
+    const chequesPago = await tx.select().from(cheques).where(eq(cheques.pagoId, pagoId));
+    const bloqueante = chequesPago.find((c) => c.estado === "depositado" || c.estado === "protestado" || c.estado === "cobrado");
+    if (bloqueante) {
+      throw new Error(
+        `El cheque N° ${bloqueante.numero} ya está ${bloqueante.estado}: anula primero el depósito (o el protesto ya reabrió la deuda).`,
+      );
+    }
 
     const original = await tx.select().from(asientosLineas).where(eq(asientosLineas.asientoId, pago.asientoId));
     const [cab] = await tx.select().from(asientosContables).where(eq(asientosContables.id, pago.asientoId));
@@ -428,6 +476,9 @@ export async function anularPago(pagoId: string, empresaId: string, motivo: stri
         documentoReferenciaId: pago.id,
       })),
     );
+    if (chequesPago.length) {
+      await tx.update(cheques).set({ estado: "anulado", updatedAt: new Date() }).where(eq(cheques.pagoId, pagoId));
+    }
     const [act] = await tx
       .update(pagos)
       .set({ estado: "anulado", motivoAnulacion: motivo, asientoReversaId: reversa.id, updatedAt: new Date() })

@@ -26,6 +26,7 @@ export type MetodoPagoFila = {
   activo: boolean;
 };
 type Opcion = { id: string; label: string };
+type OpcionCuenta = Opcion & { tipo: string };
 type FormValues = z.input<typeof crearMetodoPagoSchema>;
 const NINGUNA = "__none__";
 
@@ -49,7 +50,7 @@ export function MetodosPagoManager({
   empresaId: string;
   metodos: MetodoPagoFila[];
   cuentasBancarias: Opcion[];
-  cuentasContables: Opcion[];
+  cuentasContables: OpcionCuenta[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -66,6 +67,12 @@ export function MetodosPagoManager({
   const nombreCuentaBancaria = new Map(cuentasBancarias.map((c) => [c.id, c.label]));
   const nombreCuenta = new Map(cuentasContables.map((c) => [c.id, c.label]));
   const tipo = watch("tipo");
+  const sentido = watch("sentido");
+  const esChequeRecibido = tipo === "Cheque" && sentido === "Recibido";
+  // Efectivo: Caja o Banco. Cheque recibido: solo cuenta transitoria (cheques en cartera), nunca el banco.
+  const opcionesCuenta = cuentasContables.filter((c) =>
+    tipo === "Efectivo" ? ["Caja", "Banco"].includes(c.tipo) : esChequeRecibido ? c.tipo === "Otra" : true,
+  );
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
@@ -153,7 +160,10 @@ export function MetodosPagoManager({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="tipo">Tipo</Label>
-                <Select value={tipo} onValueChange={(v) => setValue("tipo", v as FormValues["tipo"], { shouldValidate: true })}>
+                <Select value={tipo} onValueChange={(v) => {
+                    setValue("tipo", v as FormValues["tipo"], { shouldValidate: true });
+                    if (v === "Cheque" && watch("sentido") === "Ambos") setValue("sentido", "Recibido");
+                  }}>
                   <SelectTrigger id="tipo" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -173,7 +183,7 @@ export function MetodosPagoManager({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {METODO_PAGO_SENTIDO.map((t) => (
+                    {METODO_PAGO_SENTIDO.filter((t) => tipo !== "Cheque" || t !== "Ambos").map((t) => (
                       <SelectItem key={t} value={t}>
                         {t === "Recibido" ? "Cobros (pagos recibidos)" : t === "Efectuado" ? "Pagos (pagos efectuados)" : "Ambos"}
                       </SelectItem>
@@ -183,7 +193,7 @@ export function MetodosPagoManager({
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cuentaBancariaId">Cuenta bancaria{tipo === "Transferencia" ? "" : " (opcional)"}</Label>
+              <Label htmlFor="cuentaBancariaId">Cuenta bancaria{tipo === "Transferencia" || (tipo === "Cheque" && sentido === "Efectuado") ? "" : " (opcional)"}</Label>
               <Select
                 value={watch("cuentaBancariaId") ?? NINGUNA}
                 onValueChange={(v) => setValue("cuentaBancariaId", v === NINGUNA ? undefined : v, { shouldValidate: true })}
@@ -204,7 +214,9 @@ export function MetodosPagoManager({
             </div>
             <div className="space-y-2">
               <Label htmlFor="cuentaContableId">
-                Cuenta contable {tipo === "Efectivo" ? "(Caja)" : "(opcional: caja o cuenta transitoria)"}
+                {esChequeRecibido
+                  ? "Cuenta transitoria (Cheques en cartera)"
+                  : `Cuenta contable ${tipo === "Efectivo" ? "(Caja)" : "(opcional: caja o cuenta transitoria)"}`}
               </Label>
               <Select
                 value={watch("cuentaContableId") ?? NINGUNA}
@@ -214,8 +226,8 @@ export function MetodosPagoManager({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NINGUNA}>Usar la de la cuenta bancaria</SelectItem>
-                  {cuentasContables.map((c) => (
+                  <SelectItem value={NINGUNA}>{esChequeRecibido ? "Sin cuenta (obligatoria)" : "Usar la de la cuenta bancaria"}</SelectItem>
+                  {opcionesCuenta.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.label}
                     </SelectItem>

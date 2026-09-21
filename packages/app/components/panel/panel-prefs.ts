@@ -46,7 +46,6 @@ export function toggleTreeCollapsed() {
 
 // ── Grupos expandidos del árbol (mapa) ──────────────────────────────────────
 export const GRUPOS_DEFAULT: Readonly<Record<string, boolean>> = Object.freeze({
-  Configuración: false,
   "Socios de Negocio": true,
   Inventario: true,
   Ventas: true,

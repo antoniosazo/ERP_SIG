@@ -17,7 +17,7 @@ const camposMetodoPagoBase = {
 };
 
 const refinarMetodoPago = (
-  v: { tipo?: string; cuentaBancariaId?: unknown; cuentaContableId?: unknown },
+  v: { tipo?: string; sentido?: string; cuentaBancariaId?: unknown; cuentaContableId?: unknown },
   ctx: z.RefinementCtx,
 ) => {
   if (v.tipo === "Efectivo" && !v.cuentaContableId) {
@@ -26,7 +26,21 @@ const refinarMetodoPago = (
   if (v.tipo === "Transferencia" && !v.cuentaBancariaId) {
     ctx.addIssue({ code: "custom", path: ["cuentaBancariaId"], message: "La transferencia requiere una cuenta bancaria" });
   }
-  if ((v.tipo === "Cheque" || v.tipo === "Tarjeta") && !v.cuentaBancariaId && !v.cuentaContableId) {
+  if (v.tipo === "Cheque" && v.sentido === "Ambos") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["sentido"],
+      message: "Un método de cheque debe ser solo de cobros o solo de pagos (se contabilizan distinto)",
+    });
+  }
+  // Cheque recibido: va a cartera (cuenta transitoria) hasta depositarlo; nunca directo al banco.
+  if (v.tipo === "Cheque" && v.sentido === "Recibido" && !v.cuentaContableId) {
+    ctx.addIssue({ code: "custom", path: ["cuentaContableId"], message: "El cheque recibido requiere la cuenta transitoria Cheques en cartera" });
+  }
+  if (v.tipo === "Cheque" && v.sentido === "Efectuado" && !v.cuentaBancariaId) {
+    ctx.addIssue({ code: "custom", path: ["cuentaBancariaId"], message: "El cheque emitido requiere la cuenta bancaria contra la que se gira" });
+  }
+  if (v.tipo === "Tarjeta" && !v.cuentaBancariaId && !v.cuentaContableId) {
     ctx.addIssue({ code: "custom", path: ["cuentaBancariaId"], message: "Indica una cuenta bancaria o una cuenta contable" });
   }
 };

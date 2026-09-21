@@ -9,6 +9,7 @@ import {
 } from "@erp/db";
 import type { PagoTipo } from "@erp/shared";
 import { PAGO_META } from "@/lib/pagos";
+import { AsientoTabla } from "@/components/panel/asiento-tabla";
 import { PagoAnularBoton } from "@/components/panel/pago-anular-boton";
 import { PagoForm } from "@/components/panel/pago-form";
 import { PagosLista } from "@/components/panel/pagos-lista";
@@ -96,45 +97,6 @@ export async function PagoDetallePage({
   const anulado = pago.estado === "anulado";
   const rutaDoc = (origen: "venta" | "compra", id: string) =>
     `/panel/${empresaId}/${origen === "venta" ? "ventas" : "compras"}/documentos/${id}`;
-
-  const tablaAsiento = (a: NonNullable<typeof asiento>, titulo: string) => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {titulo} N° {a.correlativo} · {a.fecha}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="py-1">Cuenta</th>
-              <th>Glosa</th>
-              <th className="text-right">Debe</th>
-              <th className="text-right">Haber</th>
-            </tr>
-          </thead>
-          <tbody>
-            {a.lineas.map((l, i) => (
-              <tr key={i} className="border-t">
-                <td className="py-1.5">{l.cuenta}</td>
-                <td className="text-muted-foreground">{l.glosa}</td>
-                <td className="text-right tabular-nums">{l.debe ? fmt(l.debe) : ""}</td>
-                <td className="text-right tabular-nums">{l.haber ? fmt(l.haber) : ""}</td>
-              </tr>
-            ))}
-            <tr className="border-t font-medium">
-              <td className="py-1.5" colSpan={2}>
-                Total
-              </td>
-              <td className="text-right tabular-nums">{fmt(a.totalDebe)}</td>
-              <td className="text-right tabular-nums">{fmt(a.totalHaber)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </CardContent>
-    </Card>
-  );
 
   return (
     <>
@@ -225,6 +187,9 @@ export async function PagoDetallePage({
                       <Link href={rutaDoc(a.origen, a.documentoId)} className="hover:underline">
                         {a.tipo} <span className="font-mono text-muted-foreground">{a.numeroInterno}</span>
                       </Link>
+                      {a.montoAplicado < 0 && (
+                        <span className="ml-2 text-xs text-destructive">reapertura por cheque protestado</span>
+                      )}
                     </td>
                     <td className="font-mono">{a.folio ?? "—"}</td>
                     <td>{a.fechaEmision}</td>
@@ -238,8 +203,8 @@ export async function PagoDetallePage({
         </CardContent>
       </Card>
 
-      {asiento && tablaAsiento(asiento, "Asiento")}
-      {reversa && tablaAsiento(reversa, "Asiento de reversa")}
+      {asiento && <AsientoTabla a={asiento} titulo="Asiento" />}
+      {reversa && <AsientoTabla a={reversa} titulo="Asiento de reversa" />}
     </>
   );
 }

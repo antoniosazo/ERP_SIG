@@ -265,7 +265,7 @@ export function PagoForm({
         <CardContent className="space-y-3">
           {metodos.length === 0 && (
             <p className="text-sm text-destructive">
-              No hay métodos de pago activos para este sentido. Créalos en Configuración → Métodos de pago.
+              No hay métodos de pago activos para este sentido. Créalos en Administración → Bancos y pagos → Métodos de pago.
             </p>
           )}
           {medios.map((m) => {

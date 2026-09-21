@@ -85,7 +85,10 @@ export async function saldosDocumentos(
   return out;
 }
 
-/** ¿El documento tiene pagos vigentes aplicados? Si es así no se puede anular sin anular el pago. */
+/**
+ * ¿El documento tiene pagos vigentes aplicados (neto de reaperturas por cheques protestados)?
+ * Si es así no se puede anular sin anular antes el pago.
+ */
 export async function tienePagosAplicados(
   tx: Tx | typeof db,
   empresaId: string,
@@ -94,10 +97,9 @@ export async function tienePagosAplicados(
 ): Promise<boolean> {
   const col = tabla === "venta" ? pagosDocumentos.documentoVentaId : pagosDocumentos.documentoCompraId;
   const rows = await tx
-    .select({ id: pagosDocumentos.id })
+    .select({ monto: pagosDocumentos.montoAplicado })
     .from(pagosDocumentos)
     .innerJoin(pagos, eq(pagos.id, pagosDocumentos.pagoId))
-    .where(and(eq(pagos.empresaId, empresaId), eq(pagos.estado, "contabilizado"), eq(col, documentoId)))
-    .limit(1);
-  return rows.length > 0;
+    .where(and(eq(pagos.empresaId, empresaId), eq(pagos.estado, "contabilizado"), eq(col, documentoId)));
+  return rows.reduce((a, r) => a + Number(r.monto), 0) > 0.005;
 }

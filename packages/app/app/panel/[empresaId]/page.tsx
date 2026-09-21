@@ -87,7 +87,7 @@ export default async function ResumenEmpresaPage({
           href={`/panel/${empresaId}/configuracion/empresa`}
           className="text-primary underline-offset-4 hover:underline"
         >
-          Configuración
+          Administración
         </Link>
         .
       </p>
