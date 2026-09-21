@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { MAX_PROFUNDIDAD_CUENTA } from "@erp/shared";
 import { Badge } from "@/components/ui/badge";
+import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -59,10 +61,14 @@ export function PlanCuentasManager({
   empresaId,
   cuentas,
   monedas,
+  saldos,
+  hasta,
 }: {
   empresaId: string;
   cuentas: CuentaLite[];
   monedas: Opcion[];
+  saldos: Record<string, number>;
+  hasta: string;
 }) {
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [enEdicion, setEnEdicion] = useState<CuentaLite | null>(null);
@@ -112,6 +118,8 @@ export function PlanCuentasManager({
   // Deep-link "ir a configurar la cuenta" (ej. desde Grupos de artículos): ?cuenta=<id>
   // abre directo el diálogo de edición de esa cuenta.
   const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   useEffect(() => {
     const id = params.get("cuenta");
     if (!id) return;
@@ -122,7 +130,21 @@ export function PlanCuentasManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="mr-auto flex items-center gap-2 text-sm">
+          <label htmlFor="hasta" className="text-muted-foreground">
+            Saldos al
+          </label>
+          <Input
+            id="hasta"
+            type="date"
+            value={hasta}
+            className="h-8 w-40"
+            onChange={(e) => {
+              if (e.target.value) router.push(`${pathname}?hasta=${e.target.value}`);
+            }}
+          />
+        </div>
         <Button variant="outline" size="sm" onClick={expandirTodo}>
           Expandir todo
         </Button>
@@ -143,6 +165,7 @@ export function PlanCuentasManager({
                 <TableHead>Nombre</TableHead>
                 <TableHead>Clase</TableHead>
                 <TableHead>Naturaleza</TableHead>
+                <TableHead className="text-right">Saldo</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -154,6 +177,12 @@ export function PlanCuentasManager({
                   <TableRow
                     key={cuenta.id}
                     className={cuenta.activa ? undefined : "opacity-50"}
+                    title="Doble clic para editar"
+                    onDoubleClick={(e) => {
+                      // Los botones y enlaces de la fila conservan su propia acción.
+                      if ((e.target as HTMLElement).closest("a, button, input")) return;
+                      abrirEdicion(cuenta);
+                    }}
                   >
                     <TableCell className="font-mono text-muted-foreground">
                       <div
@@ -201,6 +230,17 @@ export function PlanCuentasManager({
                     </TableCell>
                     <TableCell className="text-muted-foreground">{cuenta.clase}</TableCell>
                     <TableCell className="text-muted-foreground">{cuenta.naturaleza}</TableCell>
+                    <TableCell className="text-right tabular-nums whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <FlechaDetalle
+                          href={`/panel/${empresaId}/configuracion/plan-cuentas/${cuenta.id}?hasta=${hasta}`}
+                          title={`Ver detalle de movimientos de ${cuenta.codigoCuenta}`}
+                        />
+                        <span className={(saldos[cuenta.id] ?? 0) < 0 ? "text-destructive" : undefined}>
+                          {(saldos[cuenta.id] ?? 0) === 0 ? "—" : (saldos[cuenta.id] ?? 0).toLocaleString("es-CL")}
+                        </span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       {puedeTenerHijas && (
                         <Button

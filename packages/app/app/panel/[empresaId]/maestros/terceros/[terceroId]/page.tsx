@@ -9,6 +9,7 @@ import {
   listarPlanCuentasDeEmpresa,
   obtenerTerceroConDetalle,
 } from "@erp/db";
+import { TerceroCuentaCorriente } from "@/components/panel/tercero-cuenta-corriente";
 import { TerceroContactos } from "@/components/panel/tercero-contactos";
 import { TerceroCuentasBancarias } from "@/components/panel/tercero-cuentas-bancarias";
 import { TerceroDirecciones } from "@/components/panel/tercero-direcciones";
@@ -69,6 +70,8 @@ export default async function TerceroDetallePage({
           <Link href={`/panel/${empresaId}/maestros/terceros`}>← Socios de negocio</Link>
         </Button>
       </div>
+
+      <TerceroCuentaCorriente empresaId={empresaId} terceroId={terceroId} tipoTercero={tercero.tipoTercero} />
 
       <TerceroGeneralForm
         empresaId={empresaId}

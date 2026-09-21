@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import type { z } from "zod";
 import { TIPO_TERCERO, crearTerceroSchema, formatearRut } from "@erp/shared";
 import { crearTerceroAction } from "@/lib/actions/terceros";
+import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,10 +55,12 @@ export function TercerosManager({
   empresaId,
   terceros,
   grupos,
+  saldos,
 }: {
   empresaId: string;
   terceros: TerceroFila[];
   grupos: { id: string; label: string }[];
+  saldos: Record<string, { porCobrar: number; porPagar: number }>;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -102,6 +105,8 @@ export function TercerosManager({
                 <TableHead>Razón social</TableHead>
                 <TableHead>RUT</TableHead>
                 <TableHead>Grupo</TableHead>
+                <TableHead className="text-right">Por cobrar</TableHead>
+                <TableHead className="text-right">Por pagar</TableHead>
                 <TableHead>Estado</TableHead>
               </TableRow>
             </TableHeader>
@@ -110,7 +115,7 @@ export function TercerosManager({
                 const abierto = tiposAbiertos.has(tipo);
                 return (
                   <Fragment key={tipo}>
-                    <FilaGrupo abierto={abierto} onToggle={() => alternarTipo(tipo)} colSpan={5}>
+                    <FilaGrupo abierto={abierto} onToggle={() => alternarTipo(tipo)} colSpan={7}>
                       {tipo} ({items.length})
                     </FilaGrupo>
                     {abierto &&
@@ -138,6 +143,24 @@ export function TercerosManager({
                           <TableCell className="text-muted-foreground">
                             {t.grupoId ? grupoLabel.get(t.grupoId) ?? "—" : "—"}
                           </TableCell>
+                          {(["porCobrar", "porPagar"] as const).map((k) => {
+                            const v = saldos[t.id]?.[k] ?? 0;
+                            return (
+                              <TableCell key={k} className="text-right tabular-nums whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {v !== 0 && (
+                                    <FlechaDetalle
+                                      href={`/panel/${empresaId}/maestros/terceros/${t.id}`}
+                                      title="Ver cuenta corriente"
+                                    />
+                                  )}
+                                  <span className={v < 0 ? "text-destructive" : v === 0 ? "text-muted-foreground" : ""}>
+                                    {v === 0 ? "—" : v.toLocaleString("es-CL")}
+                                  </span>
+                                </div>
+                              </TableCell>
+                            );
+                          })}
                           <TableCell>
                             {t.bloqueado ? (
                               <Badge variant="destructive">Bloqueado</Badge>
