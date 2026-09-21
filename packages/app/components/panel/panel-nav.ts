@@ -1,7 +1,6 @@
 import {
   Building2Icon,
   CalendarDaysIcon,
-  ChevronRightIcon,
   CoinsIcon,
   FileTextIcon,
   HistoryIcon,
@@ -111,6 +110,13 @@ export const GRUPOS: Grupo[] = [
       { href: "/compras/notas-credito", label: "Notas de crédito", icon: FileTextIcon },
       { href: "/compras/notas-debito", label: "Notas de débito", icon: FileTextIcon },
       { href: "/compras/gr-ir", label: "Conciliación GR-IR", icon: NetworkIcon },
+    ],
+  },
+  {
+    label: "Informes",
+    items: [
+      { href: "/informes/balance", label: "Balance de 8 columnas", icon: ListTreeIcon },
+      { href: "/informes/estado-resultados", label: "Estado de resultados", icon: TrendingUpIcon },
     ],
   },
 ];
