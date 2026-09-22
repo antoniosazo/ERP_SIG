@@ -12,6 +12,11 @@ export type SaldoTercero = { porCobrar: number; porPagar: number };
  * Saldo de cada socio de negocio al `hasta`, tomado de las líneas de asiento que llevan su
  * RUT en las cuentas de tipo Cliente (por cobrar: debe − haber) y Proveedor (por pagar:
  * haber − debe). Incluye documentos, cobros, pagos y anticipos; solo asientos contabilizados.
+ *
+ * El signo es intencional (igual que SAP Business One): positivo es la dirección normal
+ * (el cliente te debe / tú le debes al proveedor); negativo es la dirección invertida — un
+ * anticipo del cliente (le quedas debiendo) o un anticipo tuyo al proveedor (te queda
+ * debiendo). La UI relabela esos casos como "a favor" en vez de mostrar el negativo crudo.
  */
 export async function saldosDeTerceros(
   empresaId: string,

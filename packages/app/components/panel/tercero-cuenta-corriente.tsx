@@ -99,8 +99,18 @@ export async function TerceroCuentaCorriente({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {mostrarCobrar && <Indicador etiqueta="Por cobrar (cliente)" valor={saldo.porCobrar} />}
-        {mostrarPagar && <Indicador etiqueta="Por pagar (proveedor)" valor={saldo.porPagar} />}
+        {mostrarCobrar && (
+          <Indicador
+            etiqueta={saldo.porCobrar < 0 ? "A favor del cliente" : "Por cobrar (cliente)"}
+            valor={Math.abs(saldo.porCobrar)}
+          />
+        )}
+        {mostrarPagar && (
+          <Indicador
+            etiqueta={saldo.porPagar < 0 ? "A favor nuestro" : "Por pagar (proveedor)"}
+            valor={Math.abs(saldo.porPagar)}
+          />
+        )}
         {disponible !== null && mostrarCobrar && (
           <Indicador
             etiqueta="Crédito disponible"
@@ -110,10 +120,18 @@ export async function TerceroCuentaCorriente({
           />
         )}
         {Math.abs(cc.anticiposPorCobrar) > 0.5 && mostrarCobrar && (
-          <Indicador etiqueta="Anticipos / otros del cliente" valor={-cc.anticiposPorCobrar} nota="Saldo a favor del cliente si es negativo" />
+          <Indicador
+            etiqueta={cc.anticiposPorCobrar < 0 ? "Anticipo del cliente (sin aplicar)" : "Saldo sin factura (cliente)"}
+            valor={Math.abs(cc.anticiposPorCobrar)}
+            nota="No corresponde a ninguna factura abierta"
+          />
         )}
         {Math.abs(cc.anticiposPorPagar) > 0.5 && mostrarPagar && (
-          <Indicador etiqueta="Anticipos / otros al proveedor" valor={-cc.anticiposPorPagar} nota="Saldo a favor nuestro si es negativo" />
+          <Indicador
+            etiqueta={cc.anticiposPorPagar < 0 ? "Anticipo al proveedor (sin aplicar)" : "Saldo sin factura (proveedor)"}
+            valor={Math.abs(cc.anticiposPorPagar)}
+            nota="No corresponde a ninguna factura abierta"
+          />
         )}
       </div>
 

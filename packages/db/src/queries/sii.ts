@@ -497,9 +497,21 @@ async function asegurarContraparte(
     { rut, razonSocial: razonSocial || rut, tipoTercero },
     ctx,
   );
+  // El "Sistema de Facturación Gratuita" del SII pierde tildes y Ñ al generar el XML
+  // (confirmado en vivo: llega "?" ya en los bytes crudos, antes de cualquier
+  // decodificación nuestra) — se deja una nota visible en vez de guardar el nombre
+  // corrupto en silencio, para que alguien lo corrija a mano cuando sepa el nombre real.
+  const nombreDanado = razonSocial.includes("?");
   await db
     .update(terceros)
-    .set({ grupoId: grupo?.id ?? null, pendienteCompletar: true, updatedAt: new Date() })
+    .set({
+      grupoId: grupo?.id ?? null,
+      pendienteCompletar: true,
+      notas: nombreDanado
+        ? "El SII entregó la razón social con caracteres perdidos (tildes/Ñ) — revisar y corregir el nombre."
+        : null,
+      updatedAt: new Date(),
+    })
     .where(eq(terceros.id, creado.id));
   return true;
 }

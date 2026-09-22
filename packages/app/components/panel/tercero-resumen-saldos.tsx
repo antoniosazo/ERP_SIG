@@ -42,10 +42,14 @@ export async function TerceroResumenSaldos({
     </Card>
   );
 
+  // Un saldo "al revés" (anticipo) no es un problema: se relabela y se muestra en
+  // positivo, en vez de un número negativo en rojo (mismo criterio que SAP B1).
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {mostrarCobrar && tarjeta("Por cobrar (cliente)", s.porCobrar)}
-      {mostrarPagar && tarjeta("Por pagar (proveedor)", s.porPagar)}
+      {mostrarCobrar &&
+        tarjeta(s.porCobrar < 0 ? "A favor del cliente" : "Por cobrar (cliente)", Math.abs(s.porCobrar))}
+      {mostrarPagar &&
+        tarjeta(s.porPagar < 0 ? "A favor nuestro" : "Por pagar (proveedor)", Math.abs(s.porPagar))}
       {disponible !== null && mostrarCobrar && tarjeta("Crédito disponible", disponible, `Límite ${fmt(limiteCredito)}`)}
     </div>
   );

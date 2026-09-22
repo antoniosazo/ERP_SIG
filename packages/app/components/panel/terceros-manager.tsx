@@ -154,9 +154,10 @@ export function TercerosManager({
                                       title="Ver detalle de la cuenta"
                                     />
                                   )}
-                                  <span className={v < 0 ? "text-destructive" : v === 0 ? "text-muted-foreground" : ""}>
-                                    {v === 0 ? "—" : v.toLocaleString("es-CL")}
+                                  <span className={v === 0 ? "text-muted-foreground" : undefined}>
+                                    {v === 0 ? "—" : Math.abs(v).toLocaleString("es-CL")}
                                   </span>
+                                  {v < 0 && <span className="text-xs text-muted-foreground">(a favor)</span>}
                                 </div>
                               </TableCell>
                             );
