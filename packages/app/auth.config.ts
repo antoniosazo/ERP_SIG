@@ -7,8 +7,9 @@ import type { NextAuthConfig } from "next-auth";
  * (Credentials, en `auth.ts`) solo puede correr en runtime Node.
  */
 export default {
-  // Self-hosted (no es Vercel): Auth.js no confía en el Host header por defecto.
-  // Necesario tanto aquí (proxy.ts) como en auth.ts (heredan de este config).
+  // Auth.js no confía en el Host header por defecto; en Vercel el header ya viene
+  // normalizado por su proxy de borde, así que confiar en él acá es seguro. Necesario
+  // tanto aquí (proxy.ts) como en auth.ts (heredan de este config).
   trustHost: true,
   pages: {
     signIn: "/login",

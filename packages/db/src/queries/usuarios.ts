@@ -9,6 +9,12 @@ const SALT_ROUNDS = 12;
 const INVITACION_VIGENCIA_HORAS = 24 * 7;
 const RESET_VIGENCIA_HORAS = 24;
 
+// Hash de relleno para comparar contra él cuando el usuario no existe (o no tiene
+// password_hash todavía) — sin esto, verificarCredenciales responde casi al instante
+// para emails inexistentes y tarda lo que tarda bcrypt para emails reales, filtrando
+// por temporización qué emails están activos en el sistema.
+const HASH_RELLENO = bcrypt.hashSync("relleno-sin-uso-real", SALT_ROUNDS);
+
 function generarToken(): string {
   return randomBytes(32).toString("hex");
 }
@@ -167,10 +173,12 @@ export async function verificarCredenciales(
   password: string,
 ): Promise<UsuarioAutenticado | null> {
   const [usuario] = await db.select().from(usuarios).where(eq(usuarios.email, email));
+  const valido = !!usuario && usuario.estado === "Activo" && !!usuario.passwordHash;
 
-  if (!usuario || usuario.estado !== "Activo" || !usuario.passwordHash) return null;
-
-  const coincide = await bcrypt.compare(password, usuario.passwordHash);
+  // Siempre se corre bcrypt (contra el hash real o el de relleno) para que el tiempo de
+  // respuesta no delate si el email existe/está activo.
+  const coincide = await bcrypt.compare(password, valido ? usuario.passwordHash! : HASH_RELLENO);
+  if (!valido || !usuario) return null;
   if (!coincide) return null;
 
   const asignaciones = await db
