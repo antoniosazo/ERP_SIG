@@ -23,6 +23,7 @@ import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-co
 import { COMPRA_TIPO_META } from "@/lib/compras";
 import { Badge } from "@/components/ui/badge";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
+import { MontoInput } from "@/components/panel/monto-input";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -513,11 +514,10 @@ export function DocumentoCompraForm({
         );
       case "precioUnitario":
         return (
-          <Input
-            type="number"
-            step="0.01"
-            className="w-32 text-right"
-            {...register(`lineas.${i}.precioUnitario`, { valueAsNumber: true })}
+          <MontoInput
+            className="w-32"
+            valor={watch(`lineas.${i}.precioUnitario`) || 0}
+            onValorChange={(v) => setValue(`lineas.${i}.precioUnitario`, v)}
             disabled={readOnly}
           />
         );

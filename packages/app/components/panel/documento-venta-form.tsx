@@ -20,6 +20,7 @@ import {
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-venta-campos";
 import { VENTA_CLASE_META } from "@/lib/ventas";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
+import { MontoInput } from "@/components/panel/monto-input";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -534,11 +535,10 @@ export function DocumentoVentaForm({
         );
       case "precioUnitario":
         return (
-          <Input
-            type="number"
-            step="0.01"
-            className="w-32 text-right"
-            {...register(`lineas.${i}.precioUnitario`, { valueAsNumber: true })}
+          <MontoInput
+            className="w-32"
+            valor={watch(`lineas.${i}.precioUnitario`) || 0}
+            onValorChange={(v) => setValue(`lineas.${i}.precioUnitario`, v)}
             disabled={readOnly}
           />
         );
