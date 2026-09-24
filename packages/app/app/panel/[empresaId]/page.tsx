@@ -6,8 +6,8 @@ import {
   listarTerceros,
   obtenerEmpresa,
 } from "@erp/db";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TypographyHeading } from "@/components/ui/typography";
 
 export const dynamic = "force-dynamic";
 
@@ -31,44 +31,73 @@ export default async function ResumenEmpresaPage({
   ]);
 
   const cuentasImputables = cuentas.filter((c) => c.nivelImputable && c.activa).length;
+  const base = `/panel/${empresaId}`;
 
-  const stats = [
-    { label: "Cuentas del plan", valor: cuentas.length, detalle: `${cuentasImputables} imputables activas` },
-    { label: "Centros de costo", valor: centros.length, detalle: "dimensión de análisis" },
-    { label: "Categorías contables", valor: categorias.length, detalle: "determinación de cuentas" },
-    { label: "Terceros", valor: terceros.length, detalle: "clientes / proveedores" },
+  const kpis = [
+    {
+      label: "Cuentas del plan",
+      valor: cuentas.length,
+      detalle: `${cuentasImputables} imputables activas`,
+      href: `${base}/configuracion/plan-cuentas`,
+    },
+    {
+      label: "Centros de costo",
+      valor: centros.length,
+      detalle: "dimensión de análisis",
+      href: `${base}/configuracion/centros-costo`,
+    },
+    {
+      label: "Categorías contables",
+      valor: categorias.length,
+      detalle: "reglas de imputación",
+      href: `${base}/configuracion/categorias`,
+    },
+    {
+      label: "Terceros",
+      valor: terceros.length,
+      detalle: "clientes / proveedores",
+      href: `${base}/maestros/terceros`,
+    },
   ];
 
   return (
-    <>
-      <TypographyHeading
-        title="Resumen"
-        description="Estado de la configuración de esta empresa."
-      />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Resumen</h1>
+        <p className="text-sm text-muted-foreground">Estado de la configuración de esta empresa.</p>
+      </div>
 
-      <div className="grid gap-4 @2xl:grid-cols-2 @5xl:grid-cols-4">
-        {stats.map((s) => (
-          <Card key={s.label}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold tracking-tight">{s.valor}</p>
-              <p className="text-xs text-muted-foreground">{s.detalle}</p>
-            </CardContent>
-          </Card>
+      <div className="grid grid-cols-2 gap-4 @2xl:grid-cols-4">
+        {kpis.map((k) => (
+          <Link key={k.label} href={k.href} className="block">
+            <Card
+              className="h-full cursor-pointer border border-transparent transition hover:border-teal-500"
+              style={{ "--card-spacing": "1.25rem" } as React.CSSProperties}
+            >
+              <CardHeader>
+                <CardTitle className="text-sm font-normal text-muted-foreground">{k.label}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mt-2 text-3xl font-semibold tracking-tight">{k.valor}</p>
+                <p className="text-xs text-muted-foreground">{k.detalle}</p>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Datos generales</CardTitle>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`${base}/configuracion/empresa`}>Editar</Link>
+          </Button>
         </CardHeader>
-        <CardContent className="grid gap-2 text-sm @xl:grid-cols-2">
+        <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2 @2xl:grid-cols-3">
           <Dato label="Giro" valor={empresa?.giro ?? "—"} />
           <Dato label="Régimen tributario" valor={empresa?.regimenTributario ?? "—"} />
           <Dato
-            label="Primer periodo contable"
+            label="Primer período contable"
             valor={
               empresa
                 ? `${MESES[Number(empresa.fechaPrimerPeriodoContable.slice(5, 7)) - 1]} ${empresa.fechaPrimerPeriodoContable.slice(0, 4)}`
@@ -77,29 +106,28 @@ export default async function ResumenEmpresaPage({
           />
           <Dato label="Multi-moneda" valor={empresa?.permiteMultimoneda ? "Sí" : "No"} />
           <Dato label="Aplica IFRS" valor={empresa?.aplicaIfrs ? "Sí" : "No"} />
-          <Dato label="Estado" valor={empresa?.estado ?? "—"} />
+          <Dato
+            label="Estado"
+            valor={
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={`size-1.5 rounded-full ${empresa?.estado === "Activa" ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
+                />
+                {empresa?.estado ?? "—"}
+              </span>
+            }
+          />
         </CardContent>
       </Card>
-
-      <p className="text-sm text-muted-foreground">
-        Ajusta la parametrización desde{" "}
-        <Link
-          href={`/panel/${empresaId}/configuracion/empresa`}
-          className="text-primary underline-offset-4 hover:underline"
-        >
-          Administración
-        </Link>
-        .
-      </p>
-    </>
+    </div>
   );
 }
 
-function Dato({ label, valor }: { label: string; valor: string }) {
+function Dato({ label, valor }: { label: string; valor: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b py-1.5 last:border-b-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right">{valor}</span>
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm">{valor}</p>
     </div>
   );
 }

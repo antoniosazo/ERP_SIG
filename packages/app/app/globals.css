@@ -69,91 +69,91 @@
 
 :root {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.25 0.053 137.9);
+  --foreground: oklch(0.25 0.053 195);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.053 137.9);
+  --card-foreground: oklch(0.25 0.053 195);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.053 137.9);
-  --primary: oklch(0.679 0.177 137.9);
+  --popover-foreground: oklch(0.25 0.053 195);
+  --primary: oklch(0.679 0.177 195);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0.018 137.9);
-  --secondary-foreground: oklch(0.25 0.088 137.9);
-  --muted: oklch(0.97 0.004 137.9);
-  --muted-foreground: oklch(0.52 0.035 137.9);
-  --accent: oklch(0.965 0.005 137.9);
-  --accent-foreground: oklch(0.25 0.053 137.9);
+  --secondary: oklch(0.955 0.018 195);
+  --secondary-foreground: oklch(0.25 0.088 195);
+  --muted: oklch(0.97 0.004 195);
+  --muted-foreground: oklch(0.52 0.035 195);
+  --accent: oklch(0.965 0.005 195);
+  --accent-foreground: oklch(0.25 0.053 195);
   --destructive: oklch(0.584 0.239 28.5);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.925 0.009 137.9);
-  --input: oklch(0.925 0.009 137.9);
-  --ring: oklch(0.679 0.177 137.9 / 0.9);
-  --chart-1: oklch(0.25 0.177 137.9);
-  --chart-2: oklch(0.35 0.177 137.9);
-  --chart-3: oklch(0.55 0.177 137.9);
-  --chart-4: oklch(0.75 0.177 137.9);
-  --chart-5: oklch(0.85 0.13 137.9);
+  --border: oklch(0.925 0.009 195);
+  --input: oklch(0.925 0.009 195);
+  --ring: oklch(0.679 0.177 195 / 0.9);
+  --chart-1: oklch(0.25 0.177 195);
+  --chart-2: oklch(0.35 0.177 195);
+  --chart-3: oklch(0.55 0.177 195);
+  --chart-4: oklch(0.75 0.177 195);
+  --chart-5: oklch(0.85 0.13 195);
   --radius: 0.625rem;
   /* Cromo de escritorio — en Moderno mapea al look actual (barras claras y sobrias). */
   --chrome: oklch(1 0 0);
-  --chrome-foreground: oklch(0.25 0.053 137.9);
-  --chrome-muted: oklch(0.52 0.035 137.9);
+  --chrome-foreground: oklch(0.25 0.053 195);
+  --chrome-muted: oklch(0.52 0.035 195);
   --toolbar: oklch(1 0 0);
-  --toolbar-border: oklch(0.925 0.009 137.9);
+  --toolbar-border: oklch(0.925 0.009 195);
   --tree: oklch(1 0 0);
-  --tree-active-bar: oklch(0.679 0.177 137.9);
-  --grid-header: oklch(0.97 0.004 137.9);
-  --grid-line: oklch(0.925 0.009 137.9);
-  --field-readonly: oklch(0.97 0.004 137.9);
+  --tree-active-bar: oklch(0.679 0.177 195);
+  --grid-header: oklch(0.97 0.004 195);
+  --grid-line: oklch(0.925 0.009 195);
+  --field-readonly: oklch(0.97 0.004 195);
   --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.25 0.053 137.9);
-  --sidebar-primary: oklch(0.679 0.177 137.9);
+  --sidebar-foreground: oklch(0.25 0.053 195);
+  --sidebar-primary: oklch(0.679 0.177 195);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.965 0.005 137.9);
-  --sidebar-accent-foreground: oklch(0.25 0.053 137.9);
-  --sidebar-border: oklch(0.925 0.009 137.9);
-  --sidebar-ring: oklch(0.925 0.009 137.9);
+  --sidebar-accent: oklch(0.965 0.005 195);
+  --sidebar-accent-foreground: oklch(0.25 0.053 195);
+  --sidebar-border: oklch(0.925 0.009 195);
+  --sidebar-ring: oklch(0.925 0.009 195);
 }
 
 .dark {
-  --background: oklch(0.11 0.012 137.9);
+  --background: oklch(0.11 0.012 195);
   --foreground: oklch(0.98 0 0);
-  --card: oklch(0.11 0.012 137.9);
+  --card: oklch(0.11 0.012 195);
   --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.15 0.018 137.9);
+  --popover: oklch(0.15 0.018 195);
   --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.679 0.177 137.9);
+  --primary: oklch(0.679 0.177 195);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.759 0.177 137.9 / 0.25);
-  --secondary-foreground: oklch(0.9 0.177 137.9);
-  --muted: oklch(0.25 0.012 137.9);
-  --muted-foreground: oklch(0.75 0.026 137.9);
-  --accent: oklch(0.38 0.018 137.9);
+  --secondary: oklch(0.759 0.177 195 / 0.25);
+  --secondary-foreground: oklch(0.9 0.177 195);
+  --muted: oklch(0.25 0.012 195);
+  --muted-foreground: oklch(0.75 0.026 195);
+  --accent: oklch(0.38 0.018 195);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.69 0.2 23.9);
   --destructive-foreground: oklch(0 0 0);
-  --border: oklch(0.29 0.012 137.9);
-  --input: oklch(0.29 0.012 137.9);
-  --ring: oklch(0.759 0.177 137.9);
-  --chart-1: oklch(0.35 0.177 137.9);
-  --chart-2: oklch(0.55 0.177 137.9);
-  --chart-3: oklch(0.75 0.177 137.9);
-  --chart-4: oklch(0.9 0.15 137.9);
-  --chart-5: oklch(0.99 0.11 137.9);
-  --sidebar: oklch(0.11 0.012 137.9);
+  --border: oklch(0.29 0.012 195);
+  --input: oklch(0.29 0.012 195);
+  --ring: oklch(0.759 0.177 195);
+  --chart-1: oklch(0.35 0.177 195);
+  --chart-2: oklch(0.55 0.177 195);
+  --chart-3: oklch(0.75 0.177 195);
+  --chart-4: oklch(0.9 0.15 195);
+  --chart-5: oklch(0.99 0.11 195);
+  --sidebar: oklch(0.11 0.012 195);
   --sidebar-foreground: oklch(0.98 0 0);
   --sidebar-primary: oklch(1 0 0);
-  --sidebar-primary-foreground: oklch(0.2 0.012 137.9);
-  --sidebar-accent: oklch(0.24 0.012 137.9);
+  --sidebar-primary-foreground: oklch(0.2 0.012 195);
+  --sidebar-accent: oklch(0.24 0.012 195);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.28 0.012 137.9);
-  --sidebar-ring: oklch(0.759 0.177 137.9);
+  --sidebar-border: oklch(0.28 0.012 195);
+  --sidebar-ring: oklch(0.759 0.177 195);
 }
 
 /* ── Vista Clásica (ERP de escritorio) ───────────────────────────────────── */
 :root[data-ui="classic"] {
   --radius: 0.25rem;
-  --border: oklch(0.87 0.01 137.9);
-  --input: oklch(0.87 0.01 137.9);
+  --border: oklch(0.87 0.01 195);
+  --input: oklch(0.87 0.01 195);
   --text-sm: 0.8125rem;
   --text-xs: 0.6875rem;
 
@@ -163,10 +163,10 @@
   --toolbar: oklch(0.965 0.006 245);
   --toolbar-border: oklch(0.9 0.008 245);
   --tree: oklch(0.975 0.005 245);
-  --tree-active-bar: oklch(0.62 0.16 150);
+  --tree-active-bar: oklch(0.62 0.14 195);
   --grid-header: oklch(0.955 0.006 245);
   --grid-line: oklch(0.9 0.008 245);
-  --field-readonly: oklch(0.965 0.004 137.9);
+  --field-readonly: oklch(0.965 0.004 195);
 }
 
 /* Tablas densas en Clásico */
@@ -235,6 +235,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    border: 0;
   }
   button,
   a,

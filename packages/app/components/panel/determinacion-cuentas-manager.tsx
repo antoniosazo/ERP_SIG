@@ -38,6 +38,7 @@ const FILAS: { contexto: DeterminacionContexto; rol: DeterminacionRol; label: st
   { contexto: "compra", rol: "gr_ir", label: "Cuenta puente GR-IR", ayuda: "Transitorio de pasivo entre la recepción y la factura de compra." },
   { contexto: "impuesto", rol: "iva_debito", label: "IVA débito fiscal", ayuda: "Fallback cuando el impuesto de venta no tiene cuenta asignada." },
   { contexto: "impuesto", rol: "iva_credito", label: "IVA crédito fiscal", ayuda: "Fallback cuando el impuesto de compra no tiene cuenta asignada." },
+  { contexto: "general", rol: "resultado_ejercicio", label: "Resultado del ejercicio", ayuda: "Cuenta de Patrimonio donde el cierre de ejercicio traspasa la utilidad o pérdida del año." },
 ];
 
 export function DeterminacionCuentasManager({

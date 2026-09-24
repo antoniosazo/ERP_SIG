@@ -9,6 +9,7 @@ export * from "./centros-costo";
 export * from "./cuentas-bancarias";
 export * from "./metodos-pago";
 export * from "./pagos";
+export * from "./cierres-ejercicio";
 export * from "./tipos-documento";
 export * from "./bancos";
 export * from "./categorias-contables";

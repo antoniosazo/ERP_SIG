@@ -22,3 +22,14 @@ export const actualizarFirmaContableSchema = z.object({
 });
 
 export type ActualizarFirmaContableInput = z.infer<typeof actualizarFirmaContableSchema>;
+
+/** Alta de una firma contable nueva junto con su primer Administrador (solo superadmin). */
+export const crearFirmaConAdminSchema = z.object({
+  firma: crearFirmaContableSchema,
+  admin: z.object({
+    nombre: z.string().min(1, "Nombre requerido").max(200),
+    email: z.email("Email inválido"),
+  }),
+});
+
+export type CrearFirmaConAdminInput = z.infer<typeof crearFirmaConAdminSchema>;

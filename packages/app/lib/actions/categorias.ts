@@ -17,13 +17,12 @@ export type CategoriaResultado =
 const ROLES_CONFIG = ["Administrador", "Contador"];
 
 function mensajeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("categorias_contables_empresa_nombre_unique")) {
-      return "Ya existe una categoría contable con ese nombre en esta empresa.";
-    }
-    return error.message;
+  if (!(error instanceof Error)) return "Error desconocido";
+  const texto = `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}`;
+  if (texto.includes("categorias_contables_empresa_nombre_unique")) {
+    return "Ya existe una categoría contable con ese nombre en esta empresa.";
   }
-  return "Error desconocido";
+  return error.message;
 }
 
 export async function crearCategoriaAction(

@@ -17,13 +17,12 @@ export type CentroCostoResultado =
 const ROLES_CONFIG = ["Administrador", "Contador"];
 
 function mensajeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("centros_costo_empresa_codigo_unique")) {
-      return "Ya existe un centro de costo con ese código en esta empresa.";
-    }
-    return error.message;
+  if (!(error instanceof Error)) return "Error desconocido";
+  const texto = `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}`;
+  if (texto.includes("centros_costo_empresa_codigo_unique")) {
+    return "Ya existe un centro de costo con ese código en esta empresa.";
   }
-  return "Error desconocido";
+  return error.message;
 }
 
 export async function crearCentroCostoAction(

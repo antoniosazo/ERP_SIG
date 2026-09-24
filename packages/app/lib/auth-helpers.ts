@@ -61,11 +61,29 @@ export async function requireRolEnEmpresa(
   rolesPermitidos: string[],
 ): Promise<Session> {
   const session = await requireSession();
-  if (session.user.esAdminFirma) return session;
+  if (session.user.esAdminFirma) {
+    // El atajo de Admin de firma solo aplica a empresas de SU PROPIA firma: sin este
+    // chequeo, el admin de una firma podría operar sobre empresas de otra firma con solo
+    // conocer su empresaId (cross-tenant).
+    const empresa = await obtenerEmpresa(empresaId);
+    if (!empresa || empresa.firmaContableId !== session.user.firmaContableId) {
+      throw new Error("No tienes el rol necesario para esta acción en esta empresa");
+    }
+    return session;
+  }
 
   const asignacion = session.user.empresas.find((e) => e.empresaId === empresaId);
   if (!asignacion || !rolesPermitidos.includes(asignacion.rol)) {
     throw new Error("No tienes el rol necesario para esta acción en esta empresa");
+  }
+  return session;
+}
+
+/** Exige que el usuario sea superadmin del sistema (crear/gestionar firmas contables). */
+export async function requireSuperAdmin(): Promise<Session> {
+  const session = await requireSession();
+  if (!session.user.esSuperAdmin) {
+    throw new Error("Se requiere ser superadmin del sistema para esta acción");
   }
   return session;
 }

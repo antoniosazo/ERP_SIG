@@ -241,6 +241,8 @@ export const DETERMINACION_ROL = [
   "inventario",
   "gr_ir",
   "costo_venta",
+  /** Cuenta de Patrimonio donde se traspasa la utilidad/pérdida al cerrar el ejercicio. */
+  "resultado_ejercicio",
 ] as const;
 
 export type PlanContratado = (typeof PLAN_CONTRATADO)[number];

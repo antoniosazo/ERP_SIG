@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Figtree, Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { leerColorScheme } from "@/lib/color-scheme";
 import { leerUiTheme } from "@/lib/ui-theme";
 import "./globals.css";
 
@@ -24,14 +25,14 @@ const figtree = Figtree({
 });
 
 export const metadata: Metadata = {
-  title: "ERP Contable",
+  title: "Tessora ERP",
   description: "Administración de firmas y empresas cliente",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const ui = await leerUiTheme();
+  const [ui, scheme] = await Promise.all([leerUiTheme(), leerColorScheme()]);
   return (
-    <html lang="es" data-ui={ui} className="h-full">
+    <html lang="es" data-ui={ui} className={cn("h-full", scheme === "dark" && "dark")}>
       <body
         className={cn(
           fontSans.variable,

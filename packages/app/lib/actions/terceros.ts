@@ -40,13 +40,12 @@ export type SubResultado = { ok: true } | { ok: false; error: string };
 const ROLES_CONFIG = ["Administrador", "Contador"];
 
 function mensajeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("terceros_empresa_rut_unique")) {
-      return "Ya existe un tercero con ese RUT en esta empresa.";
-    }
-    return error.message;
+  if (!(error instanceof Error)) return "Error desconocido";
+  const texto = `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}`;
+  if (texto.includes("terceros_empresa_rut_unique")) {
+    return "Ya existe un tercero con ese RUT en esta empresa.";
   }
-  return "Error desconocido";
+  return error.message;
 }
 
 function issue(error: { issues: { message?: string }[] }) {

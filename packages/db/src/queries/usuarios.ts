@@ -157,6 +157,7 @@ export type UsuarioAutenticado = {
   email: string;
   firmaContableId: string;
   esAdminFirma: boolean;
+  esSuperAdmin: boolean;
   empresas: { empresaId: string; rol: string }[];
 };
 
@@ -183,6 +184,7 @@ export async function verificarCredenciales(
     email: usuario.email,
     firmaContableId: usuario.firmaContableId,
     esAdminFirma: usuario.esAdminFirma,
+    esSuperAdmin: usuario.esSuperAdmin,
     empresas: asignaciones,
   };
 }

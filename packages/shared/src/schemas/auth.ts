@@ -3,7 +3,7 @@ import { ROL } from "../enums";
 import { uuid } from "./primitives";
 
 export const loginSchema = z.object({
-  email: z.email("Email inválido"),
+  email: z.string().min(1, "Ingresa tu email").email("Email inválido"),
   password: z.string().min(1, "Ingresa tu contraseña"),
 });
 

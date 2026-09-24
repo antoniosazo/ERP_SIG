@@ -6,6 +6,7 @@ declare module "next-auth" {
   interface User {
     firmaContableId: string;
     esAdminFirma: boolean;
+    esSuperAdmin: boolean;
     empresas: EmpresaAsignada[];
   }
 
@@ -14,6 +15,7 @@ declare module "next-auth" {
       id: string;
       firmaContableId: string;
       esAdminFirma: boolean;
+      esSuperAdmin: boolean;
       empresas: EmpresaAsignada[];
     } & DefaultSession["user"];
   }

@@ -15,13 +15,12 @@ export type CuentaResultado = { ok: true; cuentaId: string } | { ok: false; erro
 const ROLES_CONFIG = ["Administrador", "Contador"];
 
 function mensajeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("plan_cuentas_empresa_codigo_unique")) {
-      return "Ya existe una cuenta con ese código en esta empresa.";
-    }
-    return error.message;
+  if (!(error instanceof Error)) return "Error desconocido";
+  const texto = `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}`;
+  if (texto.includes("plan_cuentas_empresa_codigo_unique")) {
+    return "Ya existe una cuenta con ese código en esta empresa.";
   }
-  return "Error desconocido";
+  return error.message;
 }
 
 export async function crearCuentaAction(

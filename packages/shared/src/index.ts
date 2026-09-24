@@ -15,6 +15,7 @@ export * from "./schemas/cuenta-bancaria-empresa";
 export * from "./schemas/metodo-pago";
 export * from "./schemas/pago";
 export * from "./schemas/cheque";
+export * from "./schemas/cierre-ejercicio";
 export * from "./schemas/categoria-contable";
 export * from "./schemas/tercero";
 export * from "./schemas/tercero-contacto";

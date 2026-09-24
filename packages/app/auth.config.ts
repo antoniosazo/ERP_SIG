@@ -19,7 +19,9 @@ export default {
       const logueado = !!auth?.user;
       const { pathname } = nextUrl;
       const requiereSesion =
-        pathname.startsWith("/admin") || pathname.startsWith("/panel");
+        pathname.startsWith("/admin") ||
+        pathname.startsWith("/panel") ||
+        pathname.startsWith("/superadmin");
       if (!requiereSesion) return true;
       return logueado;
     },

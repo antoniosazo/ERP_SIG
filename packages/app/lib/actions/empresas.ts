@@ -21,13 +21,12 @@ export type CrearEmpresaResultado =
   | { ok: false; error: string };
 
 function mensajeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("empresas_firma_rut_unique")) {
-      return "Esta firma contable ya tiene una empresa con ese RUT.";
-    }
-    return error.message;
+  if (!(error instanceof Error)) return "Error desconocido";
+  const texto = `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}`;
+  if (texto.includes("empresas_firma_rut_unique")) {
+    return "Esta firma contable ya tiene una empresa con ese RUT.";
   }
-  return "Error desconocido";
+  return error.message;
 }
 
 /**

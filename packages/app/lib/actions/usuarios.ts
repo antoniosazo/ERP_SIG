@@ -10,13 +10,12 @@ export type InvitarUsuarioResultado =
   | { ok: false; error: string };
 
 function mensajeError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("usuarios_email_unique")) {
-      return "Ya existe un usuario con ese email.";
-    }
-    return error.message;
+  if (!(error instanceof Error)) return "Error desconocido";
+  const texto = `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}`;
+  if (texto.includes("usuarios_email_unique")) {
+    return "Ya existe un usuario con ese email.";
   }
-  return "Error desconocido";
+  return error.message;
 }
 
 export async function invitarUsuarioAction(

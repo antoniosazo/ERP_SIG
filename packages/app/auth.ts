@@ -26,6 +26,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: usuario.email,
           firmaContableId: usuario.firmaContableId,
           esAdminFirma: usuario.esAdminFirma,
+          esSuperAdmin: usuario.esSuperAdmin,
           empresas: usuario.empresas,
         };
       },
@@ -37,6 +38,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.firmaContableId = user.firmaContableId;
         token.esAdminFirma = user.esAdminFirma;
+        token.esSuperAdmin = user.esSuperAdmin;
         token.empresas = user.empresas;
       }
       return token;
@@ -48,6 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = token.sub ?? "";
       session.user.firmaContableId = token.firmaContableId as string;
       session.user.esAdminFirma = token.esAdminFirma as boolean;
+      session.user.esSuperAdmin = token.esSuperAdmin as boolean;
       session.user.empresas = token.empresas as { empresaId: string; rol: string }[];
       return session;
     },

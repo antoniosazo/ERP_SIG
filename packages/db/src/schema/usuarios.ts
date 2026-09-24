@@ -13,6 +13,10 @@ import { firmasContables } from "./firmas-contables";
  * acciones de firma, no de una empresa cliente en particular — sin este flag no habría
  * forma de que el primer Administrador (sin empresas asignadas todavía) pudiera
  * gestionar nada. Descubierto al implementar el bootstrap; no estaba en el plan original.
+ *
+ * `esSuperAdmin` es un nivel por encima de `esAdminFirma`: el operador del sistema
+ * (no un cliente de la firma) que puede crear otras firmas contables. `esAdminFirma`
+ * administra SU firma; no debe poder dar de alta firmas ajenas.
  */
 export const usuarios = pgTable(
   "usuarios",
@@ -26,6 +30,7 @@ export const usuarios = pgTable(
     passwordHash: text("password_hash"),
     estado: usuarioEstadoEnum("estado").notNull().default("Invitado"),
     esAdminFirma: boolean("es_admin_firma").notNull().default(false),
+    esSuperAdmin: boolean("es_super_admin").notNull().default(false),
     ...timestampsColumns,
   },
   (t) => [unique("usuarios_email_unique").on(t.email)],
