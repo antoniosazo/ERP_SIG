@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { PagoTipo } from "@erp/shared";
 import { documentosAbiertosAction, registrarPagoAction } from "@/lib/actions/pagos";
 import { PAGO_META } from "@/lib/pagos";
+import { MontoInput } from "@/components/panel/monto-input";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -238,13 +239,10 @@ export function PagoForm({
                         <td className="px-3 py-2 text-right tabular-nums">{fmt(d.saldo)}</td>
                         <td className="px-3 py-2 text-right">
                           {marcado && (
-                            <Input
-                              type="number"
-                              className="ml-auto h-8 w-32 text-right"
-                              value={seleccion[d.id]}
-                              min={0}
-                              max={d.saldo}
-                              onChange={(e) => setSeleccion((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                            <MontoInput
+                              className="ml-auto h-8 w-32"
+                              valor={num(seleccion[d.id] ?? "")}
+                              onValorChange={(v) => setSeleccion((prev) => ({ ...prev, [d.id]: String(v) }))}
                             />
                           )}
                         </td>
@@ -289,13 +287,11 @@ export function PagoForm({
                 </div>
                 <div className="space-y-2">
                   <Label>Monto</Label>
-                  <Input
-                    type="number"
-                    className="text-right"
-                    value={montoDe(m)}
-                    onChange={(e) => {
+                  <MontoInput
+                    valor={num(montoDe(m))}
+                    onValorChange={(v) => {
                       setMedioManual(true);
-                      actualizarMedio(m.clave, { monto: e.target.value });
+                      actualizarMedio(m.clave, { monto: String(v) });
                     }}
                   />
                 </div>
