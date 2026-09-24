@@ -1,15 +1,19 @@
 "use client"
 
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import type { ColorScheme } from "@/lib/color-scheme"
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
+/**
+ * `theme` se pasa explícito (no via next-themes' `useTheme`, que no está
+ * conectado a este proyecto): el modo claro/oscuro real vive en la cookie
+ * `erp-scheme` (ver lib/color-scheme.ts), no en la preferencia del SO.
+ */
+const Toaster = ({ scheme = "light", ...props }: ToasterProps & { scheme?: ColorScheme }) => {
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={scheme}
+      position="top-right"
       className="toaster group"
       icons={{
         success: (

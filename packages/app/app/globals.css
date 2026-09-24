@@ -46,20 +46,30 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-primary: var(--primary);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-disabled-foreground: var(--disabled-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-  --radius-5xl: calc(var(--radius) * 3);
-  --radius-6xl: calc(var(--radius) * 3.4);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: calc(var(--radius-card) * 1.3);
+  --radius-3xl: calc(var(--radius-card) * 1.6);
+  --radius-4xl: calc(var(--radius-card) * 2);
+  --radius-5xl: calc(var(--radius-card) * 2.4);
+  --radius-6xl: calc(var(--radius-card) * 2.8);
 }
 
 @theme {
@@ -67,106 +77,143 @@
   --container-8xl: 90rem;
 }
 
+/*
+ * Sistema de diseño unificado del panel (sep 2026): primario teal-600, fondos
+ * gray-50/white, texto gray-900/500/400, radios 8px (inputs/botones) y 12px
+ * (tarjetas). Ver /dev/ui para el catálogo de componentes construidos sobre
+ * estos tokens.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.25 0.053 195);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.053 195);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.053 195);
-  --primary: oklch(0.679 0.177 195);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0.018 195);
-  --secondary-foreground: oklch(0.25 0.088 195);
-  --muted: oklch(0.97 0.004 195);
-  --muted-foreground: oklch(0.52 0.035 195);
-  --accent: oklch(0.965 0.005 195);
-  --accent-foreground: oklch(0.25 0.053 195);
-  --destructive: oklch(0.584 0.239 28.5);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.925 0.009 195);
-  --input: oklch(0.925 0.009 195);
-  --ring: oklch(0.679 0.177 195 / 0.9);
-  --chart-1: oklch(0.25 0.177 195);
-  --chart-2: oklch(0.35 0.177 195);
-  --chart-3: oklch(0.55 0.177 195);
-  --chart-4: oklch(0.75 0.177 195);
-  --chart-5: oklch(0.85 0.13 195);
-  --radius: 0.625rem;
-  /* Cromo de escritorio — en Moderno mapea al look actual (barras claras y sobrias). */
-  --chrome: oklch(1 0 0);
-  --chrome-foreground: oklch(0.25 0.053 195);
-  --chrome-muted: oklch(0.52 0.035 195);
-  --toolbar: oklch(1 0 0);
-  --toolbar-border: oklch(0.925 0.009 195);
-  --tree: oklch(1 0 0);
-  --tree-active-bar: oklch(0.679 0.177 195);
-  --grid-header: oklch(0.97 0.004 195);
-  --grid-line: oklch(0.925 0.009 195);
-  --field-readonly: oklch(0.97 0.004 195);
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.25 0.053 195);
-  --sidebar-primary: oklch(0.679 0.177 195);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.965 0.005 195);
-  --sidebar-accent-foreground: oklch(0.25 0.053 195);
-  --sidebar-border: oklch(0.925 0.009 195);
-  --sidebar-ring: oklch(0.925 0.009 195);
+  --background: #f9fafb;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #0d9488;
+  --primary-hover: #0f766e;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --disabled-foreground: #9ca3af;
+  --accent: #f0fdfa;
+  --accent-foreground: #0f766e;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #059669;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --danger: #dc2626;
+  --danger-foreground: #ffffff;
+  --info: #0284c7;
+  --info-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #14b8a6;
+  --chart-1: #0d9488;
+  --chart-2: #0284c7;
+  --chart-3: #d97706;
+  --chart-4: #7c3aed;
+  --chart-5: #db2777;
+  --radius: 0.5rem;
+  --radius-card: 0.75rem;
+  /* Cromo del header/sidebar mobile — superficie blanca neutra. */
+  --chrome: #ffffff;
+  --chrome-foreground: #111827;
+  --chrome-muted: #6b7280;
+  --toolbar: #ffffff;
+  --toolbar-border: #e5e7eb;
+  --tree: #f9fafb;
+  --tree-active-bar: #0d9488;
+  --grid-header: #f9fafb;
+  --grid-line: #e5e7eb;
+  --field-readonly: #f3f4f6;
+  --sidebar: #f9fafb;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #0d9488;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0fdfa;
+  --sidebar-accent-foreground: #0f766e;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #14b8a6;
 }
 
 .dark {
-  --background: oklch(0.11 0.012 195);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.11 0.012 195);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.15 0.018 195);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.679 0.177 195);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.759 0.177 195 / 0.25);
-  --secondary-foreground: oklch(0.9 0.177 195);
-  --muted: oklch(0.25 0.012 195);
-  --muted-foreground: oklch(0.75 0.026 195);
-  --accent: oklch(0.38 0.018 195);
-  --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.69 0.2 23.9);
-  --destructive-foreground: oklch(0 0 0);
-  --border: oklch(0.29 0.012 195);
-  --input: oklch(0.29 0.012 195);
-  --ring: oklch(0.759 0.177 195);
-  --chart-1: oklch(0.35 0.177 195);
-  --chart-2: oklch(0.55 0.177 195);
-  --chart-3: oklch(0.75 0.177 195);
-  --chart-4: oklch(0.9 0.15 195);
-  --chart-5: oklch(0.99 0.11 195);
-  --sidebar: oklch(0.11 0.012 195);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(1 0 0);
-  --sidebar-primary-foreground: oklch(0.2 0.012 195);
-  --sidebar-accent: oklch(0.24 0.012 195);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.28 0.012 195);
-  --sidebar-ring: oklch(0.759 0.177 195);
+  --background: #0b0f14;
+  --foreground: #f3f4f6;
+  --card: #131820;
+  --card-foreground: #f3f4f6;
+  --popover: #131820;
+  --popover-foreground: #f3f4f6;
+  --primary: #14b8a6;
+  --primary-hover: #2dd4bf;
+  --primary-foreground: #04211d;
+  --secondary: #1c222b;
+  --secondary-foreground: #f3f4f6;
+  --muted: #1c222b;
+  --muted-foreground: #9ca3af;
+  --disabled-foreground: #6b7280;
+  --accent: #10302c;
+  --accent-foreground: #5eead4;
+  --destructive: #f87171;
+  --destructive-foreground: #1a0505;
+  --success: #34d399;
+  --success-foreground: #04211d;
+  --warning: #fbbf24;
+  --warning-foreground: #221600;
+  --danger: #f87171;
+  --danger-foreground: #1a0505;
+  --info: #38bdf8;
+  --info-foreground: #00202e;
+  --border: #262b33;
+  --input: #262b33;
+  --ring: #14b8a6;
+  --chart-1: #14b8a6;
+  --chart-2: #38bdf8;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
+  --chrome: #131820;
+  --chrome-foreground: #f3f4f6;
+  --chrome-muted: #9ca3af;
+  --toolbar: #131820;
+  --toolbar-border: #262b33;
+  --tree: #0b0f14;
+  --tree-active-bar: #14b8a6;
+  --grid-header: #131820;
+  --grid-line: #262b33;
+  --field-readonly: #1c222b;
+  --sidebar: #0b0f14;
+  --sidebar-foreground: #f3f4f6;
+  --sidebar-primary: #14b8a6;
+  --sidebar-primary-foreground: #04211d;
+  --sidebar-accent: #10302c;
+  --sidebar-accent-foreground: #5eead4;
+  --sidebar-border: #262b33;
+  --sidebar-ring: #14b8a6;
 }
 
 /* ── Vista Clásica (ERP de escritorio) ───────────────────────────────────── */
 :root[data-ui="classic"] {
   --radius: 0.25rem;
-  --border: oklch(0.87 0.01 195);
-  --input: oklch(0.87 0.01 195);
+  --border: #dde1e6;
+  --input: #dde1e6;
   --text-sm: 0.8125rem;
   --text-xs: 0.6875rem;
 
-  --chrome: oklch(0.33 0.03 245);
-  --chrome-foreground: oklch(0.96 0.005 245);
-  --chrome-muted: oklch(0.78 0.02 245);
-  --toolbar: oklch(0.965 0.006 245);
-  --toolbar-border: oklch(0.9 0.008 245);
-  --tree: oklch(0.975 0.005 245);
-  --tree-active-bar: oklch(0.62 0.14 195);
-  --grid-header: oklch(0.955 0.006 245);
-  --grid-line: oklch(0.9 0.008 245);
-  --field-readonly: oklch(0.965 0.004 195);
+  --chrome: #333844;
+  --chrome-foreground: #f3f5f7;
+  --chrome-muted: #b9c0cc;
+  --toolbar: #f5f6f8;
+  --toolbar-border: #e5e7eb;
+  --tree: #f8f9fa;
+  --tree-active-bar: #0d9488;
+  --grid-header: #f3f4f6;
+  --grid-line: #e5e7eb;
+  --field-readonly: #f3f4f6;
 }
 
 /* Tablas densas en Clásico */
@@ -237,6 +284,7 @@
     @apply bg-background text-foreground;
     margin: 0;
     border: 0;
+    font-size: 0.875rem;
   }
   button,
   a,
