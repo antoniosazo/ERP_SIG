@@ -28,3 +28,4 @@ export * from "./schemas/producto";
 export * from "./schemas/preferencias";
 export * from "./schemas/periodo";
 export * from "./schemas/auth";
+export * from "./schemas/activo-fijo";

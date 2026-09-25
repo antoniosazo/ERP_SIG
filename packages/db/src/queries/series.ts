@@ -123,6 +123,23 @@ export async function sembrarSeriesTercero(tx: Tx, empresaId: string): Promise<v
     });
 }
 
+/** Crea la serie de código automático de activos fijos (idempotente). */
+export async function sembrarSeriesActivoFijo(tx: Tx, empresaId: string): Promise<void> {
+  await tx
+    .insert(seriesNumeracion)
+    .values({
+      empresaId,
+      ambito: "activo_fijo" as const,
+      clave: "codigo",
+      prefijo: "AF-",
+      proximo: 1,
+      digitos: 5,
+    })
+    .onConflictDoNothing({
+      target: [seriesNumeracion.empresaId, seriesNumeracion.ambito, seriesNumeracion.clave],
+    });
+}
+
 /** Crea las series de numeración de pagos recibidos (PR) y efectuados (PE) — idempotente. */
 export async function sembrarSeriesPago(tx: Tx, empresaId: string): Promise<void> {
   await tx

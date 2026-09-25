@@ -23,6 +23,7 @@ import {
   tercerosGrupos,
   tiposDocumento,
 } from "../schema";
+import { crearActivoDesdeCompra } from "./activos-fijos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { tienePagosAplicados } from "./pagos-saldos";
 import { siguienteCorrelativoAsiento } from "./asientos";
@@ -1414,6 +1415,40 @@ export async function contabilizarDocumentoCompra(
       .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
       .returning();
     if (!doc) throw new Error("No se pudo contabilizar el documento");
+
+    // Activo Fijo — Fase 1: una línea imputada a una cuenta tipoCuenta = "ActivoFijo"
+    // da de alta automáticamente un activo en estado Nuevo, enlazado a esta factura. El
+    // usuario completa clase y valoraciones después; cero cambios de esquema en esta tabla.
+    const lineasDoc = await tx
+      .select({
+        numeroLinea: documentosCompraLineas.numeroLinea,
+        glosa: documentosCompraLineas.glosa,
+        cuentaImputacionId: documentosCompraLineas.cuentaImputacionId,
+      })
+      .from(documentosCompraLineas)
+      .where(eq(documentosCompraLineas.documentoCompraId, id));
+    const cuentaIdsLineas = [...new Set(lineasDoc.map((l) => l.cuentaImputacionId))];
+    if (cuentaIdsLineas.length) {
+      const cuentasActivoFijo = await tx
+        .select({ id: planCuentas.id })
+        .from(planCuentas)
+        .where(and(inArray(planCuentas.id, cuentaIdsLineas), eq(planCuentas.tipoCuenta, "ActivoFijo")));
+      const esActivoFijo = new Set(cuentasActivoFijo.map((c) => c.id));
+      for (const l of lineasDoc) {
+        if (!esActivoFijo.has(l.cuentaImputacionId)) continue;
+        await crearActivoDesdeCompra(
+          tx,
+          empresaId,
+          {
+            descripcion: l.glosa || `Activo fijo — línea ${l.numeroLinea + 1} de ${doc.numeroInterno ?? doc.folio ?? ""}`.trim(),
+            documentoOrigenId: doc.id,
+            documentoOrigenTabla: "documentos_compra",
+            fechaAdquisicion: doc.fechaEmision,
+          },
+          ctx,
+        );
+      }
+    }
 
     // Si vino de un pedido y este ya no tiene pendiente → cerrarlo.
     if (doc.documentoBaseId) {

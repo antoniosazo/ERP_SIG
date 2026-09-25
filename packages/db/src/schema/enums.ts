@@ -1,5 +1,12 @@
 import { pgEnum } from "drizzle-orm/pg-core";
 import {
+  ACTIVO_FIJO_DOC_ESTADO,
+  ACTIVO_FIJO_DOC_TIPO,
+  ACTIVO_FIJO_ESTADO,
+  ACTIVO_FIJO_METODO_DEP,
+  ACTIVO_FIJO_REGLA_BAJA,
+  ACTIVO_FIJO_REGLA_INICIO,
+  ACTIVO_FIJO_TIPO,
   ASIENTO_ESTADO,
   ASIENTO_TIPO,
   AUDITORIA_ACCION,
@@ -110,3 +117,11 @@ export const pagoEstadoEnum = pgEnum("pago_estado", [...PAGO_ESTADO]);
 
 export const chequeTipoEnum = pgEnum("cheque_tipo", [...CHEQUE_TIPO]);
 export const chequeEstadoEnum = pgEnum("cheque_estado", [...CHEQUE_ESTADO]);
+
+export const activoFijoEstadoEnum = pgEnum("activo_fijo_estado", [...ACTIVO_FIJO_ESTADO]);
+export const activoFijoTipoEnum = pgEnum("activo_fijo_tipo", [...ACTIVO_FIJO_TIPO]);
+export const activoFijoMetodoDepEnum = pgEnum("activo_fijo_metodo_dep", [...ACTIVO_FIJO_METODO_DEP]);
+export const activoFijoReglaInicioEnum = pgEnum("activo_fijo_regla_inicio", [...ACTIVO_FIJO_REGLA_INICIO]);
+export const activoFijoReglaBajaEnum = pgEnum("activo_fijo_regla_baja", [...ACTIVO_FIJO_REGLA_BAJA]);
+export const activoFijoDocTipoEnum = pgEnum("activo_fijo_doc_tipo", [...ACTIVO_FIJO_DOC_TIPO]);
+export const activoFijoDocEstadoEnum = pgEnum("activo_fijo_doc_estado", [...ACTIVO_FIJO_DOC_ESTADO]);

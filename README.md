@@ -22,4 +22,6 @@ pnpm dev                  # http://localhost:3000
 Configuración (plan de cuentas, monedas, impuestos, períodos, determinación de
 cuentas, centros de costo, categorías, auditoría) · Maestros (socios de negocio) ·
 Inventario (productos, grupos, existencias/Kardex) · Ventas (facturas, NC, ND) ·
-Compras (pedidos, entradas de mercadería/GRPO, facturas, NC, ND, conciliación GR-IR).
+Compras (pedidos, entradas de mercadería/GRPO, facturas, NC, ND, conciliación GR-IR) ·
+Activo Fijo (clases, maestro, capitalización, depreciación — ver
+[modulo-activo-fijo.md](modulo-activo-fijo.md)).

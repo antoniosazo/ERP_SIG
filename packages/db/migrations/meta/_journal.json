@@ -288,6 +288,41 @@
       "when": 1790106604629,
       "tag": "0040_tidy_lady_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790341654127,
+      "tag": "0041_soft_starhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790342147753,
+      "tag": "0042_brown_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790345810957,
+      "tag": "0043_glamorous_lockjaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790345830527,
+      "tag": "0044_conscious_blue_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790345984201,
+      "tag": "0045_warm_vertigo",
+      "breakpoints": true
     }
   ]
 }

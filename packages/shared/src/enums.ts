@@ -170,7 +170,7 @@ export type ChequeEstado = (typeof CHEQUE_ESTADO)[number];
 export const CUENTA_BANCARIA_TIPO = ["Corriente", "Vista", "Ahorro", "Otra"] as const;
 
 // series_numeracion.ambito — serie de numeración reutilizable.
-export const SERIE_AMBITO = ["tercero", "venta", "producto", "compra", "pago"] as const;
+export const SERIE_AMBITO = ["tercero", "venta", "producto", "compra", "pago", "activo_fijo"] as const;
 
 // documentos_venta.clase — determina el signo contable (61 = NC, 56 = ND).
 export const DOCUMENTO_VENTA_CLASE = ["Factura", "Nota de Crédito", "Nota de Débito"] as const;
@@ -243,7 +243,75 @@ export const DETERMINACION_ROL = [
   "costo_venta",
   /** Cuenta de Patrimonio donde se traspasa la utilidad/pérdida al cerrar el ejercicio. */
   "resultado_ejercicio",
+  // Fallback general de Activo Fijo — una clase de activo puede tener sus propias
+  // cuentas (activos_fijos_clases_cuentas) que pisan este valor por empresa.
+  "activo_fijo",
+  "depreciacion_acumulada",
+  "gasto_depreciacion",
+  "cuenta_compensacion_capitalizacion",
+  // Fallback general para bajas de Activo Fijo (Fase 2) — mismo patrón de dos niveles.
+  "utilidad_baja",
+  "perdida_baja",
+  "valor_libro_baja",
 ] as const;
+
+// activos_fijos.estado — ciclo de vida del activo (Fase 1: sin DADO_BAJA operable todavía,
+// se declara para no romper el enum cuando la Fase 2 agregue bajas).
+export const ACTIVO_FIJO_ESTADO = ["Nuevo", "En curso", "Activo", "Inactivo", "Dado de baja"] as const;
+export type ActivoFijoEstado = (typeof ACTIVO_FIJO_ESTADO)[number];
+
+// activos_fijos_clases.tipo_activo
+export const ACTIVO_FIJO_TIPO = ["Tangible", "Intangible", "Terreno", "En curso"] as const;
+export type ActivoFijoTipo = (typeof ACTIVO_FIJO_TIPO)[number];
+
+// activos_fijos_valoraciones.metodo_dep — el motor de la Fase 1 solo implementa
+// "Lineal"; el resto queda declarado para no migrar el enum en fases futuras.
+export const ACTIVO_FIJO_METODO_DEP = [
+  "Lineal",
+  "Saldo decreciente",
+  "Dígitos",
+  "Unidades de producción",
+  "Inmediata",
+  "Manual",
+  "Sin depreciación",
+] as const;
+export type ActivoFijoMetodoDep = (typeof ACTIVO_FIJO_METODO_DEP)[number];
+
+// activos_fijos_valoraciones.regla_inicio
+export const ACTIVO_FIJO_REGLA_INICIO = [
+  "Fecha exacta",
+  "Mes siguiente",
+  "Inicio de mes",
+  "Medio período",
+] as const;
+export type ActivoFijoReglaInicio = (typeof ACTIVO_FIJO_REGLA_INICIO)[number];
+
+// activos_fijos_valoraciones.regla_baja
+export const ACTIVO_FIJO_REGLA_BAJA = ["Hasta fecha", "Hasta mes anterior", "Mes completo"] as const;
+export type ActivoFijoReglaBaja = (typeof ACTIVO_FIJO_REGLA_BAJA)[number];
+
+// activos_fijos_documentos.tipo_doc — Fase 1 solo emite/acepta CAP, CAP_NC, DEP, APERT;
+// el resto (bajas, transferencias, mejoras) se habilita en la Fase 2.
+export const ACTIVO_FIJO_DOC_TIPO = [
+  "CAP",
+  "CAP_NC",
+  "MEJ",
+  "DEP",
+  "DEP_MAN",
+  "DET",
+  "REV",
+  "CM",
+  "TRF",
+  "TRF_CLASE",
+  "BAJA_VTA",
+  "BAJA_CAST",
+  "APERT",
+] as const;
+export type ActivoFijoDocTipo = (typeof ACTIVO_FIJO_DOC_TIPO)[number];
+
+// activos_fijos_documentos.estado
+export const ACTIVO_FIJO_DOC_ESTADO = ["borrador", "contabilizado", "anulado"] as const;
+export type ActivoFijoDocEstado = (typeof ACTIVO_FIJO_DOC_ESTADO)[number];
 
 export type PlanContratado = (typeof PLAN_CONTRATADO)[number];
 export type FirmaEstado = (typeof FIRMA_ESTADO)[number];

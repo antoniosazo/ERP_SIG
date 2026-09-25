@@ -39,6 +39,10 @@ const FILAS: { contexto: DeterminacionContexto; rol: DeterminacionRol; label: st
   { contexto: "impuesto", rol: "iva_debito", label: "IVA débito fiscal", ayuda: "Fallback cuando el impuesto de venta no tiene cuenta asignada." },
   { contexto: "impuesto", rol: "iva_credito", label: "IVA crédito fiscal", ayuda: "Fallback cuando el impuesto de compra no tiene cuenta asignada." },
   { contexto: "general", rol: "resultado_ejercicio", label: "Resultado del ejercicio", ayuda: "Cuenta de Patrimonio donde el cierre de ejercicio traspasa la utilidad o pérdida del año." },
+  { contexto: "general", rol: "activo_fijo", label: "Activo fijo (general)", ayuda: "Fallback cuando la clase del activo no tiene su propia cuenta configurada." },
+  { contexto: "general", rol: "depreciacion_acumulada", label: "Depreciación acumulada (general)", ayuda: "Fallback cuando la clase del activo no tiene su propia cuenta configurada." },
+  { contexto: "general", rol: "gasto_depreciacion", label: "Gasto por depreciación (general)", ayuda: "Fallback cuando la clase del activo no tiene su propia cuenta configurada." },
+  { contexto: "general", rol: "cuenta_compensacion_capitalizacion", label: "Compensación de capitalización", ayuda: "Contrapartida de una capitalización manual (sin factura de compra)." },
 ];
 
 export function DeterminacionCuentasManager({

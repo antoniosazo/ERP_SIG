@@ -5,6 +5,7 @@ import {
   CoinsIcon,
   FileTextIcon,
   HistoryIcon,
+  LandmarkIcon,
   LayoutGridIcon,
   ListTreeIcon,
   NetworkIcon,
@@ -92,6 +93,16 @@ export const GRUPOS: Grupo[] = [
     ],
   },
   {
+    label: "Activo Fijo",
+    icon: LandmarkIcon,
+    items: [
+      { href: "/activos-fijos/activos", label: "Activos", icon: LandmarkIcon },
+      { href: "/activos-fijos/clases", label: "Clases de activo", icon: TagsIcon },
+      { href: "/activos-fijos/depreciacion", label: "Ejecutar depreciación", icon: CalendarDaysIcon },
+      { href: "/activos-fijos/cierre", label: "Cierre de ejercicio", icon: CalendarDaysIcon },
+    ],
+  },
+  {
     label: "Tesorería",
     icon: WalletIcon,
     items: [
@@ -130,6 +141,7 @@ export const GRUPOS: Grupo[] = [
     items: [
       { href: "/informes/balance", label: "Balance de 8 columnas", icon: ListTreeIcon },
       { href: "/informes/estado-resultados", label: "Estado de resultados", icon: TrendingUpIcon },
+      { href: "/informes/activos-fijos", label: "Cuadro de evolución", icon: LandmarkIcon },
     ],
   },
 ];

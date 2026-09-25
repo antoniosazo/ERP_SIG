@@ -33,3 +33,6 @@ export * from "./queries/periodos";
 export * from "./queries/catalogos";
 export * from "./queries/usuarios";
 export * from "./queries/preferencias-formulario";
+export * from "./queries/activos-fijos-clases";
+export * from "./queries/activos-fijos";
+export * from "./queries/activos-fijos-cierre";
