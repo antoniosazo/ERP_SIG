@@ -1,13 +1,14 @@
 import type { ActivoFijoReglaInicio } from "@erp/shared";
 
 /**
- * Motor de cálculo de depreciación — Módulo de Activo Fijo, Fase 1. Funciones puras
- * (sin acceso a DB), como pide la sección 7 de la especificación: "motor de cálculo
- * como servicio puro". Solo implementa "Lineal sobre valor libro remanente"
- * (recomendado por la propia especificación: absorbe mejoras y cambios de vida útil
- * sin recalcular el pasado) con prorrateo "Inicio de mes" / "Mes siguiente" — los dos
- * que de verdad se usan en Chile. Otro método lanza un error explícito en
- * `packages/db/src/queries/activos-fijos.ts`, no falla en silencio.
+ * Motor de cálculo de depreciación — Módulo de Activo Fijo. Funciones puras (sin acceso
+ * a DB), como pide la sección 7 de la especificación: "motor de cálculo como servicio
+ * puro". Implementa "Lineal sobre valor libro remanente" (Fase 1 — también cubre el
+ * régimen tributario "Acelerada" de Fase 3, que solo cambia la vida útil, no la
+ * fórmula) e "Inmediata" (Fase 3, depreciación instantánea art. 31 N°5 bis LIR), con
+ * prorrateo "Inicio de mes" / "Mes siguiente" — los dos que de verdad se usan en Chile.
+ * Otro método lanza un error explícito en `packages/db/src/queries/activos-fijos.ts`,
+ * no falla en silencio.
  */
 
 function redondear(n: number, decimales = 2): number {
@@ -66,4 +67,17 @@ export function calcularCuotaLineal(p: ParametrosCuota): number {
   if (mesesRestantes <= 0 || maximoDepreciable <= 0) return 0;
   const cuota = maximoDepreciable / mesesRestantes;
   return redondear(Math.min(cuota, maximoDepreciable));
+}
+
+/**
+ * Cuota del método "Inmediata" (depreciación instantánea, art. 31 N°5 bis LIR): el
+ * primer período elegible (`mesesTranscurridosAlInicio === 0`) deprecia todo el valor
+ * libro remanente de una vez; los períodos siguientes devuelven 0 — ya no queda nada
+ * por depreciar.
+ */
+export function calcularCuotaInmediata(p: ParametrosCuota): number {
+  if (p.mesesTranscurridosAlInicio !== 0) return 0;
+  const valorLibro = p.costoDepreciable - p.depAcumuladaAlInicio;
+  const maximoDepreciable = Math.max(0, valorLibro - p.valorResidual);
+  return redondear(maximoDepreciable);
 }

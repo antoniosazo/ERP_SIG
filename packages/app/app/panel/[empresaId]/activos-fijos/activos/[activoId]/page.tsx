@@ -4,6 +4,7 @@ import {
   listarClasesActivoFijo,
   listarPeriodos,
   listarPlanCuentasDeEmpresa,
+  listarVidasUtilesSii,
   obtenerActivoFijoConDetalle,
 } from "@erp/db";
 import { ActivoFijoFicha } from "@/components/panel/activo-fijo-ficha";
@@ -17,12 +18,13 @@ export default async function ActivoFijoFichaPage({
   params: Promise<{ empresaId: string; activoId: string }>;
 }) {
   const { empresaId, activoId } = await params;
-  const [detalle, clases, centros, cuentas, periodos] = await Promise.all([
+  const [detalle, clases, centros, cuentas, periodos, vidasUtilesSii] = await Promise.all([
     obtenerActivoFijoConDetalle(activoId, empresaId),
     listarClasesActivoFijo(empresaId),
     listarCentrosCosto(empresaId),
     listarPlanCuentasDeEmpresa(empresaId),
     listarPeriodos(empresaId),
+    listarVidasUtilesSii(empresaId),
   ]);
   if (!detalle) notFound();
 
@@ -40,6 +42,9 @@ export default async function ActivoFijoFichaPage({
           .filter((c) => c.nivelImputable && c.activa)
           .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}` }))}
         periodos={periodos.map((p) => ({ id: p.id, anio: p.anio, mes: p.mes, estado: p.estado }))}
+        vidasUtilesSii={vidasUtilesSii
+          .filter((v) => v.activa)
+          .map((v) => ({ id: v.id, categoria: v.categoria, vidaUtilNormalMeses: v.vidaUtilNormalMeses }))}
       />
     </>
   );

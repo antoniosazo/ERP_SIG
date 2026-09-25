@@ -41,6 +41,7 @@ export async function listarCuentasClasesDeEmpresa(empresaId: string) {
       ctaUtilidadBaja: activosFijosClasesCuentas.ctaUtilidadBaja,
       ctaPerdidaBaja: activosFijosClasesCuentas.ctaPerdidaBaja,
       ctaValorLibroBaja: activosFijosClasesCuentas.ctaValorLibroBaja,
+      ctaCorreccionMonetaria: activosFijosClasesCuentas.ctaCorreccionMonetaria,
     })
     .from(activosFijosClasesCuentas)
     .innerJoin(activosFijosClases, eq(activosFijosClasesCuentas.claseId, activosFijosClases.id))
@@ -131,6 +132,7 @@ export async function guardarCuentasClase(
       input.ctaUtilidadBaja,
       input.ctaPerdidaBaja,
       input.ctaValorLibroBaja,
+      input.ctaCorreccionMonetaria,
     ].filter((x): x is string => !!x);
     if (cuentaIds.length) {
       const rows = await tx
@@ -155,6 +157,7 @@ export async function guardarCuentasClase(
         ctaUtilidadBaja: input.ctaUtilidadBaja ?? null,
         ctaPerdidaBaja: input.ctaPerdidaBaja ?? null,
         ctaValorLibroBaja: input.ctaValorLibroBaja ?? null,
+        ctaCorreccionMonetaria: input.ctaCorreccionMonetaria ?? null,
       })
       .onConflictDoUpdate({
         target: [activosFijosClasesCuentas.claseId, activosFijosClasesCuentas.libro],
@@ -166,6 +169,7 @@ export async function guardarCuentasClase(
           ctaUtilidadBaja: input.ctaUtilidadBaja ?? null,
           ctaPerdidaBaja: input.ctaPerdidaBaja ?? null,
           ctaValorLibroBaja: input.ctaValorLibroBaja ?? null,
+          ctaCorreccionMonetaria: input.ctaCorreccionMonetaria ?? null,
           updatedAt: new Date(),
         },
       })
@@ -204,7 +208,8 @@ export async function resolverCuentaClase(
     | "ctaCompensacionCapitalizacion"
     | "ctaUtilidadBaja"
     | "ctaPerdidaBaja"
-    | "ctaValorLibroBaja",
+    | "ctaValorLibroBaja"
+    | "ctaCorreccionMonetaria",
   rolGeneral:
     | "activo_fijo"
     | "depreciacion_acumulada"
@@ -212,7 +217,8 @@ export async function resolverCuentaClase(
     | "cuenta_compensacion_capitalizacion"
     | "utilidad_baja"
     | "perdida_baja"
-    | "valor_libro_baja",
+    | "valor_libro_baja"
+    | "correccion_monetaria",
 ): Promise<string | null> {
   const [fila] = await exec
     .select()

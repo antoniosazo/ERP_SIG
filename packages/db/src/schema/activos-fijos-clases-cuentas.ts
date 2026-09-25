@@ -28,6 +28,7 @@ export const activosFijosClasesCuentas = pgTable(
     ctaUtilidadBaja: uuid("cta_utilidad_baja").references(() => planCuentas.id, { onDelete: "restrict" }),
     ctaPerdidaBaja: uuid("cta_perdida_baja").references(() => planCuentas.id, { onDelete: "restrict" }),
     ctaValorLibroBaja: uuid("cta_valor_libro_baja").references(() => planCuentas.id, { onDelete: "restrict" }),
+    ctaCorreccionMonetaria: uuid("cta_correccion_monetaria").references(() => planCuentas.id, { onDelete: "restrict" }),
     ...timestampsColumns,
   },
   (t) => [primaryKey({ columns: [t.claseId, t.libro] })],

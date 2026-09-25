@@ -36,3 +36,5 @@ export * from "./queries/preferencias-formulario";
 export * from "./queries/activos-fijos-clases";
 export * from "./queries/activos-fijos";
 export * from "./queries/activos-fijos-cierre";
+export * from "./queries/activos-fijos-vidas-utiles-sii";
+export * from "./queries/activos-fijos-tributario";

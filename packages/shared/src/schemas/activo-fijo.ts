@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ACTIVO_FIJO_METODO_DEP,
+  ACTIVO_FIJO_REGIMEN_DEPRECIACION,
   ACTIVO_FIJO_REGLA_BAJA,
   ACTIVO_FIJO_REGLA_INICIO,
   ACTIVO_FIJO_TIPO,
@@ -33,18 +34,33 @@ export const guardarCuentasClaseSchema = z.object({
   ctaUtilidadBaja: uuid.nullish(),
   ctaPerdidaBaja: uuid.nullish(),
   ctaValorLibroBaja: uuid.nullish(),
+  ctaCorreccionMonetaria: uuid.nullish(),
 });
 export type GuardarCuentasClaseInput = z.infer<typeof guardarCuentasClaseSchema>;
 
-export const valoracionActivoSchema = z.object({
-  libro: z.enum(LIBRO_CONTABLE),
-  metodoDep: z.enum(ACTIVO_FIJO_METODO_DEP).default("Lineal"),
-  reglaInicio: z.enum(ACTIVO_FIJO_REGLA_INICIO).default("Mes siguiente"),
-  reglaBaja: z.enum(ACTIVO_FIJO_REGLA_BAJA).default("Hasta mes anterior"),
-  fechaInicioDep: fechaISO,
-  vidaUtilMeses: z.number().int().positive("La vida útil debe ser mayor a 0"),
-  valorResidual: z.number().min(0).default(0),
-});
+export const valoracionActivoSchema = z
+  .object({
+    libro: z.enum(LIBRO_CONTABLE),
+    metodoDep: z.enum(ACTIVO_FIJO_METODO_DEP).default("Lineal"),
+    reglaInicio: z.enum(ACTIVO_FIJO_REGLA_INICIO).default("Mes siguiente"),
+    reglaBaja: z.enum(ACTIVO_FIJO_REGLA_BAJA).default("Hasta mes anterior"),
+    fechaInicioDep: fechaISO,
+    vidaUtilMeses: z.number().int().positive("La vida útil debe ser mayor a 0"),
+    valorResidual: z.number().min(0).default(0),
+    /** Fase 3 — solo aplica (y se valida) en libro Tributario. */
+    regimenDepreciacion: z.enum(ACTIVO_FIJO_REGIMEN_DEPRECIACION).default("Normal"),
+    /** Vida útil SII antes de dividir por 3 — solo cuando regimenDepreciacion = "Acelerada". */
+    vidaUtilNormalMeses: z.number().int().positive().nullish(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.regimenDepreciacion === "Acelerada" && !v.vidaUtilNormalMeses) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["vidaUtilNormalMeses"],
+        message: "Indica la vida útil normal (SII) para el régimen Acelerada",
+      });
+    }
+  });
 export type ValoracionActivoInput = z.infer<typeof valoracionActivoSchema>;
 
 export const crearActivoFijoSchema = z.object({
@@ -170,3 +186,31 @@ export const reabrirEjercicioActivoFijoSchema = z.object({
   motivo: z.string().trim().min(1, "Indica el motivo de la reapertura").max(300),
 });
 export type ReabrirEjercicioActivoFijoInput = z.infer<typeof reabrirEjercicioActivoFijoSchema>;
+
+/** Módulo de Activo Fijo — Fase 3 (tributario Chile). */
+
+export const crearVidaUtilSiiSchema = z.object({
+  categoria: z.string().trim().min(1, "Categoría requerida").max(200),
+  descripcion: z.string().trim().max(500).nullish(),
+  vidaUtilNormalMeses: z.number().int().positive("La vida útil debe ser mayor a 0"),
+  activa: z.boolean().default(true),
+});
+export type CrearVidaUtilSiiInput = z.infer<typeof crearVidaUtilSiiSchema>;
+
+export const guardarFactorCorreccionMonetariaSchema = z.object({
+  anio: z.number().int().min(2000).max(2100),
+  mes: z.number().int().min(1).max(12),
+  factorPorcentaje: z.number(),
+});
+export type GuardarFactorCorreccionMonetariaInput = z.infer<typeof guardarFactorCorreccionMonetariaSchema>;
+
+export const aplicarCorreccionMonetariaSchema = z.object({
+  anio: z.number().int().min(2000).max(2100),
+  modo: z.enum(["simulacion", "real"]),
+});
+export type AplicarCorreccionMonetariaInput = z.infer<typeof aplicarCorreccionMonetariaSchema>;
+
+export const calcularDdanSchema = z.object({
+  anio: z.number().int().min(2000).max(2100),
+});
+export type CalcularDdanInput = z.infer<typeof calcularDdanSchema>;

@@ -99,6 +99,8 @@ export const GRUPOS: Grupo[] = [
       { href: "/activos-fijos/activos", label: "Activos", icon: LandmarkIcon },
       { href: "/activos-fijos/clases", label: "Clases de activo", icon: TagsIcon },
       { href: "/activos-fijos/depreciacion", label: "Ejecutar depreciación", icon: CalendarDaysIcon },
+      { href: "/activos-fijos/vidas-utiles", label: "Vidas útiles SII", icon: ListTreeIcon },
+      { href: "/activos-fijos/correccion-monetaria", label: "Corrección monetaria", icon: PercentIcon },
       { href: "/activos-fijos/cierre", label: "Cierre de ejercicio", icon: CalendarDaysIcon },
     ],
   },
@@ -142,6 +144,7 @@ export const GRUPOS: Grupo[] = [
       { href: "/informes/balance", label: "Balance de 8 columnas", icon: ListTreeIcon },
       { href: "/informes/estado-resultados", label: "Estado de resultados", icon: TrendingUpIcon },
       { href: "/informes/activos-fijos", label: "Cuadro de evolución", icon: LandmarkIcon },
+      { href: "/informes/activos-fijos-conciliacion", label: "Conciliación Tributario/IFRS", icon: TrendingUpIcon },
     ],
   },
 ];

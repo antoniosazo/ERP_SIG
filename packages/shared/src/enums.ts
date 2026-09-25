@@ -253,6 +253,8 @@ export const DETERMINACION_ROL = [
   "utilidad_baja",
   "perdida_baja",
   "valor_libro_baja",
+  // Fallback general de corrección monetaria de Activo Fijo (Fase 3).
+  "correccion_monetaria",
 ] as const;
 
 // activos_fijos.estado — ciclo de vida del activo (Fase 1: sin DADO_BAJA operable todavía,
@@ -289,6 +291,12 @@ export type ActivoFijoReglaInicio = (typeof ACTIVO_FIJO_REGLA_INICIO)[number];
 // activos_fijos_valoraciones.regla_baja
 export const ACTIVO_FIJO_REGLA_BAJA = ["Hasta fecha", "Hasta mes anterior", "Mes completo"] as const;
 export type ActivoFijoReglaBaja = (typeof ACTIVO_FIJO_REGLA_BAJA)[number];
+
+// activos_fijos_valoraciones.regimen_depreciacion (Fase 3, solo aplica a libro
+// Tributario) — Acelerada y Normal usan metodoDep "Lineal" con distinta vidaUtilMeses
+// (ver activos-fijos-motor.ts); Instantanea usa metodoDep "Inmediata".
+export const ACTIVO_FIJO_REGIMEN_DEPRECIACION = ["Normal", "Acelerada", "Instantanea"] as const;
+export type ActivoFijoRegimenDepreciacion = (typeof ACTIVO_FIJO_REGIMEN_DEPRECIACION)[number];
 
 // activos_fijos_documentos.tipo_doc — Fase 1 solo emite/acepta CAP, CAP_NC, DEP, APERT;
 // el resto (bajas, transferencias, mejoras) se habilita en la Fase 2.

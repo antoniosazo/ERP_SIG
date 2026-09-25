@@ -25,11 +25,13 @@ export function ActivosFijosManager({
   activos,
   clases,
   centros,
+  vidasUtilesSii,
 }: {
   empresaId: string;
   activos: ActivoFijoLite[];
   clases: Opcion[];
   centros: Opcion[];
+  vidasUtilesSii?: { id: string; categoria: string; vidaUtilNormalMeses: number }[];
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
@@ -82,6 +84,7 @@ export function ActivosFijosManager({
             empresaId={empresaId}
             clases={clases}
             centros={centros}
+            vidasUtilesSii={vidasUtilesSii}
             onSaved={(activoId) => {
               setAbierto(false);
               router.push(`/panel/${empresaId}/activos-fijos/activos/${activoId}`);

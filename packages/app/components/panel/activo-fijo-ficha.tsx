@@ -17,6 +17,7 @@ import {
   transferirClaseAction,
 } from "@/lib/actions/activos-fijos";
 import { ActivoFijoForm, type ActivoFijoExistente } from "@/components/panel/activo-fijo-form";
+import { calcularDdanAction } from "@/lib/actions/activos-fijos-tributario";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -67,6 +68,8 @@ export type ActivoFijoDetalle = {
     fechaInicioDep: string | null;
     vidaUtilMeses: number;
     valorResidual: string;
+    regimenDepreciacion: string;
+    vidaUtilNormalMeses: number | null;
   }[];
   documentos: {
     id: string;
@@ -90,6 +93,7 @@ export function ActivoFijoFicha({
   centros,
   cuentas,
   periodos,
+  vidasUtilesSii,
 }: {
   empresaId: string;
   detalle: ActivoFijoDetalle;
@@ -97,6 +101,7 @@ export function ActivoFijoFicha({
   centros: Opcion[];
   cuentas: Opcion[];
   periodos: PeriodoOpcion[];
+  vidasUtilesSii?: { id: string; categoria: string; vidaUtilNormalMeses: number }[];
 }) {
   const { activo, valoraciones, documentos } = detalle;
   const [completar, setCompletar] = useState(false);
@@ -108,9 +113,11 @@ export function ActivoFijoFicha({
   const [depreciacionManual, setDepreciacionManual] = useState(false);
   const [baja, setBaja] = useState(false);
   const [pronostico, setPronostico] = useState(false);
+  const [ddan, setDdan] = useState(false);
   const [anular, setAnular] = useState<{ id: string; etiqueta: string } | null>(null);
 
   const libros = valoraciones.map((v) => v.libro as LibroContable);
+  const valoracionAcelerada = valoraciones.find((v) => v.libro === "Tributario" && v.regimenDepreciacion === "Acelerada");
   const puedeCompletar = activo.estado === "Nuevo";
   const puedeCapitalizar = activo.estado === "Nuevo" && !!activo.claseId && valoraciones.length > 0;
   const puedeMejorar = (activo.estado === "Activo" || activo.estado === "En curso") && valoraciones.length > 0;
@@ -162,7 +169,7 @@ export function ActivoFijoFicha({
         {puedeCapitalizar && <Button size="sm" onClick={() => setCapitalizar(true)}>Capitalizar</Button>}
         {puedeActivarObra && <Button size="sm" onClick={() => setObraEnCurso(true)}>Activar obra en curso</Button>}
 
-        {(puedeMejorar || puedeTransferir || puedeDepreciarManual || puedeDarDeBaja || puedeVerPronostico) && (
+        {(puedeMejorar || puedeTransferir || puedeDepreciarManual || puedeDarDeBaja || puedeVerPronostico || valoracionAcelerada) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -181,6 +188,7 @@ export function ActivoFijoFicha({
                 <DropdownMenuItem onSelect={() => setDepreciacionManual(true)}>Depreciación manual</DropdownMenuItem>
               )}
               {puedeVerPronostico && <DropdownMenuItem onSelect={() => setPronostico(true)}>Pronóstico</DropdownMenuItem>}
+              {valoracionAcelerada && <DropdownMenuItem onSelect={() => setDdan(true)}>Registro DDAN</DropdownMenuItem>}
               {puedeDarDeBaja && (
                 <DropdownMenuItem variant="destructive" onSelect={() => setBaja(true)}>
                   Dar de baja
@@ -280,6 +288,7 @@ export function ActivoFijoFicha({
             empresaId={empresaId}
             clases={clases}
             centros={centros}
+            vidasUtilesSii={vidasUtilesSii}
             activo={activoExistenteDe(activo, valoraciones[0])}
             onSaved={() => setCompletar(false)}
           />
@@ -356,6 +365,8 @@ export function ActivoFijoFicha({
           onClose={() => setAnular(null)}
         />
       )}
+
+      {ddan && <DdanDialog empresaId={empresaId} activoId={activo.id} onClose={() => setDdan(false)} />}
     </div>
   );
 }
@@ -498,6 +509,7 @@ function ObraEnCursoDialog({
             fechaInicioDep,
             vidaUtilMeses,
             valorResidual: valorResidual ?? 0,
+            regimenDepreciacion: "Normal",
           },
         ],
       });
@@ -1116,6 +1128,77 @@ function AnularDocumentoDialog({
           </Button>
           <Button type="button" variant="danger" onClick={confirmar} disabled={isPending}>
             {isPending ? "Anulando..." : "Anular"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DdanDialog({ empresaId, activoId, onClose }: { empresaId: string; activoId: string; onClose: () => void }) {
+  const [isPending, startTransition] = useTransition();
+  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [resultado, setResultado] = useState<{
+    depAcumuladaAcelerada: number;
+    depAcumuladaNormal: number;
+    ddanAcumulado: number;
+    depEjercicioAcelerada: number;
+    depEjercicioNormal: number;
+    ddanEjercicio: number;
+  } | null>(null);
+
+  function calcular() {
+    startTransition(async () => {
+      const result = await calcularDdanAction(empresaId, activoId, anio);
+      if (result.ok) setResultado(result.resultado);
+      else toast.error(result.error);
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Registro DDAN</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Diferencia entre Depreciación Acelerada y Normal — la depreciación normal es una simulación de
+            referencia, nunca se contabiliza.
+          </p>
+          <div className="flex items-end gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="anioDdan">Año</Label>
+              <Input id="anioDdan" type="number" className="w-28" value={anio} onChange={(e) => setAnio(Number(e.target.value))} />
+            </div>
+            <Button type="button" size="sm" onClick={calcular} disabled={isPending}>
+              {isPending ? "Calculando..." : "Calcular"}
+            </Button>
+          </div>
+          {resultado && (
+            <div className="space-y-1 rounded-lg border border-input p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Dep. acumulada acelerada</span>
+                <span className="tabular-nums">{fmt(resultado.depAcumuladaAcelerada)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Dep. acumulada normal (referencia)</span>
+                <span className="tabular-nums">{fmt(resultado.depAcumuladaNormal)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>DDAN acumulado</span>
+                <span className="tabular-nums">{fmt(resultado.ddanAcumulado)}</span>
+              </div>
+              <div className="mt-2 flex justify-between">
+                <span className="text-muted-foreground">DDAN del ejercicio {anio}</span>
+                <span className="tabular-nums">{fmt(resultado.ddanEjercicio)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cerrar
           </Button>
         </DialogFooter>
       </DialogContent>

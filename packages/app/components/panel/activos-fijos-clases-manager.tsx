@@ -57,6 +57,7 @@ export type CuentaClaseLite = {
   ctaUtilidadBaja: string | null;
   ctaPerdidaBaja: string | null;
   ctaValorLibroBaja: string | null;
+  ctaCorreccionMonetaria: string | null;
 };
 
 type Opcion = { id: string; label: string };
@@ -282,6 +283,7 @@ function CuentasClaseDialog({
   const [ctaUtilidadBaja, setCtaUtilidadBaja] = useState(actual?.ctaUtilidadBaja ?? SIN_CUENTA);
   const [ctaPerdidaBaja, setCtaPerdidaBaja] = useState(actual?.ctaPerdidaBaja ?? SIN_CUENTA);
   const [ctaValorLibroBaja, setCtaValorLibroBaja] = useState(actual?.ctaValorLibroBaja ?? SIN_CUENTA);
+  const [ctaCorreccionMonetaria, setCtaCorreccionMonetaria] = useState(actual?.ctaCorreccionMonetaria ?? SIN_CUENTA);
 
   function cambiarLibro(nuevo: LibroContable) {
     setLibro(nuevo);
@@ -293,6 +295,7 @@ function CuentasClaseDialog({
     setCtaUtilidadBaja(fila?.ctaUtilidadBaja ?? SIN_CUENTA);
     setCtaPerdidaBaja(fila?.ctaPerdidaBaja ?? SIN_CUENTA);
     setCtaValorLibroBaja(fila?.ctaValorLibroBaja ?? SIN_CUENTA);
+    setCtaCorreccionMonetaria(fila?.ctaCorreccionMonetaria ?? SIN_CUENTA);
   }
 
   function guardar() {
@@ -306,6 +309,7 @@ function CuentasClaseDialog({
         ctaUtilidadBaja: ctaUtilidadBaja === SIN_CUENTA ? null : ctaUtilidadBaja,
         ctaPerdidaBaja: ctaPerdidaBaja === SIN_CUENTA ? null : ctaPerdidaBaja,
         ctaValorLibroBaja: ctaValorLibroBaja === SIN_CUENTA ? null : ctaValorLibroBaja,
+        ctaCorreccionMonetaria: ctaCorreccionMonetaria === SIN_CUENTA ? null : ctaCorreccionMonetaria,
       });
       if (result.ok) {
         toast.success("Cuentas guardadas");
@@ -324,6 +328,7 @@ function CuentasClaseDialog({
     { label: "Valor libro en baja (puente)", value: ctaValorLibroBaja, setValue: setCtaValorLibroBaja },
     { label: "Utilidad en baja", value: ctaUtilidadBaja, setValue: setCtaUtilidadBaja },
     { label: "Pérdida en baja", value: ctaPerdidaBaja, setValue: setCtaPerdidaBaja },
+    { label: "Corrección monetaria (Tributario)", value: ctaCorreccionMonetaria, setValue: setCtaCorreccionMonetaria },
   ];
 
   return (

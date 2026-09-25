@@ -49,3 +49,5 @@ export * from "./activos-fijos-documentos-lineas";
 export * from "./activos-fijos-valores-periodo";
 export * from "./activos-fijos-saldos";
 export * from "./activos-fijos-cierres";
+export * from "./activos-fijos-vidas-utiles-sii";
+export * from "./factores-correccion-monetaria";

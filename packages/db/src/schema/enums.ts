@@ -4,6 +4,7 @@ import {
   ACTIVO_FIJO_DOC_TIPO,
   ACTIVO_FIJO_ESTADO,
   ACTIVO_FIJO_METODO_DEP,
+  ACTIVO_FIJO_REGIMEN_DEPRECIACION,
   ACTIVO_FIJO_REGLA_BAJA,
   ACTIVO_FIJO_REGLA_INICIO,
   ACTIVO_FIJO_TIPO,
@@ -125,3 +126,6 @@ export const activoFijoReglaInicioEnum = pgEnum("activo_fijo_regla_inicio", [...
 export const activoFijoReglaBajaEnum = pgEnum("activo_fijo_regla_baja", [...ACTIVO_FIJO_REGLA_BAJA]);
 export const activoFijoDocTipoEnum = pgEnum("activo_fijo_doc_tipo", [...ACTIVO_FIJO_DOC_TIPO]);
 export const activoFijoDocEstadoEnum = pgEnum("activo_fijo_doc_estado", [...ACTIVO_FIJO_DOC_ESTADO]);
+export const activoFijoRegimenDepreciacionEnum = pgEnum("activo_fijo_regimen_depreciacion", [
+  ...ACTIVO_FIJO_REGIMEN_DEPRECIACION,
+]);

@@ -1,6 +1,7 @@
 import type {
   ActivarObraEnCursoInput,
   ActivoFijoDocTipo,
+  ActivoFijoMetodoDep,
   AnularDocumentoActivoFijoInput,
   BajaActivoInput,
   CapitalizarActivoInput,
@@ -31,7 +32,12 @@ import {
   planCuentas,
 } from "../schema";
 import { resolverCuentaClase } from "./activos-fijos-clases";
-import { calcularCuotaLineal, mesesDepreciablesHasta } from "./activos-fijos-motor";
+import {
+  calcularCuotaInmediata,
+  calcularCuotaLineal,
+  mesesDepreciablesHasta,
+  type ParametrosCuota,
+} from "./activos-fijos-motor";
 import { siguienteCorrelativoAsiento } from "./asientos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { periodoDe } from "./periodos";
@@ -40,6 +46,18 @@ import { sembrarSeriesActivoFijo, siguienteCodigo } from "./series";
 const PERIODO_BLOQUEA_AF = new Set<string>(PERIODO_ESTADOS_BLOQUEADOS);
 
 const mesAnteriorDe = (anio: number, mes: number) => (mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 });
+
+/**
+ * Ramifica por `metodoDep`: "Lineal" cubre tanto el régimen tributario Normal como
+ * Acelerada (Fase 3) porque ambos ya traen la vida útil correcta en `vidaUtilMeses`;
+ * "Inmediata" es la depreciación instantánea (Fase 3, art. 31 N°5 bis). Cualquier otro
+ * valor del enum lanza un error explícito, nunca falla en silencio.
+ */
+function calcularCuotaPorMetodo(metodoDep: ActivoFijoMetodoDep, parametros: ParametrosCuota, etiquetaActivo: string): number {
+  if (metodoDep === "Lineal") return calcularCuotaLineal(parametros);
+  if (metodoDep === "Inmediata") return calcularCuotaInmediata(parametros);
+  throw new Error(`El método "${metodoDep}" aún no está implementado (activo ${etiquetaActivo})`);
+}
 
 // ── Lecturas ─────────────────────────────────────────────────────────────────
 
@@ -129,8 +147,29 @@ async function validarClaseCentroYMetodos(tx: Tx, empresaId: string, input: Crea
   if (!clase.activa) throw new Error("La clase de activo está inactiva");
 
   for (const v of input.valoraciones) {
-    if (v.metodoDep !== "Lineal") {
-      throw new Error(`El método "${v.metodoDep}" aún no está implementado (Fase 1 solo soporta Lineal)`);
+    if (v.metodoDep !== "Lineal" && v.metodoDep !== "Inmediata") {
+      throw new Error(`El método "${v.metodoDep}" aún no está implementado`);
+    }
+    if (v.metodoDep === "Inmediata" && v.regimenDepreciacion !== "Instantanea") {
+      throw new Error('El método "Inmediata" solo se usa con el régimen tributario "Instantánea"');
+    }
+    if (v.regimenDepreciacion !== "Normal" && v.libro !== "Tributario") {
+      throw new Error("Los regímenes Acelerada e Instantánea solo se configuran en el libro Tributario");
+    }
+    if (v.regimenDepreciacion === "Instantanea" && v.metodoDep !== "Inmediata") {
+      throw new Error('El régimen "Instantánea" exige el método "Inmediata"');
+    }
+    if (v.regimenDepreciacion === "Acelerada") {
+      if (!v.vidaUtilNormalMeses || v.vidaUtilNormalMeses < 1) {
+        throw new Error("El régimen Acelerada exige la vida útil normal (SII), antes de dividir por 3");
+      }
+      const vidaEsperada = Math.max(12, Math.round(v.vidaUtilNormalMeses / 3));
+      if (v.vidaUtilMeses !== vidaEsperada) {
+        throw new Error(
+          `La vida útil acelerada debe ser la vida útil normal (${v.vidaUtilNormalMeses} meses) dividida por 3 ` +
+            `(${vidaEsperada} meses)`,
+        );
+      }
     }
   }
 
@@ -167,7 +206,13 @@ async function sumarLineasAF(
   return Number(row?.total ?? 0);
 }
 
-async function sumarDepAcumuladaRetirada(empresaId: string, activoId: string, libro: LibroContable): Promise<number> {
+/** Suma el ajuste de dep. acumulada (`depAcumuladaRetirada`) de los tipos de documento dados. */
+async function sumarAjusteDepAcumulada(
+  empresaId: string,
+  activoId: string,
+  libro: LibroContable,
+  tipos: ActivoFijoDocTipo[],
+): Promise<number> {
   const [row] = await db
     .select({ total: sql<string>`coalesce(sum(${activosFijosDocumentosLineas.depAcumuladaRetirada}), 0)` })
     .from(activosFijosDocumentosLineas)
@@ -176,7 +221,7 @@ async function sumarDepAcumuladaRetirada(empresaId: string, activoId: string, li
       and(
         eq(activosFijosDocumentos.empresaId, empresaId),
         eq(activosFijosDocumentos.estado, "contabilizado"),
-        inArray(activosFijosDocumentos.tipoDoc, ["BAJA_VTA", "BAJA_CAST"]),
+        inArray(activosFijosDocumentos.tipoDoc, tipos),
         eq(activosFijosDocumentosLineas.libro, libro),
         eq(activosFijosDocumentosLineas.activoId, activoId),
       ),
@@ -185,24 +230,26 @@ async function sumarDepAcumuladaRetirada(empresaId: string, activoId: string, li
 }
 
 /**
- * Costo depreciable y depreciación acumulada vigentes de un activo/libro: `CAP` + `MEJ`
- * contabilizadas menos el costo retirado por bajas, y `DEP` + `DEP_MAN` contabilizadas
- * menos la dep. acumulada retirada por bajas. Fuente única de verdad
- * (`activos_fijos_documentos_lineas`) — `activos_fijos_valores_periodo` es solo caché
- * de secuenciación del lote mensual, no el saldo real. Usa `db` directo (no `tx`), igual
- * que `periodoDe`: se llama tanto de lecturas sueltas como desde dentro de una
- * transacción, siempre sobre documentos ya contabilizados antes de esa operación.
+ * Costo depreciable y depreciación acumulada vigentes de un activo/libro: `CAP` + `MEJ` +
+ * `CM` (corrección monetaria, Fase 3) contabilizadas menos el costo retirado por bajas, y
+ * `DEP` + `DEP_MAN` contabilizadas menos la dep. acumulada retirada por bajas más la
+ * ajustada por CM. Fuente única de verdad (`activos_fijos_documentos_lineas`) —
+ * `activos_fijos_valores_periodo` es solo caché de secuenciación del lote mensual, no el
+ * saldo real. Usa `db` directo (no `tx`), igual que `periodoDe`: se llama tanto de
+ * lecturas sueltas como desde dentro de una transacción, siempre sobre documentos ya
+ * contabilizados antes de esa operación.
  */
 async function resumenCostoActivo(
   empresaId: string,
   activoId: string,
   libro: LibroContable,
 ): Promise<{ costo: number; depAcumulada: number }> {
-  const altas = await sumarLineasAF(empresaId, activoId, libro, ["CAP", "MEJ"]);
+  const altas = await sumarLineasAF(empresaId, activoId, libro, ["CAP", "MEJ", "CM"]);
   const bajasCosto = await sumarLineasAF(empresaId, activoId, libro, ["BAJA_VTA", "BAJA_CAST"]);
   const depreciado = await sumarLineasAF(empresaId, activoId, libro, ["DEP", "DEP_MAN"]);
-  const bajasDep = await sumarDepAcumuladaRetirada(empresaId, activoId, libro);
-  return { costo: altas - bajasCosto, depAcumulada: depreciado - bajasDep };
+  const bajasDep = await sumarAjusteDepAcumulada(empresaId, activoId, libro, ["BAJA_VTA", "BAJA_CAST"]);
+  const cmDep = await sumarAjusteDepAcumulada(empresaId, activoId, libro, ["CM"]);
+  return { costo: altas - bajasCosto, depAcumulada: depreciado - bajasDep + cmDep };
 }
 
 export async function crearActivoFijo(empresaId: string, input: CrearActivoFijoInput, ctx?: AuditoriaCtx) {
@@ -238,6 +285,8 @@ export async function crearActivoFijo(empresaId: string, input: CrearActivoFijoI
         fechaInicioDep: v.fechaInicioDep,
         vidaUtilMeses: v.vidaUtilMeses,
         valorResidual: v.valorResidual.toString(),
+        regimenDepreciacion: v.regimenDepreciacion,
+        vidaUtilNormalMeses: v.vidaUtilNormalMeses ?? null,
       })),
     );
 
@@ -346,6 +395,8 @@ export async function actualizarActivoFijo(
         fechaInicioDep: v.fechaInicioDep,
         vidaUtilMeses: v.vidaUtilMeses,
         valorResidual: v.valorResidual.toString(),
+        regimenDepreciacion: v.regimenDepreciacion,
+        vidaUtilNormalMeses: v.vidaUtilNormalMeses ?? null,
       })),
     );
 
@@ -646,6 +697,8 @@ export async function activarObraEnCurso(
         fechaInicioDep: v.fechaInicioDep,
         vidaUtilMeses: v.vidaUtilMeses,
         valorResidual: v.valorResidual.toString(),
+        regimenDepreciacion: v.regimenDepreciacion,
+        vidaUtilNormalMeses: v.vidaUtilNormalMeses ?? null,
       })),
     );
 
@@ -1171,9 +1224,10 @@ async function calcularCuotasDelPeriodo(
 
   const activoIds = activosDelLibro.map((a) => a.activoId);
 
-  // Costo depreciable vigente: CAP + MEJ contabilizadas, menos el costo retirado por
-  // bajas contabilizadas (Fase 2) — igual criterio que `resumenCostoActivo`, en bloque
-  // para todos los activos del lote (evita N+1 en la ejecución mensual).
+  // Costo depreciable vigente: CAP + MEJ + CM (corrección monetaria, Fase 3)
+  // contabilizadas, menos el costo retirado por bajas contabilizadas — igual criterio
+  // que `resumenCostoActivo`, en bloque para todos los activos del lote (evita N+1 en
+  // la ejecución mensual).
   const altas = await tx
     .select({
       activoId: activosFijosDocumentosLineas.activoId,
@@ -1185,7 +1239,7 @@ async function calcularCuotasDelPeriodo(
       and(
         eq(activosFijosDocumentos.empresaId, empresaId),
         eq(activosFijosDocumentos.estado, "contabilizado"),
-        inArray(activosFijosDocumentos.tipoDoc, ["CAP", "MEJ"]),
+        inArray(activosFijosDocumentos.tipoDoc, ["CAP", "MEJ", "CM"]),
         eq(activosFijosDocumentosLineas.libro, libro),
         inArray(activosFijosDocumentosLineas.activoId, activoIds),
       ),
@@ -1235,6 +1289,25 @@ async function calcularCuotasDelPeriodo(
     .groupBy(activosFijosDocumentosLineas.activoId);
   const bajasDepAcumPorActivo = new Map(bajasDepAcum.map((c) => [c.activoId, Number(c.total)]));
 
+  const cmDepAcum = await tx
+    .select({
+      activoId: activosFijosDocumentosLineas.activoId,
+      total: sql<string>`coalesce(sum(${activosFijosDocumentosLineas.depAcumuladaRetirada}), 0)`,
+    })
+    .from(activosFijosDocumentosLineas)
+    .innerJoin(activosFijosDocumentos, eq(activosFijosDocumentosLineas.documentoId, activosFijosDocumentos.id))
+    .where(
+      and(
+        eq(activosFijosDocumentos.empresaId, empresaId),
+        eq(activosFijosDocumentos.estado, "contabilizado"),
+        eq(activosFijosDocumentos.tipoDoc, "CM"),
+        eq(activosFijosDocumentosLineas.libro, libro),
+        inArray(activosFijosDocumentosLineas.activoId, activoIds),
+      ),
+    )
+    .groupBy(activosFijosDocumentosLineas.activoId);
+  const cmDepAcumPorActivo = new Map(cmDepAcum.map((c) => [c.activoId, Number(c.total)]));
+
   const acumuladas = await tx
     .select({
       activoId: activosFijosValoresPeriodo.activoId,
@@ -1257,17 +1330,23 @@ async function calcularCuotasDelPeriodo(
   return activosDelLibro.map((a) => {
     const costoDepreciable = costoPorActivo.get(a.activoId) ?? 0;
     const depAcumuladaAlInicio =
-      (acumuladaPorActivo.get(a.activoId) ?? 0) - (bajasDepAcumPorActivo.get(a.activoId) ?? 0);
+      (acumuladaPorActivo.get(a.activoId) ?? 0) -
+      (bajasDepAcumPorActivo.get(a.activoId) ?? 0) +
+      (cmDepAcumPorActivo.get(a.activoId) ?? 0);
     const mesesTranscurridosAlInicio = a.fechaInicioDep
       ? mesesDepreciablesHasta(a.fechaInicioDep, a.reglaInicio, anioPrevio, mesPrevio)
       : 0;
-    const cuota = calcularCuotaLineal({
-      costoDepreciable,
-      valorResidual: Number(a.valorResidual),
-      depAcumuladaAlInicio,
-      vidaUtilMeses: a.vidaUtilMeses,
-      mesesTranscurridosAlInicio,
-    });
+    const cuota = calcularCuotaPorMetodo(
+      a.metodoDep,
+      {
+        costoDepreciable,
+        valorResidual: Number(a.valorResidual),
+        depAcumuladaAlInicio,
+        vidaUtilMeses: a.vidaUtilMeses,
+        mesesTranscurridosAlInicio,
+      },
+      a.codigo,
+    );
     return {
       activoId: a.activoId,
       codigo: a.codigo,
@@ -1890,13 +1969,17 @@ export async function pronosticoDepreciacion(
   for (let i = 0; i < meses; i++) {
     const { anio: anioPrevio, mes: mesPrevio } = mesAnteriorDe(anio, mes);
     const mesesTranscurridosAlInicio = mesesDepreciablesHasta(valoracion.fechaInicioDep, valoracion.reglaInicio, anioPrevio, mesPrevio);
-    const cuota = calcularCuotaLineal({
-      costoDepreciable: costo,
-      valorResidual: Number(valoracion.valorResidual),
-      depAcumuladaAlInicio: depAcumuladaProyectada,
-      vidaUtilMeses: valoracion.vidaUtilMeses,
-      mesesTranscurridosAlInicio,
-    });
+    const cuota = calcularCuotaPorMetodo(
+      valoracion.metodoDep,
+      {
+        costoDepreciable: costo,
+        valorResidual: Number(valoracion.valorResidual),
+        depAcumuladaAlInicio: depAcumuladaProyectada,
+        vidaUtilMeses: valoracion.vidaUtilMeses,
+        mesesTranscurridosAlInicio,
+      },
+      activoId,
+    );
     depAcumuladaProyectada += cuota;
     filas.push({ anio, mes, cuota, depAcumuladaProyectada, valorLibroProyectado: costo - depAcumuladaProyectada });
 
@@ -2001,10 +2084,11 @@ export async function cuadroEvolucion(
   if (activosLista.length === 0) return [];
   const activoIds = activosLista.map((a) => a.id);
 
-  const altasPorAnio = await sumarPorActivoYAnio(empresaId, libro, activoIds, ["CAP", "MEJ"]);
+  const altasPorAnio = await sumarPorActivoYAnio(empresaId, libro, activoIds, ["CAP", "MEJ", "CM"]);
   const bajasPorAnio = await sumarPorActivoYAnio(empresaId, libro, activoIds, ["BAJA_VTA", "BAJA_CAST"]);
   const depPorAnio = await sumarPorActivoYAnio(empresaId, libro, activoIds, ["DEP", "DEP_MAN"]);
   const depBajasPorAnio = await sumarPorActivoYAnio(empresaId, libro, activoIds, ["BAJA_VTA", "BAJA_CAST"], "depAcumuladaRetirada");
+  const depCmPorAnio = await sumarPorActivoYAnio(empresaId, libro, activoIds, ["CM"], "depAcumuladaRetirada");
 
   return activosLista.map((a) => {
     const altasAnteriores = sumaHasta(altasPorAnio, a.id, (y) => y < anio);
@@ -2013,13 +2097,15 @@ export async function cuadroEvolucion(
     const bajas = sumaHasta(bajasPorAnio, a.id, (y) => y === anio);
     const depAnteriores = sumaHasta(depPorAnio, a.id, (y) => y < anio);
     const depBajasAnteriores = sumaHasta(depBajasPorAnio, a.id, (y) => y < anio);
+    const depCmAnteriores = sumaHasta(depCmPorAnio, a.id, (y) => y < anio);
     const depEjercicio = sumaHasta(depPorAnio, a.id, (y) => y === anio);
     const depBajas = sumaHasta(depBajasPorAnio, a.id, (y) => y === anio);
+    const depCm = sumaHasta(depCmPorAnio, a.id, (y) => y === anio);
 
     const costoInicial = altasAnteriores - bajasAnteriores;
     const costoFinal = costoInicial + altas - bajas;
-    const depAcumuladaInicial = depAnteriores - depBajasAnteriores;
-    const depAcumuladaFinal = depAcumuladaInicial + depEjercicio - depBajas;
+    const depAcumuladaInicial = depAnteriores - depBajasAnteriores + depCmAnteriores;
+    const depAcumuladaFinal = depAcumuladaInicial + depEjercicio - depBajas + depCm;
     return {
       activoId: a.id,
       codigo: a.codigo,

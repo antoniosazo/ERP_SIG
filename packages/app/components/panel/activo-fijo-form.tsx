@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
-import { LIBRO_CONTABLE, crearActivoFijoSchema } from "@erp/shared";
+import { ACTIVO_FIJO_REGIMEN_DEPRECIACION, LIBRO_CONTABLE, crearActivoFijoSchema } from "@erp/shared";
 import { crearActivoFijoAction, editarActivoFijoAction } from "@/lib/actions/activos-fijos";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -41,6 +41,8 @@ export type ActivoFijoExistente = {
     fechaInicioDep: string | null;
     vidaUtilMeses: number;
     valorResidual: string;
+    regimenDepreciacion?: string;
+    vidaUtilNormalMeses?: number | null;
   };
 };
 
@@ -58,12 +60,15 @@ function valoresDe(activo: ActivoFijoExistente | null): FormValues {
     valoraciones: [
       {
         libro: (v?.libro as FormValues["valoraciones"][number]["libro"]) ?? "Ambos",
-        metodoDep: "Lineal",
+        metodoDep: v?.regimenDepreciacion === "Instantanea" ? "Inmediata" : "Lineal",
         reglaInicio: (v?.reglaInicio as FormValues["valoraciones"][number]["reglaInicio"]) ?? "Mes siguiente",
         reglaBaja: "Hasta mes anterior",
         fechaInicioDep: v?.fechaInicioDep ?? "",
         vidaUtilMeses: v?.vidaUtilMeses ?? 0,
         valorResidual: v ? Number(v.valorResidual) : 0,
+        regimenDepreciacion:
+          (v?.regimenDepreciacion as FormValues["valoraciones"][number]["regimenDepreciacion"]) ?? "Normal",
+        vidaUtilNormalMeses: v?.vidaUtilNormalMeses ?? undefined,
       },
     ],
   };
@@ -74,12 +79,14 @@ export function ActivoFijoForm({
   empresaId,
   clases,
   centros,
+  vidasUtilesSii = [],
   activo,
   onSaved,
 }: {
   empresaId: string;
   clases: Opcion[];
   centros: Opcion[];
+  vidasUtilesSii?: { id: string; categoria: string; vidaUtilNormalMeses: number }[];
   activo?: ActivoFijoExistente | null;
   onSaved?: (activoId: string) => void;
 }) {
@@ -95,6 +102,25 @@ export function ActivoFijoForm({
     resolver: zodResolver(crearActivoFijoSchema),
     defaultValues: valoresDe(activo ?? null),
   });
+
+  const libroSeleccionado = watch("valoraciones.0.libro");
+  const regimenSeleccionado = watch("valoraciones.0.regimenDepreciacion");
+
+  function cambiarRegimen(regimen: FormValues["valoraciones"][number]["regimenDepreciacion"]) {
+    setValue("valoraciones.0.regimenDepreciacion", regimen);
+    if (regimen === "Instantanea") {
+      setValue("valoraciones.0.metodoDep", "Inmediata");
+      setValue("valoraciones.0.vidaUtilMeses", 1);
+    } else {
+      setValue("valoraciones.0.metodoDep", "Lineal");
+      if (regimen === "Normal") setValue("valoraciones.0.vidaUtilNormalMeses", undefined);
+    }
+  }
+
+  function elegirVidaUtilSii(vidaUtilNormalMeses: number) {
+    setValue("valoraciones.0.vidaUtilNormalMeses", vidaUtilNormalMeses);
+    setValue("valoraciones.0.vidaUtilMeses", Math.max(12, Math.round(vidaUtilNormalMeses / 3)));
+  }
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
@@ -249,6 +275,77 @@ export function ActivoFijoForm({
           </div>
         </div>
         {errV && <p className="text-sm text-destructive">Revisa los datos de valoración: hay campos inválidos.</p>}
+
+        {libroSeleccionado === "Tributario" && (
+          <div className="space-y-4 border-t border-input pt-4">
+            <p className="text-sm font-medium">Régimen tributario (art. 31 LIR)</p>
+            <div className="space-y-2 sm:max-w-xs">
+              <Label htmlFor="regimenDepreciacion">Régimen</Label>
+              <Select
+                value={regimenSeleccionado}
+                onValueChange={(v) => cambiarRegimen(v as FormValues["valoraciones"][number]["regimenDepreciacion"])}
+              >
+                <SelectTrigger id="regimenDepreciacion" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTIVO_FIJO_REGIMEN_DEPRECIACION.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r === "Instantanea" ? "Instantánea (Pro Pyme)" : r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {regimenSeleccionado === "Acelerada" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="vidaUtilNormalMeses">Vida útil normal SII (meses)</Label>
+                  <Input
+                    id="vidaUtilNormalMeses"
+                    type="number"
+                    min={1}
+                    {...register("valoraciones.0.vidaUtilNormalMeses", {
+                      valueAsNumber: true,
+                      onChange: (e) => {
+                        const meses = Number(e.target.value);
+                        if (meses > 0) setValue("valoraciones.0.vidaUtilMeses", Math.max(12, Math.round(meses / 3)));
+                      },
+                    })}
+                  />
+                  {vidasUtilesSii.length > 0 && (
+                    <Select onValueChange={(id) => {
+                      const fila = vidasUtilesSii.find((v) => v.id === id);
+                      if (fila) elegirVidaUtilSii(fila.vidaUtilNormalMeses);
+                    }}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Buscar en la tabla SII..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vidasUtilesSii.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.categoria} ({v.vidaUtilNormalMeses} meses)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Vida útil acelerada (÷3, calculada)</Label>
+                  <Input value={watch("valoraciones.0.vidaUtilMeses") || ""} disabled />
+                </div>
+              </div>
+            )}
+            {regimenSeleccionado === "Instantanea" && (
+              <p className="text-xs text-muted-foreground">
+                Deprecia el 100% del costo en el primer mes elegible. Solo corresponde si la empresa está acogida al
+                régimen Pro Pyme (14 D N°3/N°8) y el activo es nuevo — confírmalo antes de usarlo.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">

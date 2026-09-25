@@ -1,0 +1,3 @@
+DROP INDEX "activos_fijos_vidas_utiles_sii_empresa_categoria_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "activos_fijos_vidas_utiles_sii_global_categoria_unique" ON "activos_fijos_vidas_utiles_sii" USING btree ("categoria") WHERE "activos_fijos_vidas_utiles_sii"."empresa_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "activos_fijos_vidas_utiles_sii_empresa_categoria_unique" ON "activos_fijos_vidas_utiles_sii" USING btree ("empresa_id","categoria") WHERE "activos_fijos_vidas_utiles_sii"."empresa_id" is not null;
