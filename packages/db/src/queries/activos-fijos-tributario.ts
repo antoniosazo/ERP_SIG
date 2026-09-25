@@ -19,7 +19,7 @@ import {
 } from "../schema";
 import { cuadroEvolucion } from "./activos-fijos";
 import { resolverCuentaClase } from "./activos-fijos-clases";
-import { calcularCuotaLineal, mesesDepreciablesHasta } from "./activos-fijos-motor";
+import { calcularCuotaLineal, mesesDepreciablesHasta, periodoDepreciable } from "./activos-fijos-motor";
 import { siguienteCorrelativoAsiento } from "./asientos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 
@@ -472,13 +472,15 @@ export async function calcularDDAN(empresaId: string, activoId: string, anio: nu
   while ((anioIter < anioCorte || (anioIter === anioCorte && mesIter <= mesCorte)) && iteraciones < LIMITE_ITERACIONES) {
     const mesAnterior = mesIter === 1 ? { anio: anioIter - 1, mes: 12 } : { anio: anioIter, mes: mesIter - 1 };
     const mesesTranscurridos = mesesDepreciablesHasta(valoracion.fechaInicioDep, valoracion.reglaInicio, mesAnterior.anio, mesAnterior.mes);
-    const cuota = calcularCuotaLineal({
-      costoDepreciable,
-      valorResidual: Number(valoracion.valorResidual),
-      depAcumuladaAlInicio: depNormalAcum,
-      vidaUtilMeses: valoracion.vidaUtilNormalMeses,
-      mesesTranscurridosAlInicio: mesesTranscurridos,
-    });
+    const cuota = periodoDepreciable(valoracion.fechaInicioDep, valoracion.reglaInicio, anioIter, mesIter)
+      ? calcularCuotaLineal({
+          costoDepreciable,
+          valorResidual: Number(valoracion.valorResidual),
+          depAcumuladaAlInicio: depNormalAcum,
+          vidaUtilMeses: valoracion.vidaUtilNormalMeses,
+          mesesTranscurridosAlInicio: mesesTranscurridos,
+        })
+      : 0;
     depNormalAcum += cuota;
     if (anioIter === anio - 1 && mesIter === 12) depNormalFinAnioAnterior = depNormalAcum;
 

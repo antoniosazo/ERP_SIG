@@ -1,7 +1,7 @@
 import type { CerrarEjercicioActivoFijoInput, LibroContable } from "@erp/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../client";
-import { activosFijosCierres, activosFijosSaldos, activosFijosValoresPeriodo, periodosContables } from "../schema";
+import { activosFijos, activosFijosCierres, activosFijosSaldos, activosFijosValoresPeriodo, periodosContables } from "../schema";
 import { cuadroEvolucion } from "./activos-fijos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { listarPeriodos } from "./periodos";
@@ -56,7 +56,13 @@ export async function estadoCierreActivoFijo(
       .select({ id: activosFijosValoresPeriodo.activoId })
       .from(activosFijosValoresPeriodo)
       .innerJoin(periodosContables, eq(activosFijosValoresPeriodo.periodoId, periodosContables.id))
-      .where(and(eq(activosFijosValoresPeriodo.libro, libro), eq(periodosContables.anio, anio)))
+      .where(
+        and(
+          eq(periodosContables.empresaId, empresaId),
+          eq(activosFijosValoresPeriodo.libro, libro),
+          eq(periodosContables.anio, anio),
+        ),
+      )
       .limit(1);
     if (algunMesDelAnio && !depDiciembre) {
       bloqueos.push(`Ejecuta la depreciación de diciembre de ${anio} para el libro ${libro} antes de cerrar.`);
@@ -222,17 +228,21 @@ export async function reabrirEjercicioActivoFijo(
       .returning();
     if (!act) throw new Error("No se pudo reabrir el ejercicio");
 
-    // Borra los saldos congelados de todos los activos de ese libro/año — vuelven a
-    // calcularse en vivo (misma lógica que usa el informe mientras el año está abierto).
-    const activosDelLibro = await tx
-      .select({ activoId: activosFijosSaldos.activoId })
-      .from(activosFijosSaldos)
-      .where(and(eq(activosFijosSaldos.libro, libro), eq(activosFijosSaldos.anio, anio)));
-    for (const a of activosDelLibro) {
-      await tx
-        .delete(activosFijosSaldos)
-        .where(and(eq(activosFijosSaldos.activoId, a.activoId), eq(activosFijosSaldos.libro, libro), eq(activosFijosSaldos.anio, anio)));
-    }
+    // Borra los saldos congelados de los activos de ESTA empresa en ese libro/año (la
+    // tabla no tiene empresa_id: se acota por sus activos) — vuelven a calcularse en vivo
+    // (misma lógica que usa el informe mientras el año está abierto).
+    await tx
+      .delete(activosFijosSaldos)
+      .where(
+        and(
+          eq(activosFijosSaldos.libro, libro),
+          eq(activosFijosSaldos.anio, anio),
+          inArray(
+            activosFijosSaldos.activoId,
+            tx.select({ id: activosFijos.id }).from(activosFijos).where(eq(activosFijos.empresaId, empresaId)),
+          ),
+        ),
+      );
 
     if (ctx) {
       await registrarAuditoria(tx, {

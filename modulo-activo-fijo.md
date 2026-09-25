@@ -94,7 +94,7 @@ Cada baja (venta o castigo) retira una porción del costo y de la depreciación 
 
 **Registro DDAN**: para un activo en régimen Acelerada, el sistema calcula en paralelo (sin contabilizarla nunca) la depreciación que habría correspondido con la vida útil normal completa, y la compara con la depreciación acelerada real: `DDAN = Depreciación Acelerada − Depreciación Normal`. Es la fórmula oficial del registro que exige la ley — el contador la lleva al registro general de rentas empresariales de la compañía.
 
-**Probado contra la base de datos**: un activo Acelerado (vida normal 36 meses → efectiva 12) con 9 meses de depreciación real acumulada $900.000, frente a una depreciación normal hipotética de esos mismos 9 meses ($300.000 con la vida de 36 meses) → DDAN acumulado $600.000, exacto.
+**Probado contra la base de datos**: un activo Acelerado (vida normal 36 meses → efectiva 12) con 9 meses de depreciación real acumulada $900.000, frente a una depreciación normal hipotética de esos mismos 9 meses ($299.999,97 con la vida de 36 meses: $33.333,33 por mes) → DDAN acumulado $600.000,03.
 
 ---
 

@@ -46,6 +46,22 @@ export function mesesDepreciablesHasta(
   return Math.max(0, meses);
 }
 
+/**
+ * ¿Corresponde depreciar en `(anioPeriodo, mesPeriodo)`? Falso si el período es anterior
+ * al inicio de depreciación — incluido el mes de alta con la regla "Mes siguiente". Los
+ * llamadores deben consultarlo antes de pedir la cuota: `mesesDepreciablesHasta` sobre el
+ * mes previo devuelve 0 tanto para el primer mes real como para cualquier mes anterior,
+ * así que la cuota por sí sola no distingue ambos casos.
+ */
+export function periodoDepreciable(
+  fechaInicioDep: string,
+  reglaInicio: ActivoFijoReglaInicio,
+  anioPeriodo: number,
+  mesPeriodo: number,
+): boolean {
+  return mesesDepreciablesHasta(fechaInicioDep, reglaInicio, anioPeriodo, mesPeriodo) > 0;
+}
+
 export type ParametrosCuota = {
   costoDepreciable: number;
   valorResidual: number;
@@ -71,12 +87,13 @@ export function calcularCuotaLineal(p: ParametrosCuota): number {
 
 /**
  * Cuota del método "Inmediata" (depreciación instantánea, art. 31 N°5 bis LIR): el
- * primer período elegible (`mesesTranscurridosAlInicio === 0`) deprecia todo el valor
- * libro remanente de una vez; los períodos siguientes devuelven 0 — ya no queda nada
- * por depreciar.
+ * primer período ejecutado desde el inicio de depreciación deprecia todo el valor libro
+ * remanente de una vez; los siguientes devuelven 0 porque ya no queda nada por
+ * depreciar. No exige que sea exactamente el primer mes: si ese mes no se ejecutó, la
+ * cuota la toma el siguiente en vez de perderse. El llamador descarta los períodos
+ * anteriores al inicio con `periodoDepreciable`.
  */
 export function calcularCuotaInmediata(p: ParametrosCuota): number {
-  if (p.mesesTranscurridosAlInicio !== 0) return 0;
   const valorLibro = p.costoDepreciable - p.depAcumuladaAlInicio;
   const maximoDepreciable = Math.max(0, valorLibro - p.valorResidual);
   return redondear(maximoDepreciable);

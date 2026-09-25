@@ -45,7 +45,7 @@ type Opcion = { id: string; label: string };
 type PeriodoOpcion = { id: string; anio: number; mes: number; estado: string };
 const SIN_CENTRO = "__none__";
 
-const TIPOS_ANULABLES = new Set(["CAP", "MEJ", "DEP", "DEP_MAN", "BAJA_VTA", "BAJA_CAST"]);
+const TIPOS_ANULABLES = new Set(["CAP", "MEJ", "DEP", "DEP_MAN", "BAJA_VTA", "BAJA_CAST", "CM"]);
 
 export type ActivoFijoDetalle = {
   activo: {

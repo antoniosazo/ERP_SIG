@@ -13,7 +13,8 @@
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx seed.ts",
     "db:studio": "drizzle-kit studio",
-    "bootstrap-firma": "tsx scripts/bootstrap-firma.ts"
+    "bootstrap-firma": "tsx scripts/bootstrap-firma.ts",
+    "test": "tsx --test src/queries/*.test.ts"
   },
   "dependencies": {
     "@erp/shared": "workspace:*",

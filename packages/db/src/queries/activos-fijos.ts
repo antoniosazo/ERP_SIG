@@ -36,6 +36,7 @@ import {
   calcularCuotaInmediata,
   calcularCuotaLineal,
   mesesDepreciablesHasta,
+  periodoDepreciable,
   type ParametrosCuota,
 } from "./activos-fijos-motor";
 import { siguienteCorrelativoAsiento } from "./asientos";
@@ -1325,9 +1326,28 @@ async function calcularCuotasDelPeriodo(
     .groupBy(activosFijosValoresPeriodo.activoId);
   const acumuladaPorActivo = new Map(acumuladas.map((a) => [a.activoId, Number(a.total)]));
 
+  // Activos que ya tienen depreciación contabilizada en este mismo período (lote anterior
+  // o depreciación manual): no se vuelven a depreciar — re-ejecutar el período solo
+  // recoge activos nuevos, nunca duplica la cuota.
+  const yaDepreciados = await tx
+    .select({ activoId: activosFijosValoresPeriodo.activoId })
+    .from(activosFijosValoresPeriodo)
+    .where(
+      and(
+        eq(activosFijosValoresPeriodo.libro, libro),
+        eq(activosFijosValoresPeriodo.periodoId, periodo.id),
+        inArray(activosFijosValoresPeriodo.activoId, activoIds),
+        sql`${activosFijosValoresPeriodo.depContabilizada} > 0`,
+      ),
+    );
+  const yaDepreciadosEnPeriodo = new Set(yaDepreciados.map((d) => d.activoId));
+
   const { anio: anioPrevio, mes: mesPrevio } = mesAnteriorDe(periodo.anio, periodo.mes);
 
   return activosDelLibro.map((a) => {
+    const depreciable =
+      !yaDepreciadosEnPeriodo.has(a.activoId) &&
+      (!a.fechaInicioDep || periodoDepreciable(a.fechaInicioDep, a.reglaInicio, periodo.anio, periodo.mes));
     const costoDepreciable = costoPorActivo.get(a.activoId) ?? 0;
     const depAcumuladaAlInicio =
       (acumuladaPorActivo.get(a.activoId) ?? 0) -
@@ -1336,17 +1356,19 @@ async function calcularCuotasDelPeriodo(
     const mesesTranscurridosAlInicio = a.fechaInicioDep
       ? mesesDepreciablesHasta(a.fechaInicioDep, a.reglaInicio, anioPrevio, mesPrevio)
       : 0;
-    const cuota = calcularCuotaPorMetodo(
-      a.metodoDep,
-      {
-        costoDepreciable,
-        valorResidual: Number(a.valorResidual),
-        depAcumuladaAlInicio,
-        vidaUtilMeses: a.vidaUtilMeses,
-        mesesTranscurridosAlInicio,
-      },
-      a.codigo,
-    );
+    const cuota = depreciable
+      ? calcularCuotaPorMetodo(
+          a.metodoDep,
+          {
+            costoDepreciable,
+            valorResidual: Number(a.valorResidual),
+            depAcumuladaAlInicio,
+            vidaUtilMeses: a.vidaUtilMeses,
+            mesesTranscurridosAlInicio,
+          },
+          a.codigo,
+        )
+      : 0;
     return {
       activoId: a.activoId,
       codigo: a.codigo,
@@ -1396,7 +1418,13 @@ export async function ejecutarDepreciacion(
       .select({ anio: periodosContables.anio, mes: periodosContables.mes })
       .from(activosFijosValoresPeriodo)
       .innerJoin(periodosContables, eq(activosFijosValoresPeriodo.periodoId, periodosContables.id))
-      .where(sql`${activosFijosValoresPeriodo.libro} = ${input.libro} and ${activosFijosValoresPeriodo.depContabilizada} > 0`)
+      .where(
+        and(
+          eq(periodosContables.empresaId, empresaId),
+          eq(activosFijosValoresPeriodo.libro, input.libro),
+          sql`${activosFijosValoresPeriodo.depContabilizada} > 0`,
+        ),
+      )
       .orderBy(desc(periodosContables.anio), desc(periodosContables.mes))
       .limit(1);
     if (ultimaEjecucion && filas.length > 0) {
@@ -1567,11 +1595,11 @@ export async function ejecutarDepreciacion(
 // ── Depreciación manual ──────────────────────────────────────────────────────
 
 /**
- * Depreciación manual de UN activo/libro/período: reemplaza la cuota calculada por un
- * monto dado por el usuario (corrección puntual, no un lote). Mismo asiento que
- * `ejecutarDepreciacion` (Debe Gasto/Haber Dep. Acumulada) y mismo upsert de
- * `activos_fijos_valores_periodo` — una ejecución automática posterior de ese período
- * para ese activo ya no lo vuelve a tocar (el período ya tiene `depContabilizada`).
+ * Depreciación manual de UN activo/libro/período: registra un monto dado por el usuario
+ * (corrección puntual, no un lote). Mismo asiento que `ejecutarDepreciacion` (Debe
+ * Gasto/Haber Dep. Acumulada). Si el período ya tenía depreciación contabilizada, el
+ * monto se suma (es un ajuste sobre ella, no la reemplaza); si no, una ejecución
+ * automática posterior de ese período ya no toca este activo.
  */
 export async function registrarDepreciacionManual(
   activoId: string,
@@ -1598,11 +1626,21 @@ export async function registrarDepreciacionManual(
     }
 
     const [valoracion] = await tx
-      .select({ bloqueado: activosFijosValoraciones.bloqueado })
+      .select({
+        bloqueado: activosFijosValoraciones.bloqueado,
+        fechaInicioDep: activosFijosValoraciones.fechaInicioDep,
+        reglaInicio: activosFijosValoraciones.reglaInicio,
+      })
       .from(activosFijosValoraciones)
       .where(and(eq(activosFijosValoraciones.activoId, activoId), eq(activosFijosValoraciones.libro, input.libro)));
     if (!valoracion) throw new Error(`El activo no tiene una valoración para el libro ${input.libro}`);
     if (valoracion.bloqueado) throw new Error("La valoración de este libro está bloqueada");
+    if (
+      valoracion.fechaInicioDep &&
+      !periodoDepreciable(valoracion.fechaInicioDep, valoracion.reglaInicio, periodo.anio, periodo.mes)
+    ) {
+      throw new Error("El período es anterior al inicio de depreciación del activo");
+    }
 
     const cuentaGasto = await resolverCuentaClase(tx, empresaId, activo.claseId, input.libro, "ctaGastoDep", "gasto_depreciacion");
     const cuentaDepAcum = await resolverCuentaClase(
@@ -1722,9 +1760,11 @@ export async function registrarDepreciacionManual(
           activosFijosValoresPeriodo.libro,
           activosFijosValoresPeriodo.periodoId,
         ],
+        // Se suma a lo ya contabilizado del período (p. ej. el lote automático): los
+        // documentos DEP y DEP_MAN cuentan ambos en el saldo, y esta caché debe cuadrar.
         set: {
-          depPlanificada: sql`excluded.dep_planificada`,
-          depContabilizada: sql`excluded.dep_contabilizada`,
+          depPlanificada: sql`${activosFijosValoresPeriodo.depPlanificada} + excluded.dep_planificada`,
+          depContabilizada: sql`${activosFijosValoresPeriodo.depContabilizada} + excluded.dep_contabilizada`,
           updatedAt: new Date(),
         },
       });
@@ -1747,13 +1787,13 @@ export async function registrarDepreciacionManual(
 
 // ── Anulación ────────────────────────────────────────────────────────────────
 
-const TIPOS_ANULABLES = new Set<ActivoFijoDocTipo>(["CAP", "MEJ", "DEP", "DEP_MAN", "BAJA_VTA", "BAJA_CAST"]);
+const TIPOS_ANULABLES = new Set<ActivoFijoDocTipo>(["CAP", "MEJ", "DEP", "DEP_MAN", "BAJA_VTA", "BAJA_CAST", "CM"]);
 
 /**
  * Anula un documento de Activo Fijo: reversa contable (nuevo asiento, debe/haber
  * invertidos) + `estado: "anulado"` + `motivoAnulacion` + `asientoReversaId` — mismo
  * patrón que `anularDocumentoCompra`/`anularDocumentoVenta`/`anularPago`. Alcance: `CAP`,
- * `MEJ`, `DEP`, `DEP_MAN`, `BAJA_VTA`, `BAJA_CAST`. Las transferencias (`TRF`/
+ * `MEJ`, `DEP`, `DEP_MAN`, `BAJA_VTA`, `BAJA_CAST`, `CM`. Las transferencias (`TRF`/
  * `TRF_CLASE`) no se anulan en esta fase — se deshacen con una transferencia en sentido
  * contrario.
  */
@@ -1785,6 +1825,33 @@ export async function anularDocumentoActivoFijo(
       .from(activosFijosDocumentosLineas)
       .where(eq(activosFijosDocumentosLineas.documentoId, documentoId));
 
+    // CAP: no se anula si el activo ya tiene depreciación, bajas o corrección monetaria
+    // vigentes en ese libro — quedarían colgando sobre un activo sin costo.
+    if (documento.tipoDoc === "CAP") {
+      for (const l of lineas) {
+        const [dependiente] = await tx
+          .select({ tipoDoc: activosFijosDocumentos.tipoDoc })
+          .from(activosFijosDocumentosLineas)
+          .innerJoin(activosFijosDocumentos, eq(activosFijosDocumentosLineas.documentoId, activosFijosDocumentos.id))
+          .where(
+            and(
+              eq(activosFijosDocumentos.empresaId, empresaId),
+              eq(activosFijosDocumentos.estado, "contabilizado"),
+              inArray(activosFijosDocumentos.tipoDoc, ["DEP", "DEP_MAN", "BAJA_VTA", "BAJA_CAST", "CM"]),
+              eq(activosFijosDocumentosLineas.activoId, l.activoId),
+              eq(activosFijosDocumentosLineas.libro, l.libro),
+            ),
+          )
+          .limit(1);
+        if (dependiente) {
+          throw new Error(
+            `No se puede anular la capitalización: el activo tiene documentos ${dependiente.tipoDoc} vigentes en ` +
+              `el libro ${l.libro}. Anúlalos primero.`,
+          );
+        }
+      }
+    }
+
     // DEP/DEP_MAN: solo se permite anular el período más reciente ya ejecutado de ese
     // libro (mismo espíritu que la secuencialidad de `ejecutarDepreciacion`, en reversa).
     const esDepreciacion = documento.tipoDoc === "DEP" || documento.tipoDoc === "DEP_MAN";
@@ -1795,7 +1862,11 @@ export async function anularDocumentoActivoFijo(
         .from(activosFijosValoresPeriodo)
         .innerJoin(periodosContables, eq(activosFijosValoresPeriodo.periodoId, periodosContables.id))
         .where(
-          sql`${activosFijosValoresPeriodo.libro} = ${documento.libro} and ${activosFijosValoresPeriodo.depContabilizada} > 0`,
+          and(
+            eq(periodosContables.empresaId, empresaId),
+            eq(activosFijosValoresPeriodo.libro, documento.libro),
+            sql`${activosFijosValoresPeriodo.depContabilizada} > 0`,
+          ),
         )
         .orderBy(desc(periodosContables.anio), desc(periodosContables.mes))
         .limit(1);
@@ -1822,6 +1893,7 @@ export async function anularDocumentoActivoFijo(
           glosa: `Reversa: ${cab?.glosa ?? documento.glosa ?? ""}`,
           tipo: "ajuste",
           origen: "anulación activo fijo",
+          libro: cab?.libro ?? documento.libro ?? "Ambos",
           estado: "contabilizado",
           documentoOrigenId: documento.id,
           documentoOrigenTabla: "activos_fijos_documentos",
@@ -1896,7 +1968,11 @@ export async function anularDocumentoActivoFijo(
       for (const l of lineas) {
         await tx
           .update(activosFijosValoresPeriodo)
-          .set({ depContabilizada: "0", updatedAt: new Date() })
+          // Resta solo lo anulado: en el período puede haber DEP y DEP_MAN a la vez.
+          .set({
+            depContabilizada: sql`greatest(0, ${activosFijosValoresPeriodo.depContabilizada} - ${l.importe})`,
+            updatedAt: new Date(),
+          })
           .where(
             and(
               eq(activosFijosValoresPeriodo.activoId, l.activoId),
@@ -1969,17 +2045,19 @@ export async function pronosticoDepreciacion(
   for (let i = 0; i < meses; i++) {
     const { anio: anioPrevio, mes: mesPrevio } = mesAnteriorDe(anio, mes);
     const mesesTranscurridosAlInicio = mesesDepreciablesHasta(valoracion.fechaInicioDep, valoracion.reglaInicio, anioPrevio, mesPrevio);
-    const cuota = calcularCuotaPorMetodo(
-      valoracion.metodoDep,
-      {
-        costoDepreciable: costo,
-        valorResidual: Number(valoracion.valorResidual),
-        depAcumuladaAlInicio: depAcumuladaProyectada,
-        vidaUtilMeses: valoracion.vidaUtilMeses,
-        mesesTranscurridosAlInicio,
-      },
-      activoId,
-    );
+    const cuota = periodoDepreciable(valoracion.fechaInicioDep, valoracion.reglaInicio, anio, mes)
+      ? calcularCuotaPorMetodo(
+          valoracion.metodoDep,
+          {
+            costoDepreciable: costo,
+            valorResidual: Number(valoracion.valorResidual),
+            depAcumuladaAlInicio: depAcumuladaProyectada,
+            vidaUtilMeses: valoracion.vidaUtilMeses,
+            mesesTranscurridosAlInicio,
+          },
+          activoId,
+        )
+      : 0;
     depAcumuladaProyectada += cuota;
     filas.push({ anio, mes, cuota, depAcumuladaProyectada, valorLibroProyectado: costo - depAcumuladaProyectada });
 
