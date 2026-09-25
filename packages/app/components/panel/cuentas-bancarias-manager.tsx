@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { z } from "zod";
 import { CUENTA_BANCARIA_TIPO, crearCuentaBancariaEmpresaSchema } from "@erp/shared";
 import { guardarCuentaBancariaAction } from "@/lib/actions/tesoreria";
+import { MontoInput } from "@/components/panel/monto-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -29,6 +30,8 @@ export type CuentaBancariaFila = {
   cuentaCodigo: string;
   cuentaNombre: string;
   activa: boolean;
+  saldoInicialConciliado: string;
+  fechaSaldoInicial: string | null;
 };
 type Opcion = { id: string; label: string };
 type FormValues = z.input<typeof crearCuentaBancariaEmpresaSchema>;
@@ -42,6 +45,8 @@ function valoresDe(c: CuentaBancariaFila | null, monedaDefault: string | undefin
     monedaId: c?.monedaId ?? monedaDefault ?? "",
     cuentaContableId: c?.cuentaContableId ?? "",
     activa: c?.activa ?? true,
+    saldoInicialConciliado: c ? Number(c.saldoInicialConciliado) : 0,
+    fechaSaldoInicial: c?.fechaSaldoInicial ?? "",
   };
 }
 
@@ -206,6 +211,22 @@ export function CuentasBancariasManager({
             </div>
             {selectCampo("monedaId", "Moneda", monedas, "Moneda")}
             {selectCampo("cuentaContableId", "Cuenta contable (tipo Banco)", cuentasContables, "Cuenta contable")}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="saldoInicialConciliado">Saldo inicial conciliado</Label>
+                <MontoInput
+                  valor={watch("saldoInicialConciliado") ?? 0}
+                  onValorChange={(v) => setValue("saldoInicialConciliado", v)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fechaSaldoInicial">Fecha del saldo inicial</Label>
+                <Input id="fechaSaldoInicial" type="date" {...register("fechaSaldoInicial")} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Punto de partida de la primera conciliación bancaria de esta cuenta.
+            </p>
             <div className="space-y-2 sm:max-w-xs">
               <Label htmlFor="activa">Estado</Label>
               <Select value={watch("activa") ? "1" : "0"} onValueChange={(v) => setValue("activa", v === "1")}>

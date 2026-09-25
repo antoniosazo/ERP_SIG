@@ -1,5 +1,5 @@
-import { boolean, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { idColumn, timestampsColumns } from "./columns.helpers";
+import { boolean, date, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { idColumn, montoColumn, timestampsColumns } from "./columns.helpers";
 import { cuentaBancariaTipoEnum } from "./enums";
 import { bancos } from "./bancos";
 import { empresas } from "./empresas";
@@ -31,6 +31,11 @@ export const cuentasBancarias = pgTable(
       .notNull()
       .references(() => planCuentas.id, { onDelete: "restrict" }),
     activa: boolean("activa").notNull().default(true),
+    // Punto de partida de la primera conciliación bancaria (Módulo de Bancos, Fase 1).
+    // Nullable por compatibilidad con cuentas creadas antes de Cartolas; el formulario
+    // los pide para cuentas nuevas.
+    saldoInicialConciliado: montoColumn("saldo_inicial_conciliado").notNull().default("0"),
+    fechaSaldoInicial: date("fecha_saldo_inicial"),
     ...timestampsColumns,
   },
   (t) => [uniqueIndex("cuentas_bancarias_empresa_banco_numero_unique").on(t.empresaId, t.bancoId, t.numeroCuenta)],

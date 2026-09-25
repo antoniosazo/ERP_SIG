@@ -68,6 +68,7 @@ export const GRUPOS: Grupo[] = [
         items: [
           { href: "/configuracion/cuentas-bancarias", label: "Cuentas bancarias", icon: CoinsIcon },
           { href: "/configuracion/metodos-pago", label: "Métodos de pago", icon: CoinsIcon },
+          { href: "/configuracion/cartolas-formatos", label: "Formatos de cartola", icon: ListTreeIcon },
         ],
       },
       {
@@ -113,6 +114,7 @@ export const GRUPOS: Grupo[] = [
       { href: "/tesoreria/pagos-efectuados", label: "Pagos efectuados", icon: CoinsIcon },
       { href: "/tesoreria/cheques", label: "Cheques", icon: ListTreeIcon },
       { href: "/tesoreria/depositos", label: "Depósitos", icon: FileTextIcon },
+      { href: "/tesoreria/cartolas", label: "Cartolas", icon: LandmarkIcon },
     ],
   },
   {

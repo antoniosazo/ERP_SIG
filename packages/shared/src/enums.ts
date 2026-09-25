@@ -169,6 +169,45 @@ export type ChequeEstado = (typeof CHEQUE_ESTADO)[number];
 
 export const CUENTA_BANCARIA_TIPO = ["Corriente", "Vista", "Ahorro", "Otra"] as const;
 
+// Módulo de Bancos — Cartolas (Fase 1). `cartolas_formatos.tipo_archivo`: MT940 y
+// CAMT.053 quedan fuera de esta fase (formatos estructurados, requieren archivos de
+// muestra reales del banco antes de construir su parser).
+export const CARTOLA_TIPO_ARCHIVO = ["Excel", "CsvTxtDelimitado", "TxtAnchoFijo"] as const;
+export type CartolaTipoArchivo = (typeof CARTOLA_TIPO_ARCHIVO)[number];
+export const CARTOLA_CODIFICACION = ["UTF-8", "Latin-1"] as const;
+export type CartolaCodificacion = (typeof CARTOLA_CODIFICACION)[number];
+export const CARTOLA_FORMATO_FECHA = ["dd/mm/aaaa", "aaaa-mm-dd", "aaaammdd"] as const;
+export type CartolaFormatoFecha = (typeof CARTOLA_FORMATO_FECHA)[number];
+export const CARTOLA_FORMATO_NUMERO = [
+  "MilesPuntoDecimalComa",
+  "MilesComaDecimalPunto",
+  "SinMilesDecimalPunto",
+] as const;
+export type CartolaFormatoNumero = (typeof CARTOLA_FORMATO_NUMERO)[number];
+export const CARTOLA_REGLA_SIGNO = ["ColumnasSeparadas", "ColumnaConSigno"] as const;
+export type CartolaReglaSigno = (typeof CARTOLA_REGLA_SIGNO)[number];
+// cartolas_formato_campos.campo_destino
+export const CARTOLA_CAMPO_DESTINO = [
+  "Fecha",
+  "Descripcion",
+  "NroDocumento",
+  "Cargo",
+  "Abono",
+  "MontoConSigno",
+  "Saldo",
+  "Sucursal",
+  "RutContraparte",
+] as const;
+export type CartolaCampoDestino = (typeof CARTOLA_CAMPO_DESTINO)[number];
+export const CARTOLA_ORIGEN = ["Archivo", "Manual"] as const;
+export type CartolaOrigen = (typeof CARTOLA_ORIGEN)[number];
+export const CARTOLA_ESTADO = ["Importada", "Anulada"] as const;
+export type CartolaEstado = (typeof CARTOLA_ESTADO)[number];
+// cartolas_movimientos.estado_conciliacion — un solo valor por ahora; se amplía con
+// ALTER TYPE ADD VALUE cuando se construya Conciliación (Fase 2 de Bancos).
+export const CARTOLA_MOVIMIENTO_ESTADO = ["Pendiente"] as const;
+export type CartolaMovimientoEstado = (typeof CARTOLA_MOVIMIENTO_ESTADO)[number];
+
 // series_numeracion.ambito — serie de numeración reutilizable.
 export const SERIE_AMBITO = ["tercero", "venta", "producto", "compra", "pago", "activo_fijo"] as const;
 

@@ -28,6 +28,8 @@ export async function listarCuentasBancariasEmpresa(empresaId: string) {
       cuentaCodigo: planCuentas.codigoCuenta,
       cuentaNombre: planCuentas.nombreCuenta,
       activa: cuentasBancarias.activa,
+      saldoInicialConciliado: cuentasBancarias.saldoInicialConciliado,
+      fechaSaldoInicial: cuentasBancarias.fechaSaldoInicial,
     })
     .from(cuentasBancarias)
     .innerJoin(bancos, eq(bancos.id, cuentasBancarias.bancoId))
@@ -91,6 +93,8 @@ export async function crearCuentaBancariaEmpresa(
         monedaId: input.monedaId,
         cuentaContableId: input.cuentaContableId,
         activa: input.activa,
+        saldoInicialConciliado: input.saldoInicialConciliado.toString(),
+        fechaSaldoInicial: input.fechaSaldoInicial ?? null,
       })
       .returning();
     if (!cuenta) throw new Error("No se pudo crear la cuenta bancaria");
@@ -132,6 +136,8 @@ export async function actualizarCuentaBancariaEmpresa(
         monedaId: input.monedaId,
         cuentaContableId: input.cuentaContableId,
         activa: input.activa,
+        saldoInicialConciliado: input.saldoInicialConciliado.toString(),
+        fechaSaldoInicial: input.fechaSaldoInicial ?? null,
         updatedAt: new Date(),
       })
       .where(and(eq(cuentasBancarias.id, cuentaId), eq(cuentasBancarias.empresaId, empresaId)))

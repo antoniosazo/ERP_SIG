@@ -15,6 +15,15 @@ import {
   CLASE_CUENTA,
   CLASIFICACION_CORRIENTE,
   CUENTA_BANCARIA_TIPO,
+  CARTOLA_TIPO_ARCHIVO,
+  CARTOLA_CODIFICACION,
+  CARTOLA_FORMATO_FECHA,
+  CARTOLA_FORMATO_NUMERO,
+  CARTOLA_REGLA_SIGNO,
+  CARTOLA_CAMPO_DESTINO,
+  CARTOLA_ORIGEN,
+  CARTOLA_ESTADO,
+  CARTOLA_MOVIMIENTO_ESTADO,
   DIRECCION_TIPO,
   DOCUMENTO_COMPRA_ESTADO,
   DOCUMENTO_COMPRA_TIPO,
@@ -83,6 +92,17 @@ export const auditoriaAccionEnum = pgEnum("auditoria_accion", [...AUDITORIA_ACCI
 export const impuestoTipoEnum = pgEnum("impuesto_tipo", [...IMPUESTO_TIPO]);
 export const direccionTipoEnum = pgEnum("direccion_tipo", [...DIRECCION_TIPO]);
 export const cuentaBancariaTipoEnum = pgEnum("cuenta_bancaria_tipo", [...CUENTA_BANCARIA_TIPO]);
+export const cartolaTipoArchivoEnum = pgEnum("cartola_tipo_archivo", [...CARTOLA_TIPO_ARCHIVO]);
+export const cartolaCodificacionEnum = pgEnum("cartola_codificacion", [...CARTOLA_CODIFICACION]);
+export const cartolaFormatoFechaEnum = pgEnum("cartola_formato_fecha", [...CARTOLA_FORMATO_FECHA]);
+export const cartolaFormatoNumeroEnum = pgEnum("cartola_formato_numero", [...CARTOLA_FORMATO_NUMERO]);
+export const cartolaReglaSignoEnum = pgEnum("cartola_regla_signo", [...CARTOLA_REGLA_SIGNO]);
+export const cartolaCampoDestinoEnum = pgEnum("cartola_campo_destino", [...CARTOLA_CAMPO_DESTINO]);
+export const cartolaOrigenEnum = pgEnum("cartola_origen", [...CARTOLA_ORIGEN]);
+export const cartolaEstadoEnum = pgEnum("cartola_estado", [...CARTOLA_ESTADO]);
+export const cartolaMovimientoEstadoEnum = pgEnum("cartola_movimiento_estado", [
+  ...CARTOLA_MOVIMIENTO_ESTADO,
+]);
 export const serieAmbitoEnum = pgEnum("serie_ambito", [...SERIE_AMBITO]);
 export const documentoVentaClaseEnum = pgEnum("documento_venta_clase", [...DOCUMENTO_VENTA_CLASE]);
 export const documentoVentaEstadoEnum = pgEnum("documento_venta_estado", [

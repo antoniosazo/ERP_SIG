@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CUENTA_BANCARIA_TIPO } from "../enums";
-import { uuid } from "./primitives";
+import { fechaISO, uuid } from "./primitives";
 
 /** Cuentas bancarias propias de la empresa ("bancos de la casa" en SAP B1). */
 const camposCuentaBancariaEmpresaBase = {
@@ -12,6 +12,9 @@ const camposCuentaBancariaEmpresaBase = {
   /** Cuenta contable de tipo Banco donde se contabilizan los movimientos de esta cuenta. */
   cuentaContableId: uuid,
   activa: z.boolean().default(true),
+  /** Punto de partida de la primera conciliación bancaria (Módulo de Bancos, Fase 1). */
+  saldoInicialConciliado: z.number().default(0),
+  fechaSaldoInicial: fechaISO.nullish(),
 };
 
 export const crearCuentaBancariaEmpresaSchema = z.object(camposCuentaBancariaEmpresaBase);

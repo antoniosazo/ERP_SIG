@@ -23,6 +23,8 @@ export * from "./queries/cuentas-bancarias-empresa";
 export * from "./queries/pagos";
 export * from "./queries/pagos-saldos";
 export * from "./queries/cheques";
+export * from "./queries/cartolas-formatos";
+export * from "./queries/cartolas";
 export * from "./queries/libro-mayor";
 export * from "./queries/terceros-saldos";
 export * from "./queries/informes-contables";

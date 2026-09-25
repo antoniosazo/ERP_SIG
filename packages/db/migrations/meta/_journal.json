@@ -337,6 +337,20 @@
       "when": 1790359568049,
       "tag": "0047_cuddly_gamma_corps",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790374352665,
+      "tag": "0048_last_impossible_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790376314401,
+      "tag": "0049_warm_black_widow",
+      "breakpoints": true
     }
   ]
 }

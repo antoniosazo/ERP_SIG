@@ -13,6 +13,12 @@ export const CAPACITACION_DOCS = [
     descripcion: "Ciclo de vida completo, depreciación, régimen tributario chileno y corrección monetaria.",
     archivo: "modulo-activo-fijo.md",
   },
+  {
+    slug: "bancos",
+    titulo: "Módulo de Bancos",
+    descripcion: "Plantillas de cartola por banco, importación con validaciones y carga manual de movimientos.",
+    archivo: "modulo-bancos.md",
+  },
 ] as const;
 
 export type CapacitacionDoc = (typeof CAPACITACION_DOCS)[number];
