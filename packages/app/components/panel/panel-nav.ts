@@ -4,6 +4,7 @@ import {
   CalendarDaysIcon,
   CoinsIcon,
   FileTextIcon,
+  GraduationCapIcon,
   HistoryIcon,
   LandmarkIcon,
   LayoutGridIcon,
@@ -145,6 +146,13 @@ export const GRUPOS: Grupo[] = [
       { href: "/informes/estado-resultados", label: "Estado de resultados", icon: TrendingUpIcon },
       { href: "/informes/activos-fijos", label: "Cuadro de evolución", icon: LandmarkIcon },
       { href: "/informes/activos-fijos-conciliacion", label: "Conciliación Tributario/IFRS", icon: TrendingUpIcon },
+    ],
+  },
+  {
+    label: "Capacitación",
+    icon: GraduationCapIcon,
+    items: [
+      { href: "/capacitacion", label: "Guías de módulos", icon: GraduationCapIcon },
     ],
   },
 ];

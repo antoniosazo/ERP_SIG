@@ -117,3 +117,5 @@ El modelo de datos ya quedó preparado para varias de estas piezas desde Fase 1 
 - **Integración con compras**: hook en `contabilizarDocumentoCompra`, `packages/db/src/queries/documentos-compra.ts`.
 - **Server Actions**: `packages/app/lib/actions/activos-fijos.ts`, `activos-fijos-config.ts`, `activos-fijos-cierre.ts` y `activos-fijos-tributario.ts`.
 - **UI**: `packages/app/components/panel/activo-fijo-*.tsx`, `activos-fijos-*.tsx`, `cierre-activo-fijo-botones.tsx`, `correccion-monetaria-manager.tsx`, `vidas-utiles-sii-manager.tsx`; páginas en `packages/app/app/panel/[empresaId]/activos-fijos/` y `informes/activos-fijos*/`.
+
+Este mismo documento se muestra dentro del sistema en **Capacitación → Guías de módulos** (`packages/app/app/panel/[empresaId]/capacitacion/`), para que el equipo de la firma lo consulte sin salir del ERP.
