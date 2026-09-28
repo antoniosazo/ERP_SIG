@@ -3,6 +3,7 @@ import { buscarCapacitacionDoc } from "@/lib/capacitacion-docs";
 import { PageHeader } from "@/components/ui/page-header";
 import { ActivoFijoGuia } from "@/components/panel/capacitacion/activo-fijo-guia";
 import { BancosGuia } from "@/components/panel/capacitacion/bancos-guia";
+import { SiiGuia } from "@/components/panel/capacitacion/sii-guia";
 
 export default async function CapacitacionDocPage({
   params,
@@ -26,6 +27,8 @@ export default async function CapacitacionDocPage({
 
       {doc.slug === "bancos" ? (
         <BancosGuia empresaId={empresaId} />
+      ) : doc.slug === "sii" ? (
+        <SiiGuia empresaId={empresaId} />
       ) : (
         <ActivoFijoGuia empresaId={empresaId} />
       )}
