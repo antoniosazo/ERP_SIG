@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { MAX_PROFUNDIDAD_CUENTA } from "@erp/shared";
+import { filtrarPlanCuentas } from "@/lib/plan-cuentas-vista";
 import { Badge } from "@/components/ui/badge";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { Button } from "@/components/ui/button";
@@ -63,13 +64,20 @@ export function PlanCuentasManager({
   monedas,
   saldos,
   hasta,
+  puedeEditar,
 }: {
   empresaId: string;
   cuentas: CuentaLite[];
   monedas: Opcion[];
   saldos: Record<string, number>;
   hasta: string;
+  puedeEditar: boolean;
 }) {
+  const [busqueda, setBusqueda] = useState("");
+  const [estado, setEstado] = useState("todas");
+  const [tipo, setTipo] = useState("todas");
+  const filtrando = !!busqueda.trim() || estado !== "todas" || tipo !== "todas";
+  const { coincidencias, visibles } = useMemo(() => filtrarPlanCuentas(cuentas, busqueda, estado, tipo), [cuentas, busqueda, estado, tipo]);
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [enEdicion, setEnEdicion] = useState<CuentaLite | null>(null);
   const [padreParaNueva, setPadreParaNueva] = useState<CuentaLite | null>(null);
@@ -84,8 +92,8 @@ export function PlanCuentasManager({
   const [expandidos, setExpandidos] = useState<Set<string>>(() => new Set());
 
   const filas = useMemo(
-    () => filasVisibles(cuentas, porPadre, expandidos),
-    [cuentas, porPadre, expandidos],
+    () => filasVisibles(cuentas, porPadre, filtrando ? new Set(idsConHijos) : expandidos).filter((f) => visibles.has(f.cuenta.id)),
+    [cuentas, porPadre, expandidos, filtrando, idsConHijos, visibles],
   );
 
   function alternar(id: string) {
@@ -120,13 +128,7 @@ export function PlanCuentasManager({
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  useEffect(() => {
-    const id = params.get("cuenta");
-    if (!id) return;
-    const cuenta = cuentas.find((c) => c.id === id);
-    if (cuenta) abrirEdicion(cuenta);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
+  const cuentaEnlace = puedeEditar ? cuentas.find((c) => c.id === params.get("cuenta")) : undefined;
 
   return (
     <div className="space-y-4">
@@ -145,17 +147,39 @@ export function PlanCuentasManager({
             }}
           />
         </div>
-        <Button variant="outline" size="sm" onClick={expandirTodo}>
+        <Button variant="outline" size="sm" disabled={filtrando} onClick={expandirTodo}>
           Expandir todo
         </Button>
-        <Button variant="outline" size="sm" onClick={colapsarTodo}>
+        <Button variant="outline" size="sm" disabled={filtrando} onClick={colapsarTodo}>
           Colapsar todo
         </Button>
-        <Button onClick={abrirNueva}>Nueva cuenta</Button>
+        {puedeEditar && <Button onClick={abrirNueva}>Nueva cuenta</Button>}
       </div>
 
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-48 flex-1 space-y-1">
+          <label htmlFor="buscar-cuenta" className="text-xs text-muted-foreground">Buscar por código o nombre</label>
+          <Input id="buscar-cuenta" type="search" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Ej. 1.1 o Banco" />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="estado-cuenta" className="block text-xs text-muted-foreground">Estado</label>
+          <select id="estado-cuenta" value={estado} onChange={(e) => setEstado(e.target.value)} className="h-8 rounded-lg border border-input bg-background px-2 text-sm">
+            <option value="todas">Todas</option><option value="activas">Activas</option><option value="inactivas">Inactivas</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="tipo-cuenta-filtro" className="block text-xs text-muted-foreground">Imputación</label>
+          <select id="tipo-cuenta-filtro" value={tipo} onChange={(e) => setTipo(e.target.value)} className="h-8 rounded-lg border border-input bg-background px-2 text-sm">
+            <option value="todas">Todas</option><option value="imputables">Imputables</option><option value="titulos">Títulos</option>
+          </select>
+        </div>
+        {filtrando && <Button variant="ghost" onClick={() => { setBusqueda(""); setEstado("todas"); setTipo("todas"); }}>Limpiar filtros</Button>}
+      </div>
+      {filtrando && <p role="status" className="text-xs text-muted-foreground">{coincidencias.size} coincidencia(s). Se incluyen sus cuentas padre como contexto.</p>}
+      {!puedeEditar && <p className="text-xs text-muted-foreground">Acceso de consulta al plan de cuentas.</p>}
+
       {filas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Esta empresa no tiene plan de cuentas.</p>
+        <p className="text-sm text-muted-foreground">{cuentas.length ? "No hay cuentas que coincidan con los filtros." : "Esta empresa no tiene plan de cuentas."}</p>
       ) : (
         <div className="rounded-xl ring-1 ring-foreground/10">
           <Table>
@@ -166,20 +190,21 @@ export function PlanCuentasManager({
                 <TableHead>Clase</TableHead>
                 <TableHead>Naturaleza</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                {puedeEditar && <TableHead className="text-right">Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filas.map(({ cuenta, nivel, tieneHijos }) => {
-                const abierto = expandidos.has(cuenta.id);
+                const abierto = filtrando || expandidos.has(cuenta.id);
                 const puedeTenerHijas = nivel + 1 < MAX_PROFUNDIDAD_CUENTA;
                 return (
                   <TableRow
                     key={cuenta.id}
                     className={cuenta.activa ? undefined : "opacity-50"}
-                    title="Doble clic para editar"
+                    title={puedeEditar ? "Doble clic para editar" : undefined}
                     onDoubleClick={(e) => {
                       // Los botones y enlaces de la fila conservan su propia acción.
+                      if (!puedeEditar) return;
                       if ((e.target as HTMLElement).closest("a, button, input")) return;
                       abrirEdicion(cuenta);
                     }}
@@ -192,6 +217,7 @@ export function PlanCuentasManager({
                         {tieneHijos ? (
                           <button
                             type="button"
+                            disabled={filtrando}
                             onClick={() => alternar(cuenta.id)}
                             aria-label={abierto ? "Colapsar" : "Expandir"}
                             aria-expanded={abierto}
@@ -214,6 +240,7 @@ export function PlanCuentasManager({
                         {cuenta.nombreCuenta}
                       </span>
                       <span className="ml-2 inline-flex gap-1 align-middle">
+                        {filtrando && !coincidencias.has(cuenta.id) && <Badge variant="outline">Contexto</Badge>}
                         {!cuenta.nivelImputable && <Badge variant="outline">Título</Badge>}
                         {cuenta.requiereCentroCosto && <Badge variant="ghost">CC</Badge>}
                         {cuenta.requiereAnalisisTerceros && <Badge variant="ghost">Control</Badge>}
@@ -241,7 +268,7 @@ export function PlanCuentasManager({
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
+                    {puedeEditar && <TableCell className="text-right whitespace-nowrap">
                       {puedeTenerHijas && (
                         <Button
                           variant="ghost"
@@ -254,7 +281,7 @@ export function PlanCuentasManager({
                       <Button variant="ghost" size="sm" onClick={() => abrirEdicion(cuenta)}>
                         Editar
                       </Button>
-                    </TableCell>
+                    </TableCell>}
                   </TableRow>
                 );
               })}
@@ -263,7 +290,19 @@ export function PlanCuentasManager({
         </div>
       )}
 
-      <CuentaFormDialog
+      {cuentaEnlace && <CuentaDesdeEnlace
+        key={cuentaEnlace.id}
+        empresaId={empresaId}
+        cuentas={cuentas}
+        cuenta={cuentaEnlace}
+        monedas={monedas}
+        alCerrar={() => {
+          const query = new URLSearchParams(params.toString());
+          query.delete("cuenta");
+          router.replace(`${pathname}${query.size ? `?${query}` : ""}`, { scroll: false });
+        }}
+      />}
+      {puedeEditar && <CuentaFormDialog
         empresaId={empresaId}
         cuentas={cuentas}
         cuenta={enEdicion}
@@ -271,7 +310,22 @@ export function PlanCuentasManager({
         monedas={monedas}
         open={dialogAbierto}
         onOpenChange={setDialogAbierto}
-      />
+      />}
     </div>
   );
+}
+
+/** El diálogo del enlace inicia abierto; al cerrar se consume el parámetro de la URL. */
+function CuentaDesdeEnlace({ alCerrar, ...props }: {
+  empresaId: string;
+  cuentas: CuentaLite[];
+  cuenta: CuentaLite;
+  monedas: Opcion[];
+  alCerrar: () => void;
+}) {
+  const [abierto, setAbierto] = useState(true);
+  return <CuentaFormDialog {...props} open={abierto} onOpenChange={(open) => {
+    setAbierto(open);
+    if (!open) alCerrar();
+  }} />;
 }

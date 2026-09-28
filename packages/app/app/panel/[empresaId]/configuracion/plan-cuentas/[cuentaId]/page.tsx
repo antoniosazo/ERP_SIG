@@ -1,3 +1,6 @@
+import { fechasConsultaCuenta } from "@erp/shared";
+import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
+import { FiltroFechasCuentas } from "@/components/panel/filtro-fechas-cuentas";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { movimientosCuenta, type MovimientoMayor } from "@erp/db";
@@ -7,15 +10,12 @@ import { ETIQUETA_ORIGEN, rutaOrigen } from "@/lib/origen-asiento";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TypographyHeading } from "@/components/ui/typography";
 
 export const dynamic = "force-dynamic";
 
-const esFecha = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const fmt = (n: number) => n.toLocaleString("es-CL");
 
 export default async function LibroMayorPage({
@@ -23,13 +23,16 @@ export default async function LibroMayorPage({
   searchParams,
 }: {
   params: Promise<{ empresaId: string; cuentaId: string }>;
-  searchParams: Promise<{ desde?: string; hasta?: string }>;
+  searchParams: Promise<{ desde?: string | string[]; hasta?: string | string[] }>;
 }) {
   const { empresaId, cuentaId } = await params;
-  const sp = await searchParams;
-  const hoy = new Date().toISOString().slice(0, 10);
-  const hasta = esFecha(sp.hasta) ? sp.hasta : hoy;
-  const desde = esFecha(sp.desde) ? sp.desde : `${hasta.slice(0, 4)}-01-01`;
+  if (!await obtenerAccesoEmpresa(empresaId)) notFound();
+  const { desde, hasta, error } = fechasConsultaCuenta(await searchParams, new Date().toISOString().slice(0, 10));
+  if (error) return <>
+    <VolverBoton fallbackHref={`/panel/${empresaId}/configuracion/plan-cuentas`} />
+    <TypographyHeading title="Libro mayor" description="Corrige el rango de fechas para consultar los movimientos." />
+    <FiltroFechasCuentas desde={desde} hasta={hasta} error={error} />
+  </>;
 
   const r = await movimientosCuenta(empresaId, cuentaId, desde, hasta);
   if (!r) notFound();
@@ -49,26 +52,10 @@ export default async function LibroMayorPage({
         description={`${cuenta.clase} · naturaleza ${cuenta.naturaleza.toLowerCase()}${r.incluyeHijas ? " · incluye las cuentas hijas" : ""}. Saldo = debe − haber: un saldo acreedor aparece en negativo. Solo asientos contabilizados, en moneda funcional.`}
       />
 
-      <form className="flex flex-wrap items-end gap-3" method="get">
-        <div className="space-y-1">
-          <label htmlFor="desde" className="text-xs text-muted-foreground">
-            Desde
-          </label>
-          <Input id="desde" name="desde" type="date" defaultValue={desde} className="h-8 w-40" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="hasta" className="text-xs text-muted-foreground">
-            Hasta
-          </label>
-          <Input id="hasta" name="hasta" type="date" defaultValue={hasta} className="h-8 w-40" />
-        </div>
-        <Button type="submit" size="sm" variant="outline">
-          Consultar
-        </Button>
+      <FiltroFechasCuentas desde={desde} hasta={hasta} />
         {r.reinicioAnual && (
           <Badge variant="outline">Cuenta de resultado: el saldo parte en enero de {desde.slice(0, 4)}</Badge>
         )}
-      </form>
 
       <div className="grid gap-4 sm:grid-cols-4">
         {[

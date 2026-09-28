@@ -1,3 +1,7 @@
+import { notFound } from "next/navigation";
+import { fechasConsultaCuenta, puedeEditarPlanCuentas } from "@erp/shared";
+import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
+import { FiltroFechasCuentas } from "@/components/panel/filtro-fechas-cuentas";
 import {
   cuentasConMovimientos,
   listarMonedasDeEmpresa,
@@ -9,18 +13,21 @@ import { TypographyHeading } from "@/components/ui/typography";
 
 export const dynamic = "force-dynamic";
 
-const esFecha = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
-
 export default async function PlanCuentasPage({
   params,
   searchParams,
 }: {
   params: Promise<{ empresaId: string }>;
-  searchParams: Promise<{ hasta?: string }>;
+  searchParams: Promise<{ hasta?: string | string[] }>;
 }) {
   const { empresaId } = await params;
-  const { hasta: hastaParam } = await searchParams;
-  const hasta = esFecha(hastaParam) ? hastaParam : new Date().toISOString().slice(0, 10);
+  const acceso = await obtenerAccesoEmpresa(empresaId);
+  if (!acceso) notFound();
+  const { hasta, error } = fechasConsultaCuenta(await searchParams, new Date().toISOString().slice(0, 10));
+  if (error) return <>
+    <TypographyHeading title="Plan de cuentas" description="Corrige la fecha de corte para consultar los saldos." />
+    <FiltroFechasCuentas hasta={hasta} error={error} />
+  </>;
   const [cuentas, conMovimientos, monedas, saldos] = await Promise.all([
     listarPlanCuentasDeEmpresa(empresaId),
     cuentasConMovimientos(empresaId),
@@ -43,6 +50,7 @@ export default async function PlanCuentasPage({
       </p>
       <PlanCuentasManager
         empresaId={empresaId}
+        puedeEditar={puedeEditarPlanCuentas(acceso.session.user.esAdminFirma, acceso.rol)}
         saldos={saldos}
         hasta={hasta}
         monedas={monedas.map((m) => ({ id: m.id, label: `${m.codigo} — ${m.nombre}` }))}

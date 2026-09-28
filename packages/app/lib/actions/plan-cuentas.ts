@@ -2,6 +2,7 @@
 
 import { actualizarCuenta, crearCuenta } from "@erp/db";
 import {
+  ROLES_CONFIG_PLAN_CUENTAS,
   crearCuentaSchema,
   editarCuentaSchema,
   type CrearCuentaInput,
@@ -11,8 +12,6 @@ import { revalidatePath } from "next/cache";
 import { auditCtx, requireRolEnEmpresa } from "@/lib/auth-helpers";
 
 export type CuentaResultado = { ok: true; cuentaId: string } | { ok: false; error: string };
-
-const ROLES_CONFIG = ["Administrador", "Contador"];
 
 function mensajeError(error: unknown): string {
   if (!(error instanceof Error)) return "Error desconocido";
@@ -27,14 +26,13 @@ export async function crearCuentaAction(
   empresaId: string,
   input: CrearCuentaInput,
 ): Promise<CuentaResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES_CONFIG);
-
   const parsed = crearCuentaSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
 
   try {
+    const session = await requireRolEnEmpresa(empresaId, ROLES_CONFIG_PLAN_CUENTAS);
     const cuenta = await crearCuenta(empresaId, parsed.data, auditCtx(session));
     revalidatePath(`/panel/${empresaId}/configuracion/plan-cuentas`);
     return { ok: true, cuentaId: cuenta.id };
@@ -48,14 +46,13 @@ export async function editarCuentaAction(
   cuentaId: string,
   input: EditarCuentaInput,
 ): Promise<CuentaResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES_CONFIG);
-
   const parsed = editarCuentaSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
 
   try {
+    const session = await requireRolEnEmpresa(empresaId, ROLES_CONFIG_PLAN_CUENTAS);
     const cuenta = await actualizarCuenta(cuentaId, empresaId, parsed.data, auditCtx(session));
     revalidatePath(`/panel/${empresaId}/configuracion/plan-cuentas`);
     return { ok: true, cuentaId: cuenta.id };

@@ -31,3 +31,5 @@ export * from "./schemas/preferencias";
 export * from "./schemas/periodo";
 export * from "./schemas/auth";
 export * from "./schemas/activo-fijo";
+
+export * from "./consulta-plan-cuentas";

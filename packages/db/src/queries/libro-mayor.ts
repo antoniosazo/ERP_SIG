@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { fechaConsultaCuentaSchema, rangoConsultaCuentaSchema } from "@erp/shared";
 import { db } from "../client";
 import { asientosContables, asientosLineas, pagos, planCuentas, terceros } from "../schema";
 import { listarPlanCuentasDeEmpresa } from "./plan-cuentas";
@@ -39,6 +40,7 @@ function descendientes(plan: Plan, cuentaId: string): string[] {
  * natural de cada cuenta (Deudora: debe − haber; Acreedora: haber − debe).
  */
 export async function saldosDelPlan(empresaId: string, hasta: string): Promise<Record<string, number>> {
+  fechaConsultaCuentaSchema.parse(hasta);
   const plan = await listarPlanCuentasDeEmpresa(empresaId);
   const rows = await db
     .select({
@@ -102,6 +104,7 @@ export type MovimientoMayor = {
  * con el saldo inicial. Solo asientos contabilizados, en moneda funcional.
  */
 export async function movimientosCuenta(empresaId: string, cuentaId: string, desde: string, hasta: string) {
+  rangoConsultaCuentaSchema.parse({ desde, hasta });
   const plan = await listarPlanCuentasDeEmpresa(empresaId);
   const cuenta = plan.find((c) => c.id === cuentaId);
   if (!cuenta) return null;

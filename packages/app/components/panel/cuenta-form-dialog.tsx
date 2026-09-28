@@ -3,7 +3,7 @@
 import { useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 import {
@@ -23,6 +23,7 @@ import {
   siguienteCodigoHijo,
   siguienteCodigoRaiz,
 } from "@/lib/plan-cuentas-codigo";
+import { descendientesCuenta, valoresDe } from "@/lib/plan-cuentas-vista";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -98,42 +99,37 @@ export function CuentaFormDialog({
   const [isPending, startTransition] = useTransition();
   const esEdicion = cuenta !== null;
   const bloqueado = esEdicion && !!cuenta?.tieneMovimientos;
+  const descendientes = descendientesCuenta(cuentas, cuenta?.id);
+  const claseBloqueada = cuentas.some((c) => descendientes.has(c.id) && c.tieneMovimientos);
   // Cuenta "principal" = raíz de nivel 1: código y nombre no se pueden modificar.
   const esPrincipal = esEdicion && cuenta.cuentaPadreId === null;
 
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     setValue,
     reset,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(crearCuentaSchema),
-    defaultValues: valoresDe(cuenta, padreInicial),
+    defaultValues: valoresDe(cuentas, cuenta, padreInicial),
   });
 
   useEffect(() => {
-    if (open) reset(valoresDe(cuenta, padreInicial));
-  }, [open, cuenta, padreInicial, reset]);
+    if (open) reset(valoresDe(cuentas, cuenta, padreInicial));
+  }, [open, cuentas, cuenta, padreInicial, reset]);
 
-  const cuentaPadreId = watch("cuentaPadreId");
+  const valores = useWatch({ control });
+  const cuentaPadreId = valores.cuentaPadreId;
   const tienePadre = !!cuentaPadreId;
-  const modoMoneda = watch("modoMoneda");
-  const codigoActual = (watch("codigoCuenta") ?? "").trim();
+  const modoMoneda = valores.modoMoneda;
+  const codigoActual = (valores.codigoCuenta ?? "").trim();
 
   const modosMoneda = CUENTA_MODO_MONEDA.filter((m) => m !== "Local" || modoMoneda === "Local");
 
   const padreSel = cuentaPadreId ? cuentas.find((c) => c.id === cuentaPadreId) : undefined;
   const codigoPadre = padreSel?.codigoCuenta;
-
-  // En alta el código es automático (solo lectura): hijo de un padre → `<padre>.<n+1>`,
-  // sin padre → siguiente cuenta raíz.
-  const codigoAuto = esEdicion
-    ? cuenta.codigoCuenta
-    : padreSel
-      ? siguienteCodigoHijo(padreSel, cuentas)
-      : siguienteCodigoRaiz(cuentas);
 
   const prefijoInvalido =
     esEdicion &&
@@ -144,7 +140,6 @@ export function CuentaFormDialog({
 
   const onSubmit = handleSubmit((data) => {
     const payload = { ...data };
-    if (!esEdicion) payload.codigoCuenta = codigoAuto;
     if (esPrincipal) {
       payload.codigoCuenta = cuenta.codigoCuenta;
       payload.nombreCuenta = cuenta.nombreCuenta;
@@ -166,7 +161,7 @@ export function CuentaFormDialog({
   // Un padre válido: no es esta cuenta y no está ya en el nivel máximo (no puede tener hijas).
   const opcionesPadre = cuentas.filter(
     (c) =>
-      c.id !== cuenta?.id &&
+      !descendientes.has(c.id) &&
       profundidadDeCuenta(cuentas, c.id) < MAX_PROFUNDIDAD_CUENTA,
   );
 
@@ -181,6 +176,8 @@ export function CuentaFormDialog({
               : "El código se asigna automáticamente."}
             {esPrincipal && " Es una cuenta principal: código y nombre no se pueden modificar."}
             {bloqueado && " Esta cuenta ya tiene movimientos: clase y moneda quedan bloqueadas."}
+            {claseBloqueada && !bloqueado && " Hay cuentas hijas con movimientos: la clase del grupo queda bloqueada."}
+            {esEdicion && !esPrincipal && " Cambiar el código renumera también sus cuentas hijas."}
           </DialogDescription>
         </DialogHeader>
 
@@ -188,11 +185,7 @@ export function CuentaFormDialog({
           <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
             <div className="space-y-2">
               <Label htmlFor="codigoCuenta">Código</Label>
-              {esEdicion ? (
-                <Input id="codigoCuenta" {...register("codigoCuenta")} disabled={esPrincipal} />
-              ) : (
-                <Input id="codigoCuenta" value={codigoAuto} readOnly disabled />
-              )}
+              <Input id="codigoCuenta" {...register("codigoCuenta")} readOnly={!esEdicion || esPrincipal} />
               {errors.codigoCuenta && (
                 <p className="text-sm text-destructive">{errors.codigoCuenta.message}</p>
               )}
@@ -204,7 +197,7 @@ export function CuentaFormDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="nombreCuenta">Nombre</Label>
-              <Input id="nombreCuenta" {...register("nombreCuenta")} disabled={esPrincipal} />
+              <Input id="nombreCuenta" {...register("nombreCuenta")} readOnly={esPrincipal} />
               {errors.nombreCuenta && (
                 <p className="text-sm text-destructive">{errors.nombreCuenta.message}</p>
               )}
@@ -218,17 +211,19 @@ export function CuentaFormDialog({
               onValueChange={(value) => {
                 if (value === SIN_PADRE) {
                   setValue("cuentaPadreId", undefined);
+                  if (!esEdicion) setValue("codigoCuenta", siguienteCodigoRaiz(cuentas), { shouldValidate: true });
                   return;
                 }
                 setValue("cuentaPadreId", value);
                 const padre = cuentas.find((c) => c.id === value);
                 if (padre) {
+                  if (!esEdicion) setValue("codigoCuenta", siguienteCodigoHijo(padre, cuentas), { shouldValidate: true });
                   setValue("clase", padre.clase as FormValues["clase"]);
                   setValue("naturaleza", naturalezaSugerida(padre.clase as ClaseCuenta));
                 }
               }}
             >
-              <SelectTrigger id="cuentaPadreId" className="w-full">
+              <SelectTrigger id="cuentaPadreId" className="w-full" disabled={esPrincipal}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -246,13 +241,13 @@ export function CuentaFormDialog({
             <div className="space-y-2">
               <Label htmlFor="clase">Clase</Label>
               <Select
-                value={watch("clase")}
+                value={valores.clase}
                 onValueChange={(value) => {
                   setValue("clase", value as FormValues["clase"]);
                   setValue("naturaleza", naturalezaSugerida(value as ClaseCuenta));
                 }}
               >
-                <SelectTrigger id="clase" className="w-full" disabled={tienePadre || bloqueado}>
+                <SelectTrigger id="clase" className="w-full" disabled={tienePadre || claseBloqueada}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -271,7 +266,7 @@ export function CuentaFormDialog({
             <div className="space-y-2">
               <Label htmlFor="naturaleza">Naturaleza</Label>
               <Select
-                value={watch("naturaleza")}
+                value={valores.naturaleza}
                 onValueChange={(value) =>
                   setValue("naturaleza", value as FormValues["naturaleza"])
                 }
@@ -292,7 +287,7 @@ export function CuentaFormDialog({
             <div className="space-y-2">
               <Label htmlFor="clasificacionCorriente">Clasificación</Label>
               <Select
-                value={watch("clasificacionCorriente")}
+                value={valores.clasificacionCorriente}
                 onValueChange={(value) =>
                   setValue(
                     "clasificacionCorriente",
@@ -337,12 +332,12 @@ export function CuentaFormDialog({
               <div className="space-y-2">
                 <Label>Moneda fija</Label>
                 <Select
-                  value={(watch("monedaFijaId") as string | undefined) ?? SIN_MONEDA}
+                  value={(valores.monedaFijaId as string | undefined) ?? SIN_MONEDA}
                   onValueChange={(v) =>
                     setValue("monedaFijaId", (v === SIN_MONEDA ? undefined : v) as never)
                   }
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full" disabled={bloqueado}>
                     <SelectValue placeholder="Elige la moneda" />
                   </SelectTrigger>
                   <SelectContent>
@@ -364,7 +359,7 @@ export function CuentaFormDialog({
           <div className="space-y-2 sm:max-w-xs">
             <Label htmlFor="tipoCuenta">Tipo de cuenta</Label>
             <Select
-              value={watch("tipoCuenta")}
+              value={valores.tipoCuenta}
               onValueChange={(value) =>
                 setValue("tipoCuenta", value as FormValues["tipoCuenta"])
               }
@@ -408,34 +403,4 @@ export function CuentaFormDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function valoresDe(cuenta: CuentaLite | null, padreInicial?: CuentaLite | null): FormValues {
-  // Alta de una cuenta hija: hereda clase del padre y sugiere naturaleza. El código
-  // se resuelve automático en el componente (no se escribe a mano).
-  const claseAlta = padreInicial
-    ? (padreInicial.clase as FormValues["clase"])
-    : CLASE_CUENTA[0];
-  const naturalezaAlta = padreInicial
-    ? naturalezaSugerida(padreInicial.clase as ClaseCuenta)
-    : NATURALEZA_CUENTA[0];
-
-  return {
-    codigoCuenta: cuenta?.codigoCuenta ?? "",
-    nombreCuenta: cuenta?.nombreCuenta ?? "",
-    cuentaPadreId: cuenta?.cuentaPadreId ?? padreInicial?.id ?? undefined,
-    clase: (cuenta?.clase as FormValues["clase"]) ?? claseAlta,
-    naturaleza: (cuenta?.naturaleza as FormValues["naturaleza"]) ?? naturalezaAlta,
-    tipoCuenta: (cuenta?.tipoCuenta as FormValues["tipoCuenta"]) ?? "Otra",
-    clasificacionCorriente:
-      (cuenta?.clasificacionCorriente as FormValues["clasificacionCorriente"]) ?? "No Aplica",
-    nivelImputable: cuenta?.nivelImputable ?? true,
-    requiereCentroCosto: cuenta?.requiereCentroCosto ?? false,
-    requiereAnalisisTerceros: cuenta?.requiereAnalisisTerceros ?? false,
-    modoMoneda: (cuenta?.modoMoneda as FormValues["modoMoneda"]) ?? "Funcional",
-    monedaFijaId: cuenta?.monedaFijaId ?? undefined,
-    relevanteFlujoCaja: cuenta?.relevanteFlujoCaja ?? false,
-    esCuentaAjuste: cuenta?.esCuentaAjuste ?? false,
-    activa: cuenta?.activa ?? true,
-  };
 }

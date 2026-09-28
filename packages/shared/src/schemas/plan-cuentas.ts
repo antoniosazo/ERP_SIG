@@ -15,8 +15,8 @@ import { uuid } from "./primitives";
  */
 const camposCuentaBase = {
   cuentaPadreId: uuid.nullish(),
-  codigoCuenta: z.string().min(1, "Código requerido").max(30),
-  nombreCuenta: z.string().min(1, "Nombre requerido").max(200),
+  codigoCuenta: z.string().trim().min(1, "Código requerido").max(30),
+  nombreCuenta: z.string().trim().min(1, "Nombre requerido").max(200),
   clase: z.enum(CLASE_CUENTA),
   naturaleza: z.enum(NATURALEZA_CUENTA),
   tipoCuenta: z.enum(TIPO_CUENTA).default("Otra"),
@@ -46,3 +46,8 @@ export type CrearCuentaInput = z.infer<typeof crearCuentaSchema>;
 
 export const editarCuentaSchema = z.object(camposCuentaBase).superRefine(refinarMonedaFija);
 export type EditarCuentaInput = z.infer<typeof editarCuentaSchema>;
+
+export const ROLES_CONFIG_PLAN_CUENTAS: string[] = ["Administrador", "Contador"];
+export function puedeEditarPlanCuentas(esAdminFirma: boolean, rol: string | null) {
+  return esAdminFirma || (rol !== null && ROLES_CONFIG_PLAN_CUENTAS.includes(rol));
+}

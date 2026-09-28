@@ -1,14 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
-  MAX_PROFUNDIDAD_CUENTA,
   type ClaseCuenta,
   type CrearCuentaInput,
   type EditarCuentaInput,
 } from "@erp/shared";
 import { db } from "../client";
 import type { Tx } from "../client";
-import { asientosLineas, planCuentas } from "../schema";
+import { asientosLineas, monedas, planCuentas } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
+import { planificarCuenta, validarMonedaCuenta } from "./plan-cuentas-reglas";
 
 /** ¿La cuenta tiene alguna línea de asiento? Bloquea cambios en campos críticos. */
 export async function cuentaTieneMovimientos(
@@ -104,228 +105,73 @@ export async function listarPlanCuentasDeEmpresa(empresaId: string) {
     .orderBy(asc(planCuentas.codigoCuenta));
 }
 
-/**
- * Resuelve la `clase` que corresponde a una cuenta según la regla de "clase fija de
- * nivel 1" (3.2): una cuenta raíz usa la clase solicitada; una cuenta con padre hereda
- * la clase de su raíz, ignorando la clase que venga en el formulario. Valida además que
- * el padre pertenezca a la misma empresa.
- */
-async function resolverClase(
-  empresaId: string,
-  cuentaPadreId: string | null | undefined,
-  claseSolicitada: ClaseCuenta,
-): Promise<ClaseCuenta> {
-  if (!cuentaPadreId) return claseSolicitada;
-
-  const cuentas = await listarPlanCuentasDeEmpresa(empresaId);
-  const porId = new Map(cuentas.map((c) => [c.id, c]));
-
-  let actual = porId.get(cuentaPadreId);
-  if (!actual) throw new Error("La cuenta padre no existe en esta empresa");
-
-  const visitados = new Set<string>();
-  while (actual.cuentaPadreId) {
-    if (visitados.has(actual.id)) throw new Error("Ciclo en la jerarquía de cuentas");
-    visitados.add(actual.id);
-    const padre = porId.get(actual.cuentaPadreId);
-    if (!padre) break;
-    actual = padre;
-  }
-  return actual.clase;
+/** Serializa las ediciones del árbol y mantiene las validaciones dentro de la transacción. */
+async function cargarPlanParaEdicion(tx: Tx, empresaId: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`plan-cuentas:${empresaId}`}))`);
+  return tx.select().from(planCuentas).where(eq(planCuentas.empresaId, empresaId)).orderBy(asc(planCuentas.id)).for("update");
 }
 
-type CuentaNodo = { id: string; cuentaPadreId: string | null };
-
-/** Profundidad de una cuenta según la cadena de ancestros: la cuenta raíz es nivel 1. */
-function profundidadDeCuenta(cuentas: CuentaNodo[], cuentaId: string): number {
-  const porId = new Map(cuentas.map((c) => [c.id, c]));
-  const visto = new Set<string>();
-  let actual = porId.get(cuentaId);
-  let nivel = 1;
-  while (actual?.cuentaPadreId && !visto.has(actual.id)) {
-    visto.add(actual.id);
-    actual = porId.get(actual.cuentaPadreId);
-    nivel++;
-  }
-  return nivel;
-}
-
-/** Altura del subárbol (1 = hoja): cuántos niveles cuelgan de `cuentaId` inclusive. */
-function alturaDeSubarbol(hijosPorPadre: Map<string, string[]>, cuentaId: string): number {
-  const hijos = hijosPorPadre.get(cuentaId) ?? [];
-  if (hijos.length === 0) return 1;
-  return 1 + Math.max(...hijos.map((h) => alturaDeSubarbol(hijosPorPadre, h)));
+async function comprobarMoneda(tx: Tx, empresaId: string, monedaFijaId: string | null) {
+  if (!monedaFijaId) return;
+  const [moneda] = await tx.select({ id: monedas.id, empresaId: monedas.empresaId }).from(monedas)
+    .where(and(eq(monedas.id, monedaFijaId), eq(monedas.empresaId, empresaId)));
+  validarMonedaCuenta(monedaFijaId, empresaId, moneda);
 }
 
 const etiquetaCuenta = (c: { codigoCuenta: string; nombreCuenta: string }) =>
   `${c.codigoCuenta} ${c.nombreCuenta}`;
 
-export async function crearCuenta(
-  empresaId: string,
-  input: CrearCuentaInput,
-  ctx?: AuditoriaCtx,
-) {
-  const clase = await resolverClase(empresaId, input.cuentaPadreId, input.clase);
-
-  // Tope de profundidad: no se puede crear una hija bajo una cuenta que ya está en el nivel máximo.
-  if (input.cuentaPadreId) {
-    const cuentas = await listarPlanCuentasDeEmpresa(empresaId);
-    if (profundidadDeCuenta(cuentas, input.cuentaPadreId) >= MAX_PROFUNDIDAD_CUENTA) {
-      throw new Error(
-        `El plan de cuentas admite como máximo ${MAX_PROFUNDIDAD_CUENTA} niveles.`,
-      );
-    }
-  }
-
+export async function crearCuenta(empresaId: string, input: CrearCuentaInput, ctx?: AuditoriaCtx) {
   return db.transaction(async (tx) => {
-    const [cuenta] = await tx
-      .insert(planCuentas)
-      .values({
-        empresaId,
-        plantillaId: null,
-        cuentaPadreId: input.cuentaPadreId ?? null,
-        codigoCuenta: input.codigoCuenta,
-        nombreCuenta: input.nombreCuenta,
-        clase,
-        naturaleza: input.naturaleza,
-        tipoCuenta: input.tipoCuenta,
-        clasificacionCorriente: input.clasificacionCorriente,
-        nivelImputable: input.nivelImputable,
-        requiereCentroCosto: input.requiereCentroCosto,
-        requiereAnalisisTerceros: input.requiereAnalisisTerceros,
-        modoMoneda: input.modoMoneda,
-        monedaFijaId: input.modoMoneda === "Extranjera fija" ? (input.monedaFijaId ?? null) : null,
-        relevanteFlujoCaja: input.relevanteFlujoCaja,
-        esCuentaAjuste: input.esCuentaAjuste,
-        activa: input.activa,
-      })
-      .returning();
+    const plan = await cargarPlanParaEdicion(tx, empresaId);
+    const { clase, monedaFijaId } = planificarCuenta(plan, input);
+    await comprobarMoneda(tx, empresaId, monedaFijaId);
+    const [cuenta] = await tx.insert(planCuentas).values({
+      ...input, empresaId, plantillaId: null, cuentaPadreId: input.cuentaPadreId ?? null, clase, monedaFijaId,
+    }).returning();
     if (!cuenta) throw new Error("No se pudo crear la cuenta");
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "plan_cuentas",
-        registroId: cuenta.id,
-        etiqueta: etiquetaCuenta(cuenta),
-        accion: "crear",
-        despues: cuenta,
-      });
-    }
+    if (ctx) await registrarAuditoria(tx, {
+      empresaId, ctx, tabla: "plan_cuentas", registroId: cuenta.id,
+      etiqueta: etiquetaCuenta(cuenta), accion: "crear", despues: cuenta,
+    });
     return cuenta;
   });
 }
 
-export async function actualizarCuenta(
-  cuentaId: string,
-  empresaId: string,
-  input: EditarCuentaInput,
-  ctx?: AuditoriaCtx,
-) {
-  if (input.cuentaPadreId === cuentaId) {
-    throw new Error("Una cuenta no puede ser su propia cuenta padre");
-  }
-  const clase = await resolverClase(empresaId, input.cuentaPadreId, input.clase);
-
-  // RN-05: la cuenta padre no puede ser un descendiente de esta cuenta.
-  if (input.cuentaPadreId) {
-    const cuentasEmpresa = await listarPlanCuentasDeEmpresa(empresaId);
-    const hijosPorPadre = new Map<string, string[]>();
-    for (const c of cuentasEmpresa) {
-      if (!c.cuentaPadreId) continue;
-      hijosPorPadre.set(c.cuentaPadreId, [...(hijosPorPadre.get(c.cuentaPadreId) ?? []), c.id]);
-    }
-    const descendientes = new Set<string>();
-    const pila = [cuentaId];
-    while (pila.length) {
-      const actual = pila.pop()!;
-      for (const hijo of hijosPorPadre.get(actual) ?? []) {
-        if (!descendientes.has(hijo)) {
-          descendientes.add(hijo);
-          pila.push(hijo);
-        }
+export async function actualizarCuenta(cuentaId: string, empresaId: string, input: EditarCuentaInput, ctx?: AuditoriaCtx) {
+  return db.transaction(async (tx) => {
+    const plan = await cargarPlanParaEdicion(tx, empresaId);
+    const movimientos = await tx.selectDistinct({ cuentaId: asientosLineas.cuentaId }).from(asientosLineas)
+      .innerJoin(planCuentas, eq(asientosLineas.cuentaId, planCuentas.id))
+      .where(eq(planCuentas.empresaId, empresaId));
+    const { clase, monedaFijaId, cambios } = planificarCuenta(plan, input, cuentaId, new Set(movimientos.map((m) => m.cuentaId)));
+    await comprobarMoneda(tx, empresaId, monedaFijaId);
+    const porId = new Map(plan.map((c) => [c.id, c]));
+    // Libera los códigos viejos antes de asignar los definitivos: evita colisiones
+    // intermedias al renumerar. Ningún código temporal sale de esta transacción.
+    for (const cambio of cambios) {
+      if (cambio.codigoCuenta !== porId.get(cambio.id)!.codigoCuenta) {
+        await tx.update(planCuentas).set({ codigoCuenta: `~${randomUUID()}` })
+          .where(and(eq(planCuentas.id, cambio.id), eq(planCuentas.empresaId, empresaId)));
       }
     }
-    if (descendientes.has(input.cuentaPadreId)) {
-      throw new Error("La cuenta padre no puede ser una cuenta descendiente de esta cuenta");
-    }
-
-    // Tope de profundidad: nuevo nivel de esta cuenta + alto de su subárbol no puede
-    // pasar de MAX_PROFUNDIDAD_CUENTA.
-    const nivelNuevo = profundidadDeCuenta(cuentasEmpresa, input.cuentaPadreId) + 1;
-    const alto = alturaDeSubarbol(hijosPorPadre, cuentaId);
-    if (nivelNuevo + alto - 1 > MAX_PROFUNDIDAD_CUENTA) {
-      throw new Error(
-        `El plan de cuentas admite como máximo ${MAX_PROFUNDIDAD_CUENTA} niveles.`,
-      );
-    }
-  }
-
-  return db.transaction(async (tx) => {
-    const [antes] = await tx
-      .select()
-      .from(planCuentas)
-      .where(and(eq(planCuentas.id, cuentaId), eq(planCuentas.empresaId, empresaId)));
-    if (!antes) throw new Error("No se pudo actualizar la cuenta (no existe en esta empresa)");
-
-    // Cuenta principal (raíz de nivel 1): código y nombre son fijos.
-    if (
-      antes.cuentaPadreId === null &&
-      (input.codigoCuenta !== antes.codigoCuenta || input.nombreCuenta !== antes.nombreCuenta)
-    ) {
-      throw new Error(
-        "Las cuentas principales (nivel 1) no permiten cambiar el código ni el nombre.",
-      );
-    }
-
-    // Inmutabilidad: cuenta con movimientos → no se cambia clase, moneda ni control.
-    if (
-      (antes.clase !== clase ||
-        antes.modoMoneda !== input.modoMoneda ||
-        antes.requiereAnalisisTerceros !== input.requiereAnalisisTerceros) &&
-      (await cuentaTieneMovimientos(tx, cuentaId))
-    ) {
-      throw new Error(
-        "La cuenta ya tiene movimientos: no se puede cambiar la clase, el modo de moneda ni el flag de control de terceros.",
-      );
-    }
-
-    const [cuenta] = await tx
-      .update(planCuentas)
-      .set({
-        cuentaPadreId: input.cuentaPadreId ?? null,
-        codigoCuenta: input.codigoCuenta,
-        nombreCuenta: input.nombreCuenta,
-        clase,
-        naturaleza: input.naturaleza,
-        tipoCuenta: input.tipoCuenta,
-        clasificacionCorriente: input.clasificacionCorriente,
-        nivelImputable: input.nivelImputable,
-        requiereCentroCosto: input.requiereCentroCosto,
-        requiereAnalisisTerceros: input.requiereAnalisisTerceros,
-        modoMoneda: input.modoMoneda,
-        monedaFijaId: input.modoMoneda === "Extranjera fija" ? (input.monedaFijaId ?? null) : null,
-        relevanteFlujoCaja: input.relevanteFlujoCaja,
-        esCuentaAjuste: input.esCuentaAjuste,
-        activa: input.activa,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(planCuentas.id, cuentaId), eq(planCuentas.empresaId, empresaId)))
-      .returning();
-    if (!cuenta) throw new Error("No se pudo actualizar la cuenta (no existe en esta empresa)");
-
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "plan_cuentas",
-        registroId: cuenta.id,
-        etiqueta: etiquetaCuenta(cuenta),
-        accion: "editar",
-        antes,
-        despues: cuenta,
+    let actualizada: (typeof plan)[number] | undefined;
+    for (const cambio of cambios) {
+      const antes = porId.get(cambio.id)!;
+      if (cambio.id !== cuentaId && cambio.clase === antes.clase && cambio.codigoCuenta === antes.codigoCuenta) continue;
+      const valores = cambio.id === cuentaId
+        ? { ...input, cuentaPadreId: input.cuentaPadreId ?? null, clase, monedaFijaId }
+        : { clase: cambio.clase, codigoCuenta: cambio.codigoCuenta };
+      const [cuenta] = await tx.update(planCuentas).set({ ...valores, updatedAt: new Date() })
+        .where(and(eq(planCuentas.id, cambio.id), eq(planCuentas.empresaId, empresaId))).returning();
+      if (!cuenta) throw new Error("No se pudo actualizar la cuenta");
+      if (cuenta.id === cuentaId) actualizada = cuenta;
+      if (ctx) await registrarAuditoria(tx, {
+        empresaId, ctx, tabla: "plan_cuentas", registroId: cuenta.id,
+        etiqueta: etiquetaCuenta(cuenta), accion: "editar", antes, despues: cuenta,
       });
     }
-    return cuenta;
+    if (!actualizada) throw new Error("No se pudo actualizar la cuenta");
+    return actualizada;
   });
 }
