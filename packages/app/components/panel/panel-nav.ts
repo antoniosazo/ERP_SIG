@@ -1,5 +1,7 @@
 import {
   BarChart3Icon,
+  BookOpenIcon,
+  FilePlus2Icon,
   Building2Icon,
   CalendarDaysIcon,
   CoinsIcon,
@@ -75,6 +77,14 @@ export const GRUPOS: Grupo[] = [
         label: "Integraciones",
         items: [{ href: "/configuracion/sii", label: "Conexión SII", icon: NetworkIcon }],
       },
+    ],
+  },
+  {
+    label: "Finanzas",
+    icon: BookOpenIcon,
+    items: [
+      { href: "/contabilidad/asientos", label: "Asientos", icon: BookOpenIcon },
+      { href: "/contabilidad/asientos/nuevo", label: "Nuevo asiento", icon: FilePlus2Icon },
     ],
   },
   {

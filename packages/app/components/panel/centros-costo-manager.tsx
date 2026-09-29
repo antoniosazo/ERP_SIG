@@ -1,5 +1,7 @@
 "use client";
 
+import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
+
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -197,7 +199,7 @@ export function CentrosCostoManager({
                         ) : (
                           <span className="inline-block size-4 shrink-0" />
                         )}
-                        <span className="font-mono text-muted-foreground">{centro.codigo}</span>
+                        <EnlaceDetalle href={`/panel/${empresaId}/configuracion/centros-costo/${centro.id}`} title="Ver centro de costo"><span className="font-mono text-muted-foreground">{centro.codigo}</span></EnlaceDetalle>
                         <span className={nivel === 0 ? "font-semibold" : undefined}>
                           {centro.nombre}
                         </span>

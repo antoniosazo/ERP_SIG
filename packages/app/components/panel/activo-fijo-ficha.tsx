@@ -1,5 +1,6 @@
 "use client";
 
+import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ export type ActivoFijoDetalle = {
   }[];
   documentos: {
     id: string;
+    asientoId: string | null;
     numero: number;
     anio: number;
     tipoDoc: string;
@@ -253,7 +255,7 @@ export function ActivoFijoFicha({
                 {documentos.map((d) => (
                   <TableRow key={`${d.id}-${d.libro}`}>
                     <TableCell>{d.tipoDoc}</TableCell>
-                    <TableCell>{d.numero}</TableCell>
+                    <TableCell><EnlaceDetalle href={`/panel/${empresaId}/activos-fijos/documentos/${d.id}`}>{d.numero}</EnlaceDetalle></TableCell>
                     <TableCell>{d.fecha}</TableCell>
                     <TableCell>{d.libro}</TableCell>
                     <TableCell>
@@ -261,6 +263,7 @@ export function ActivoFijoFicha({
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{fmt(Number(d.importe))}</TableCell>
                     <TableCell>
+                      {d.asientoId && <EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${d.asientoId}`}>Asiento</EnlaceDetalle>}
                       {d.estado === "contabilizado" && TIPOS_ANULABLES.has(d.tipoDoc) && (
                         <Button
                           variant="ghost"

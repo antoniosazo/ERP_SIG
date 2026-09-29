@@ -1,6 +1,8 @@
+import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type AsientoVista = {
+  asientoId?: string;
   correlativo: number;
   fecha: string;
   lineas: { cuenta: string; glosa: string | null; debe: number; haber: number }[];
@@ -11,13 +13,14 @@ type AsientoVista = {
 const fmt = (n: number) => n.toLocaleString("es-CL");
 
 /** Asiento contabilizado en solo lectura (usado por pagos y depósitos). */
-export function AsientoTabla({ a, titulo }: { a: AsientoVista; titulo: string }) {
+export function AsientoTabla({ a, titulo, empresaId }: { a: AsientoVista; titulo: string; empresaId: string }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
           {titulo} N° {a.correlativo} · {a.fecha}
         </CardTitle>
+        {a.asientoId && <EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${a.asientoId}`}>Abrir detalle completo</EnlaceDetalle>}
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <table className="w-full text-sm">

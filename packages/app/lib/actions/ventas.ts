@@ -163,6 +163,7 @@ export type AsientoVistaLinea = {
   haber: number;
 };
 export type AsientoVistaDTO = {
+  asientoId?: string;
   modo: "real" | "previa";
   correlativo?: number;
   fecha: string;

@@ -14,6 +14,7 @@ export * from "./schemas/centro-costo";
 export * from "./schemas/cuenta-bancaria-empresa";
 export * from "./schemas/metodo-pago";
 export * from "./schemas/pago";
+export * from "./schemas/asiento-manual";
 export * from "./schemas/cheque";
 export * from "./schemas/cartola-formato";
 export * from "./schemas/cartola";

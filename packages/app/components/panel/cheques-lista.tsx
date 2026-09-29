@@ -1,5 +1,6 @@
 "use client";
 
+import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -180,7 +181,7 @@ export function ChequesLista({
                         )}
                       </TableCell>
                     )}
-                    <TableCell className="font-mono font-medium">{c.numero}</TableCell>
+                    <TableCell className="font-mono font-medium"><EnlaceDetalle href={`${base}/cheques/${c.id}`}>{c.numero}</EnlaceDetalle></TableCell>
                     <TableCell className="text-muted-foreground">{c.tipo}</TableCell>
                     <TableCell>
                       <TerceroEnlace empresaId={empresaId} terceroId={c.terceroId}>

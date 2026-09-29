@@ -9,6 +9,7 @@ type VerAsientoFn = (
   empresaId: string,
   docId: string,
 ) => Promise<{ ok: true; data: AsientoVistaDTO } | { ok: false; error: string }>;
+import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -84,6 +85,8 @@ export function AsientoDialog({
               <div className="text-sm text-muted-foreground">
                 {data.fecha} · {data.glosa}
               </div>
+
+              {data.modo === "real" && data.asientoId && <EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${data.asientoId}`}>Abrir detalle completo del asiento</EnlaceDetalle>}
 
               {data.errores.length > 0 && (
                 <ul className="space-y-1 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

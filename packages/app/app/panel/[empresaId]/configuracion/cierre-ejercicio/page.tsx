@@ -158,8 +158,8 @@ export default async function CierreEjercicioPage({
         />
       )}
 
-      {estado.asiento && <AsientoTabla a={estado.asiento} titulo="Asiento de cierre" />}
-      {estado.reversa && <AsientoTabla a={estado.reversa} titulo="Asiento de reapertura (reversa)" />}
+      {estado.asiento && <AsientoTabla empresaId={empresaId} a={estado.asiento} titulo="Asiento de cierre" />}
+      {estado.reversa && <AsientoTabla empresaId={empresaId} a={estado.reversa} titulo="Asiento de reapertura (reversa)" />}
     </>
   );
 }

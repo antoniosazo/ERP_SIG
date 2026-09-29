@@ -29,13 +29,21 @@ describe("integridad del plan de cuentas", () => {
   test("impide crear códigos duplicados", () => {
     assert.throws(() => planificarCuenta(plan, datos({ codigoCuenta: "1.1", cuentaPadreId: id(1) })), /Ya existe/);
   });
-  test("propaga la clase a todo el grupo sin movimientos", () => {
-    const r = planificarCuenta(plan, datos({ clase: "Ingresos" }), id(1));
-    assert.deepEqual(r.cambios.map((c) => c.clase), ["Ingresos", "Ingresos", "Ingresos"]);
-    assert.equal(plan[2]!.clase, "Activo", "el cálculo no muta el árbol original");
+  test("las principales rechazan cualquier edición, incluso de atributos secundarios", () => {
+    const cambios: Partial<CrearCuentaInput>[] = [
+      {}, { codigoCuenta: "9" }, { nombreCuenta: "Otro nombre" }, { cuentaPadreId: id(4) },
+      { clase: "Ingresos" }, { naturaleza: "Acreedora" }, { tipoCuenta: "Banco" },
+      { clasificacionCorriente: "Corriente" }, { nivelImputable: false },
+      { requiereCentroCosto: true }, { requiereAnalisisTerceros: true },
+      { modoMoneda: "Cualquiera" }, { monedaFijaId: id(20) },
+      { relevanteFlujoCaja: true }, { esCuentaAjuste: true }, { activa: false },
+    ];
+    for (const cambio of cambios) {
+      assert.throws(() => planificarCuenta(plan, datos(cambio), id(1)), /principales.*solo lectura/);
+    }
   });
-  test("bloquea el cambio de clase si una nieta tiene movimientos", () => {
-    assert.throws(() => planificarCuenta(plan, datos({ clase: "Ingresos" }), id(1), new Set([id(3)])), /1.1.1 tiene movimientos/);
+  test("bloquea el cambio de clase de una rama si una hija tiene movimientos", () => {
+    assert.throws(() => planificarCuenta(plan, datos({ codigoCuenta: "2.1", cuentaPadreId: id(4) }), id(2), new Set([id(3)])), /tiene movimientos/);
   });
   test("renumera todos los descendientes manteniendo los identificadores", () => {
     const r = planificarCuenta(plan, datos({ codigoCuenta: "1.5", cuentaPadreId: id(1) }), id(2));
@@ -46,8 +54,30 @@ describe("integridad del plan de cuentas", () => {
     assert.deepEqual(r.cambios.map((c) => [c.codigoCuenta, c.clase]), [["2.1", "Pasivo"], ["2.1.1", "Pasivo"]]);
     assert.throws(() => planificarCuenta(plan, datos({ codigoCuenta: "2.1", cuentaPadreId: id(4) }), id(2), new Set([id(3)])), /tiene movimientos/);
   });
-  test("renumerar sin cambiar clase admite movimientos históricos", () => {
-    assert.equal(planificarCuenta(plan, datos({ codigoCuenta: "1.5", cuentaPadreId: id(1) }), id(2), new Set([id(3)])).cambios.length, 2);
+  test("bloquea la renumeración de una cuenta padre con movimientos propios, de hijas o nietas", () => {
+    const profundo = [...plan, cuenta(5, "1.1.1.1", 3)];
+    for (const movimiento of [2, 3, 5]) {
+      assert.throws(() => planificarCuenta(profundo, datos({ codigoCuenta: "1.5", cuentaPadreId: id(1) }), id(2), new Set([id(movimiento)])), /no se puede cambiar el código/);
+    }
+  });
+  test("bloquea mover una rama con movimientos aunque conserve la clase", () => {
+    const mismoGrupo = [...plan, cuenta(5, "1.2", 1)];
+    assert.throws(() => planificarCuenta(mismoGrupo, datos({ codigoCuenta: "1.2.1", cuentaPadreId: id(5) }), id(2), new Set([id(3)])), /no se puede cambiar el código, la cuenta padre ni la clase/);
+  });
+  test("rechaza cambiar la clase enviada de un padre protegido aunque se herede la original", () => {
+    assert.throws(() => planificarCuenta(plan, datos({ codigoCuenta: "1.1", cuentaPadreId: id(1), clase: "Pasivo" }), id(2), new Set([id(3)])), /ni la clase/);
+  });
+  test("permite cambiar el nombre de un padre con movimientos sin alterar su estructura", () => {
+    const r = planificarCuenta(plan, datos({ codigoCuenta: "1.1", cuentaPadreId: id(1), nombreCuenta: "Activo corriente" }), id(2), new Set([id(2), id(3)]));
+    assert.deepEqual(r.cambios.map((c) => [c.id, c.codigoCuenta, c.clase]), [[id(2), "1.1", "Activo"], [id(3), "1.1.1", "Activo"]]);
+    assert.equal(plan[1]!.nombreCuenta, "Activo", "el cálculo no muta el árbol original");
+  });
+  test("permite crear subcuentas de principales y padres protegidos", () => {
+    assert.equal(planificarCuenta(plan, datos({ codigoCuenta: "1.2", cuentaPadreId: id(1) }), undefined, new Set([id(3)])).clase, "Activo");
+    assert.equal(planificarCuenta(plan, datos({ codigoCuenta: "1.1.2", cuentaPadreId: id(2) }), undefined, new Set([id(3)])).clase, "Activo");
+  });
+  test("conserva las reglas de edición de una cuenta de detalle con movimientos", () => {
+    assert.equal(planificarCuenta(plan, datos({ codigoCuenta: "1.1.5", cuentaPadreId: id(2), nombreCuenta: "Detalle actualizado" }), id(3), new Set([id(3)])).cambios[0]!.codigoCuenta, "1.1.5");
   });
   test("detecta colisiones en un código descendiente antes de escribir", () => {
     const conConflicto = [...plan, cuenta(9, "1.5.1", 4)];

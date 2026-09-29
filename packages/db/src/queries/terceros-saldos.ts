@@ -104,7 +104,7 @@ export async function cuentaCorrienteTercero(empresaId: string, terceroId: strin
   const movimientos: MovimientoTercero[] = rows.map((r) => ({
     lineaId: r.lineaId,
     fecha: r.fecha,
-    correlativo: r.correlativo,
+    correlativo: r.correlativo ?? 0, // solo contabilizados: siempre tienen número
     asientoId: r.asientoId,
     glosaAsiento: r.glosaAsiento,
     glosaLinea: r.glosaLinea,

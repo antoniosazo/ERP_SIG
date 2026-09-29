@@ -18,14 +18,15 @@ export async function empresaTieneAsientos(empresaId: string): Promise<boolean> 
 }
 
 /**
- * Siguiente correlativo de asiento para una empresa y año. Sin lock dedicado: el índice
- * único `asientos_contables_empresa_anio_correlativo_unique` respalda ante concurrencia.
+ * Siguiente correlativo de asiento para una empresa y año. Serializa la asignación
+ * hasta el commit para evitar números duplicados entre módulos concurrentes.
  */
 export async function siguienteCorrelativoAsiento(
   tx: Tx,
   empresaId: string,
   anio: number,
 ): Promise<number> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`asientos:${empresaId}:${anio}`}))`);
   const [row] = await tx
     .select({ max: sql<number>`coalesce(max(${asientosContables.correlativo}), 0)::int` })
     .from(asientosContables)

@@ -1322,7 +1322,8 @@ export async function obtenerAsientoCompraContabilizado(asientoId: string, empre
   const totalHaber = lineas.reduce((a, l) => a + l.haber, 0);
   return {
     modo: "real" as const,
-    correlativo: cab.correlativo,
+    asientoId: cab.id,
+    correlativo: cab.correlativo ?? 0, // asiento de documento: siempre contabilizado, siempre numerado
     fecha: cab.fecha,
     glosa: cab.glosa,
     tipo: cab.tipo,

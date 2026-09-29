@@ -1,3 +1,4 @@
+import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -129,6 +130,7 @@ export default async function DocumentoVentaDetallePage({
   return (
     <>
       <VolverBoton fallbackHref={`/panel/${empresaId}/ventas/${VENTA_CLASE_META[documento.clase].slug}`} />
+      {documento.asientoId && <div className="my-3"><EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${documento.asientoId}`}>Ver asiento contable completo</EnlaceDetalle></div>}
       <TypographyHeading
         title={`${documento.numeroInterno ?? ""} ${documento.clase}`.trim()}
         description={

@@ -170,6 +170,7 @@ export async function movimientosCuenta(empresaId: string, cuentaId: string, des
 
   const movimientos: MovimientoMayor[] = rows.map((r) => ({
     ...r,
+    correlativo: r.correlativo ?? 0, // solo contabilizados: siempre tienen número
     debe: Number(r.debe),
     haber: Number(r.haber),
     pagoTipo: r.origenTabla === "pagos" && r.origenId ? (tipoPago.get(r.origenId) ?? null) : null,

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
+import { LockKeyholeIcon } from "lucide-react";
 import type { z } from "zod";
 import {
   CLASE_CUENTA,
@@ -101,8 +102,9 @@ export function CuentaFormDialog({
   const bloqueado = esEdicion && !!cuenta?.tieneMovimientos;
   const descendientes = descendientesCuenta(cuentas, cuenta?.id);
   const claseBloqueada = cuentas.some((c) => descendientes.has(c.id) && c.tieneMovimientos);
-  // Cuenta "principal" = raíz de nivel 1: código y nombre no se pueden modificar.
   const esPrincipal = esEdicion && cuenta.cuentaPadreId === null;
+  const esPadre = esEdicion && cuentas.some((c) => c.cuentaPadreId === cuenta.id);
+  const estructuraBloqueada = esPrincipal || (esPadre && claseBloqueada);
 
   const {
     register,
@@ -139,11 +141,8 @@ export function CuentaFormDialog({
     !codigoActual.startsWith(`${codigoPadre}.`);
 
   const onSubmit = handleSubmit((data) => {
+    if (esPrincipal) return;
     const payload = { ...data };
-    if (esPrincipal) {
-      payload.codigoCuenta = cuenta.codigoCuenta;
-      payload.nombreCuenta = cuenta.nombreCuenta;
-    }
     startTransition(async () => {
       const result = esEdicion
         ? await editarCuentaAction(empresaId, cuenta.id, payload)
@@ -169,15 +168,19 @@ export function CuentaFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{esEdicion ? "Editar cuenta" : "Nueva cuenta"}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {esPrincipal && <LockKeyholeIcon className="size-4 text-muted-foreground" aria-hidden="true" />}
+            {esPrincipal ? "Ver configuración" : esEdicion ? "Editar cuenta" : "Nueva cuenta"}
+          </DialogTitle>
           <DialogDescription>
-            {esEdicion
-              ? "Las cuentas con padre heredan la clase de su cuenta raíz."
-              : "El código se asigna automáticamente."}
-            {esPrincipal && " Es una cuenta principal: código y nombre no se pueden modificar."}
-            {bloqueado && " Esta cuenta ya tiene movimientos: clase y moneda quedan bloqueadas."}
-            {claseBloqueada && !bloqueado && " Hay cuentas hijas con movimientos: la clase del grupo queda bloqueada."}
-            {esEdicion && !esPrincipal && " Cambiar el código renumera también sus cuentas hijas."}
+            {esPrincipal
+              ? "Cuenta principal protegida. Su configuración es de solo lectura; puedes crear subcuentas desde el plan de cuentas."
+              : esEdicion
+                ? "Las cuentas con padre heredan la clase de su cuenta raíz."
+                : "El código se asigna automáticamente."}
+            {!esPrincipal && estructuraBloqueada && " Esta cuenta o sus descendientes tienen movimientos: código, cuenta padre y clase están bloqueados. Puedes modificar el nombre."}
+            {!esPrincipal && bloqueado && " Esta cuenta tiene movimientos: tampoco se pueden cambiar la moneda ni el control de terceros."}
+            {esPadre && !estructuraBloqueada && " Cambiar el código renumera también sus cuentas hijas."}
           </DialogDescription>
         </DialogHeader>
 
@@ -185,7 +188,7 @@ export function CuentaFormDialog({
           <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
             <div className="space-y-2">
               <Label htmlFor="codigoCuenta">Código</Label>
-              <Input id="codigoCuenta" {...register("codigoCuenta")} readOnly={!esEdicion || esPrincipal} />
+              <Input id="codigoCuenta" {...register("codigoCuenta")} readOnly={!esEdicion || estructuraBloqueada} />
               {errors.codigoCuenta && (
                 <p className="text-sm text-destructive">{errors.codigoCuenta.message}</p>
               )}
@@ -223,7 +226,7 @@ export function CuentaFormDialog({
                 }
               }}
             >
-              <SelectTrigger id="cuentaPadreId" className="w-full" disabled={esPrincipal}>
+              <SelectTrigger id="cuentaPadreId" className="w-full" disabled={estructuraBloqueada}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -247,7 +250,7 @@ export function CuentaFormDialog({
                   setValue("naturaleza", naturalezaSugerida(value as ClaseCuenta));
                 }}
               >
-                <SelectTrigger id="clase" className="w-full" disabled={tienePadre || claseBloqueada}>
+                <SelectTrigger id="clase" className="w-full" disabled={esPrincipal || tienePadre || claseBloqueada}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -271,7 +274,7 @@ export function CuentaFormDialog({
                   setValue("naturaleza", value as FormValues["naturaleza"])
                 }
               >
-                <SelectTrigger id="naturaleza" className="w-full">
+                <SelectTrigger id="naturaleza" className="w-full" disabled={esPrincipal}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -295,7 +298,7 @@ export function CuentaFormDialog({
                   )
                 }
               >
-                <SelectTrigger id="clasificacionCorriente" className="w-full">
+                <SelectTrigger id="clasificacionCorriente" className="w-full" disabled={esPrincipal}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -316,7 +319,7 @@ export function CuentaFormDialog({
                 value={modoMoneda}
                 onValueChange={(v) => setValue("modoMoneda", v as FormValues["modoMoneda"])}
               >
-                <SelectTrigger className="w-full" disabled={bloqueado}>
+                <SelectTrigger className="w-full" disabled={esPrincipal || bloqueado}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -337,7 +340,7 @@ export function CuentaFormDialog({
                     setValue("monedaFijaId", (v === SIN_MONEDA ? undefined : v) as never)
                   }
                 >
-                  <SelectTrigger className="w-full" disabled={bloqueado}>
+                  <SelectTrigger className="w-full" disabled={esPrincipal || bloqueado}>
                     <SelectValue placeholder="Elige la moneda" />
                   </SelectTrigger>
                   <SelectContent>
@@ -364,7 +367,7 @@ export function CuentaFormDialog({
                 setValue("tipoCuenta", value as FormValues["tipoCuenta"])
               }
             >
-              <SelectTrigger id="tipoCuenta" className="w-full">
+              <SelectTrigger id="tipoCuenta" className="w-full" disabled={esPrincipal}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -383,7 +386,7 @@ export function CuentaFormDialog({
                 <input
                   type="checkbox"
                   className="size-4"
-                  disabled={name === "requiereAnalisisTerceros" && bloqueado}
+                  disabled={esPrincipal || (name === "requiereAnalisisTerceros" && bloqueado)}
                   {...register(name)}
                 />
                 {label}
@@ -393,11 +396,11 @@ export function CuentaFormDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {esPrincipal ? "Cerrar" : "Cancelar"}
             </Button>
-            <Button type="submit" disabled={isPending || prefijoInvalido}>
+            {!esPrincipal && <Button type="submit" disabled={isPending || prefijoInvalido}>
               {isPending ? "Guardando..." : esEdicion ? "Guardar" : "Crear cuenta"}
-            </Button>
+            </Button>}
           </DialogFooter>
         </form>
       </DialogContent>

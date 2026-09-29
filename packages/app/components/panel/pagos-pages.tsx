@@ -212,8 +212,8 @@ export async function PagoDetallePage({
         </CardContent>
       </Card>
 
-      {asiento && <AsientoTabla a={asiento} titulo="Asiento" />}
-      {reversa && <AsientoTabla a={reversa} titulo="Asiento de reversa" />}
+      {asiento && <AsientoTabla empresaId={empresaId} a={asiento} titulo="Asiento" />}
+      {reversa && <AsientoTabla empresaId={empresaId} a={reversa} titulo="Asiento de reversa" />}
     </>
   );
 }

@@ -3,6 +3,7 @@ export * from "./client";
 export * from "./queries/firmas";
 export * from "./queries/empresas";
 export * from "./queries/asientos";
+export * from "./queries/asientos-manuales";
 export * from "./queries/auditoria";
 export * from "./queries/documentos-venta";
 export * from "./queries/documentos-compra";
@@ -40,3 +41,5 @@ export * from "./queries/activos-fijos";
 export * from "./queries/activos-fijos-cierre";
 export * from "./queries/activos-fijos-vidas-utiles-sii";
 export * from "./queries/activos-fijos-tributario";
+
+export * from "./queries/asientos-referencias";

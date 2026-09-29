@@ -917,7 +917,8 @@ export async function obtenerAsientoVentaContabilizado(asientoId: string, empres
 
   return {
     modo: "real" as const,
-    correlativo: cab.correlativo,
+    asientoId: cab.id,
+    correlativo: cab.correlativo ?? 0, // asiento de documento: siempre contabilizado, siempre numerado
     fecha: cab.fecha,
     glosa: cab.glosa,
     tipo: cab.tipo,

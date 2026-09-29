@@ -179,7 +179,7 @@ export async function TerceroCuentaCorriente({
                         <TableCell>
                           {ruta ? (
                             <Link href={ruta} className="hover:underline">
-                              {ETIQUETA_ORIGEN[m.origenTabla ?? ""] ?? m.origenTabla}
+                              {m.origenTabla ? (ETIQUETA_ORIGEN[m.origenTabla] ?? m.origenTabla) : "Manual"}
                             </Link>
                           ) : (
                             <span className="text-muted-foreground">{m.origenTabla ? (ETIQUETA_ORIGEN[m.origenTabla] ?? m.origenTabla) : "Manual"}</span>

@@ -19,6 +19,8 @@ pnpm dev                  # http://localhost:3000
 
 ## Módulos
 
+Finanzas (asientos manuales y libro diario — ver
+[modulo-asientos-manuales.md](modulo-asientos-manuales.md)) ·
 Configuración (plan de cuentas, monedas, impuestos, períodos, determinación de
 cuentas, centros de costo, categorías, auditoría) · Maestros (socios de negocio) ·
 Inventario (productos, grupos, existencias/Kardex) · Ventas (facturas, NC, ND) ·

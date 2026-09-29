@@ -21,9 +21,9 @@ export function planificarCuenta(
   const porId = new Map(cuentas.map((c) => [c.id, c]));
   const antes = cuentaId ? porId.get(cuentaId) : undefined;
   if (cuentaId && !antes) throw new Error("La cuenta no existe en esta empresa");
-  if (antes?.cuentaPadreId === null && (
-    input.codigoCuenta !== antes.codigoCuenta || input.nombreCuenta !== antes.nombreCuenta || input.cuentaPadreId
-  )) throw new Error("Las cuentas principales no permiten cambiar el código, el nombre ni la cuenta padre.");
+  if (antes?.cuentaPadreId === null) {
+    throw new Error("Las cuentas principales están protegidas y son de solo lectura.");
+  }
 
   let clase = input.clase;
   let nivel = 1;
@@ -67,6 +67,15 @@ export function planificarCuenta(
   }
   validarNivel(nivel);
   if (antes) visitar(antes, input.codigoCuenta, nivel);
+  // Una rama con movimientos conserva sus códigos y su ubicación, incluso si
+  // los movimientos solo están en una nieta o el nuevo padre tiene la misma clase.
+  if (antes && hijos.has(antes.id) && cambios.some((c) => conMovimientos.has(c.id)) && (
+    input.codigoCuenta !== antes.codigoCuenta ||
+    (input.cuentaPadreId ?? null) !== antes.cuentaPadreId ||
+    input.clase !== antes.clase || clase !== antes.clase
+  )) {
+    throw new Error("La cuenta padre o sus descendientes tienen movimientos: no se puede cambiar el código, la cuenta padre ni la clase.");
+  }
   const modificados = new Set(cambios.map((c) => c.id));
   const codigos = new Set(cuentas.filter((c) => !modificados.has(c.id)).map((c) => c.codigoCuenta));
   for (const codigo of antes ? cambios.map((c) => c.codigoCuenta) : [input.codigoCuenta]) {
