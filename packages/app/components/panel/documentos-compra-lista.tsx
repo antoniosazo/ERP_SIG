@@ -161,7 +161,7 @@ export function DocumentosCompraLista({
               <SelectItem value="anulado">Anulado</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="submit" variant="secondary">Aplicar filtros</Button>
+          <Button type="submit" className="bg-amber-400 text-amber-950 hover:bg-amber-500">Aplicar filtros</Button>
           <Button type="button" variant="outline" onClick={() => { setQ(""); setDesde(""); setHasta(""); setProveedorFiltro(""); router.push(pathname); }}>Limpiar</Button>
           <span className="text-sm text-muted-foreground">{total} registro(s)</span>
           {puedeEditar && <Button type="button" className="ml-auto" onClick={() => setAbierto(true)} disabled={!proveedores.length || !tiposDocumento.length}>Nuevo {meta.singular}</Button>}

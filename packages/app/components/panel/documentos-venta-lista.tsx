@@ -217,7 +217,7 @@ export function DocumentosVentaLista({
               <SelectItem value="anulado">Anulado</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="submit" variant="secondary">Aplicar filtros</Button>
+          <Button type="submit" className="bg-amber-400 text-amber-950 hover:bg-amber-500">Aplicar filtros</Button>
           <Button
             type="button"
             variant="outline"
