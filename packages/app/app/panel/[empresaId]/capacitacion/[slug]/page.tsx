@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ActivoFijoGuia } from "@/components/panel/capacitacion/activo-fijo-guia";
 import { BancosGuia } from "@/components/panel/capacitacion/bancos-guia";
 import { SiiGuia } from "@/components/panel/capacitacion/sii-guia";
+import { AsientosGuia } from "@/components/panel/capacitacion/asientos-guia";
 
 export default async function CapacitacionDocPage({
   params,
@@ -25,7 +26,9 @@ export default async function CapacitacionDocPage({
         description={doc.descripcion}
       />
 
-      {doc.slug === "bancos" ? (
+      {doc.slug === "asientos-manuales" ? (
+        <AsientosGuia empresaId={empresaId} />
+      ) : doc.slug === "bancos" ? (
         <BancosGuia empresaId={empresaId} />
       ) : doc.slug === "sii" ? (
         <SiiGuia empresaId={empresaId} />

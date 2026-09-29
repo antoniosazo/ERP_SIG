@@ -1,6 +1,11 @@
 /** Catálogo de las guías interactivas de capacitación para usuarios. */
 export const CAPACITACION_DOCS = [
   {
+    slug: "asientos-manuales",
+    titulo: "Asientos contables: guía de uso",
+    descripcion: "Aprende a consultar el libro diario, preparar asientos manuales, contabilizarlos y corregirlos con trazabilidad.",
+  },
+  {
     slug: "activo-fijo",
     titulo: "Activo fijo: guía de uso",
     descripcion: "Aprende a registrar activos, depreciarlos, gestionar sus movimientos y preparar el cierre anual.",

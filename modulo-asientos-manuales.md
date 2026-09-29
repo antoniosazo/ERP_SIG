@@ -76,7 +76,6 @@ Los asientos **automáticos** siguen siendo de solo lectura (regla 2.3). Su fich
 - **Moneda extranjera** en líneas (monto en moneda origen + tipo de cambio).
 - **Importar asientos** desde Excel.
 - **Adjuntos** (respaldo del asiento).
-- Guía interactiva en Capacitación.
 
 
 ## Validación técnica — 28 de septiembre de 2026
