@@ -216,7 +216,7 @@ async function crearBorradorSii(
   empresaId: string,
   origen: "compra" | "venta",
   d: DocSii,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<ResultadoBorradorSii> {
   const rutNorm = normalizarRut(d.rutContraparte);
   const tipoDocumentoId = env.tipoDocPorSii.get(String(d.tipoDte));
@@ -395,7 +395,7 @@ export async function importarDocumentosRcv(
   origen: "compra" | "venta",
   periodo: string,
   docs: DocRcv[],
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<ResumenImportacion> {
   const res: ResumenImportacion = { creados: 0, existentes: 0, errores: 0, detalle: [] };
   const env = await prepararEntornoSii(empresaId);
@@ -666,7 +666,7 @@ export async function contarDtesBandeja(empresaId: string) {
 export async function cargarDtesDeBandeja(
   empresaId: string,
   ids: string[],
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<{ cargados: number; errores: number; detalle: { id: string; folio: string; resultado: string }[] }> {
   const out = { cargados: 0, errores: 0, detalle: [] as { id: string; folio: string; resultado: string }[] };
   if (ids.length === 0) return out;
@@ -934,7 +934,7 @@ export async function repararBorradoresDeBandeja(
 /** Contabiliza las facturas que quedaron en borrador (compra y venta) de una empresa. */
 export async function contabilizarFacturasEnBorrador(
   empresaId: string,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<{ contabilizadas: number; errores: number; detalle: string[] }> {
   const out = { contabilizadas: 0, errores: 0, detalle: [] as string[] };
   const compras = await db

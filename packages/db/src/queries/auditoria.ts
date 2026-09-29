@@ -2,7 +2,7 @@ import type { AuditoriaAccion } from "@erp/shared";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
-import { bitacoraAuditoria } from "../schema";
+import { asientosContables, bitacoraAuditoria } from "../schema";
 
 /** Contexto de quién hace la acción, que las actions pasan a las queries de mutación. */
 export type AuditoriaCtx = { usuarioId: string; usuarioNombre: string; motivo?: string };
@@ -102,4 +102,33 @@ export async function listarUsuariosDeAuditoria(empresaId: string) {
     .from(bitacoraAuditoria)
     .where(eq(bitacoraAuditoria.empresaId, empresaId))
     .orderBy(bitacoraAuditoria.usuarioNombre);
+}
+
+/**
+ * Historial de un asiento. Para registros anteriores a la auditoría directa, usa como
+ * respaldo la bitácora del documento origen, sin inventar usuario ni fecha históricos.
+ */
+export async function listarAuditoriaDeAsiento(
+  empresaId: string,
+  asientoId: string,
+  limite = 100,
+) {
+  const directa = await listarAuditoriaDeRegistro(empresaId, "asientos_contables", asientoId, limite);
+  if (directa.length > 0) return directa;
+
+  const [asiento] = await db
+    .select({
+      documentoOrigenTabla: asientosContables.documentoOrigenTabla,
+      documentoOrigenId: asientosContables.documentoOrigenId,
+    })
+    .from(asientosContables)
+    .where(and(eq(asientosContables.empresaId, empresaId), eq(asientosContables.id, asientoId)));
+  if (!asiento?.documentoOrigenTabla || !asiento.documentoOrigenId) return [];
+
+  return listarAuditoriaDeRegistro(
+    empresaId,
+    asiento.documentoOrigenTabla,
+    asiento.documentoOrigenId,
+    limite,
+  );
 }

@@ -20,7 +20,7 @@ import {
 import { cuadroEvolucion } from "./activos-fijos";
 import { resolverCuentaClase } from "./activos-fijos-clases";
 import { calcularCuotaLineal, mesesDepreciablesHasta, periodoDepreciable } from "./activos-fijos-motor";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 
 const LIBRO_TRIBUTARIO: LibroContable = "Tributario";
@@ -110,7 +110,7 @@ async function altasPorActivoYMes(
 export async function aplicarCorreccionMonetaria(
   empresaId: string,
   input: AplicarCorreccionMonetariaInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<{
   anio: number;
   filas: FilaCorreccionMonetaria[];
@@ -304,6 +304,7 @@ export async function aplicarCorreccionMonetaria(
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha,
         glosa: glosaDoc,
@@ -343,6 +344,7 @@ export async function aplicarCorreccionMonetaria(
       }
     }
     await tx.insert(asientosLineas).values(lineasAsiento);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     await tx
       .update(activosFijosDocumentos)

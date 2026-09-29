@@ -35,6 +35,9 @@ type Fila = {
 };
 
 const MODULOS: Record<string, string> = {
+  asientos_contables: "Asientos contables",
+  activos_fijos_documentos: "Documentos de activo fijo",
+  cierres_ejercicio: "Cierres de ejercicio",
   monedas: "Monedas",
   plan_cuentas: "Plan de cuentas",
   reglas_determinacion_cuenta: "Determinación de cuentas",

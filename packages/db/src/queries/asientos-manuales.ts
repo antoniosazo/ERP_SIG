@@ -17,7 +17,7 @@ import {
   usuarios,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import {
   periodoAdmiteAsientoManual,
   resolverLineasAsiento,
@@ -299,7 +299,7 @@ export async function guardarAsientoManual(
   empresaId: string,
   input: AsientoManualData,
   asientoId: string | null,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   input = asientoManualSchema.parse(input);
   // El período permanece bloqueado para lectura hasta confirmar la transacción.
@@ -354,7 +354,7 @@ export async function guardarAsientoManual(
     } else {
       const [nuevo] = await tx
         .insert(asientosContables)
-        .values({ ...valores, empresaId, origen: "manual", usuarioId: ctx?.usuarioId ?? null })
+        .values({ ...valores, empresaId, origen: "manual", usuarioId: ctx.usuarioId })
         .returning({ id: asientosContables.id });
       if (!nuevo) throw new Error("No se pudo crear el asiento");
       id = nuevo.id;
@@ -378,7 +378,7 @@ export async function guardarAsientoManual(
 }
 
 /** Elimina un borrador (los contabilizados nunca se borran). */
-export async function eliminarBorradorAsiento(empresaId: string, asientoId: string, ctx?: AuditoriaCtx) {
+export async function eliminarBorradorAsiento(empresaId: string, asientoId: string, ctx: AuditoriaCtx) {
   return db.transaction(async (tx) => {
     const [a] = await tx
       .select()
@@ -408,7 +408,14 @@ export async function eliminarBorradorAsiento(empresaId: string, asientoId: stri
  * Crea la reversa (debe ↔ haber) de un asiento manual contabilizado. El original sigue
  * contabilizado: la reversa lo neutraliza en los saldos, igual que "Cancelar" en SAP B1.
  */
-async function revertirAsiento(tx: Tx, empresaId: string, asientoId: string, fecha: string, glosaReversa?: string) {
+async function revertirAsiento(
+  tx: Tx,
+  empresaId: string,
+  asientoId: string,
+  fecha: string,
+  ctx: AuditoriaCtx,
+  glosaReversa?: string,
+) {
   const [a] = await tx
     .select()
     .from(asientosContables)
@@ -430,6 +437,7 @@ async function revertirAsiento(tx: Tx, empresaId: string, asientoId: string, fec
     .insert(asientosContables)
     .values({
       empresaId,
+      usuarioId: ctx.usuarioId,
       correlativo,
       fecha,
       glosa: glosaReversa ?? `Reversa: ${a.glosa}`,
@@ -459,6 +467,7 @@ async function revertirAsiento(tx: Tx, empresaId: string, asientoId: string, fec
       documentoReferenciaId: l.documentoReferenciaId,
     })),
   );
+  await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, ctx);
   return { original: a, reversa };
 }
 
@@ -466,12 +475,12 @@ export async function anularAsientoManual(
   empresaId: string,
   asientoId: string,
   input: AnularAsientoInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   input = anularAsientoSchema.parse(input);
   return db.transaction(async (tx) => {
     await validarPeriodo(tx, empresaId, input.fecha);
-    const { original, reversa } = await revertirAsiento(tx, empresaId, asientoId, input.fecha);
+    const { original, reversa } = await revertirAsiento(tx, empresaId, asientoId, input.fecha, { ...ctx, motivo: input.motivo });
     if (ctx) {
       await registrarAuditoria(tx, {
         empresaId,
@@ -522,7 +531,7 @@ export async function listarReversionesPendientes(empresaId: string, hasta: stri
  * se contabiliza en su fecha de reversión; las de períodos bloqueados se informan y quedan
  * pendientes.
  */
-export async function ejecutarReversionesPendientes(empresaId: string, hasta: string, ctx?: AuditoriaCtx) {
+export async function ejecutarReversionesPendientes(empresaId: string, hasta: string, ctx: AuditoriaCtx) {
   const pendientes = await listarReversionesPendientes(empresaId, hasta);
   const hechas: { original: number | null; reversa: number | null }[] = [];
   const errores: string[] = [];
@@ -530,7 +539,7 @@ export async function ejecutarReversionesPendientes(empresaId: string, hasta: st
     try {
       const hecha = await db.transaction(async (tx) => {
         await validarPeriodo(tx, empresaId, p.fechaReversa!);
-        const { original, reversa } = await revertirAsiento(tx, empresaId, p.id, p.fechaReversa!);
+        const { original, reversa } = await revertirAsiento(tx, empresaId, p.id, p.fechaReversa!, ctx);
         if (ctx) {
           await registrarAuditoria(tx, {
             empresaId,

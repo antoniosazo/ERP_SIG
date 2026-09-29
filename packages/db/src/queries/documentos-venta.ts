@@ -23,7 +23,7 @@ import {
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { tienePagosAplicados } from "./pagos-saldos";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { resolverCuentaGeneral } from "./reglas-determinacion-cuenta";
 import { periodoDe } from "./periodos";
 import { siguienteCodigo } from "./series";
@@ -766,6 +766,7 @@ async function persistirAsientoVenta(
   tx: Tx,
   empresaId: string,
   built: AsientoVentaConstruido,
+  ctx: AuditoriaCtx,
 ) {
   const { doc, fechaContab, glosaCabecera, filas } = built;
   const tc = Number(doc.tipoCambio);
@@ -775,6 +776,7 @@ async function persistirAsientoVenta(
     .insert(asientosContables)
     .values({
       empresaId,
+      usuarioId: ctx.usuarioId,
       correlativo,
       fecha: fechaContab,
       glosa: glosaCabecera,
@@ -803,11 +805,12 @@ async function persistirAsientoVenta(
       documentoReferenciaId: doc.id,
     })),
   );
+  await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
   return { asiento, correlativo };
 }
 
-async function generarAsientoVenta(tx: Tx, empresaId: string, docId: string) {
+async function generarAsientoVenta(tx: Tx, empresaId: string, docId: string, ctx: AuditoriaCtx) {
   const [doc] = await tx
     .select({ estado: documentosVenta.estado })
     .from(documentosVenta)
@@ -817,7 +820,7 @@ async function generarAsientoVenta(tx: Tx, empresaId: string, docId: string) {
 
   const built = await construirAsientoVenta(tx, empresaId, docId);
   if (built.errores.length) throw new Error(built.errores[0]);
-  return persistirAsientoVenta(tx, empresaId, built);
+  return persistirAsientoVenta(tx, empresaId, built, ctx);
 }
 
 /**
@@ -935,10 +938,10 @@ export async function obtenerAsientoVentaContabilizado(asientoId: string, empres
 export async function contabilizarDocumentoVenta(
   id: string,
   empresaId: string,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
-    const { asiento, correlativo } = await generarAsientoVenta(tx, empresaId, id);
+    const { asiento, correlativo } = await generarAsientoVenta(tx, empresaId, id, ctx);
     const [doc] = await tx
       .update(documentosVenta)
       .set({
@@ -1019,7 +1022,7 @@ export async function anularDocumentoVenta(
   id: string,
   empresaId: string,
   motivo: string,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [doc] = await tx
@@ -1053,6 +1056,7 @@ export async function anularDocumentoVenta(
         .insert(asientosContables)
         .values({
           empresaId,
+          usuarioId: ctx.usuarioId,
           correlativo,
           fecha: fechaContab,
           glosa: `Reversa: ${cab?.glosa ?? etiquetaDoc(doc)}`,
@@ -1080,6 +1084,7 @@ export async function anularDocumentoVenta(
           documentoReferenciaId: id,
         })),
       );
+      await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
 
       // Revertir los movimientos de stock de este documento.
       const movs = await tx

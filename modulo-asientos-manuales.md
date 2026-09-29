@@ -162,3 +162,23 @@ afectados sin errores (dos advertencias preexistentes). Las consultas de solo le
 resolvieron 3 documentos origen y 8 líneas de asientos reales; la comprobación con
 otra empresa no devolvió referencias. No se modificaron datos contables.
 Queda pendiente la revisión visual de estas pantallas en una sesión autenticada.
+
+## Auditoría de generación de asientos — 29 de septiembre de 2026
+
+- Toda creación automática o reversa guarda el usuario responsable en la cabecera del
+  asiento y crea una entrada propia en `bitacora_auditoria`, dentro de la misma
+  transacción que el asiento y sus líneas.
+- La entrada registra correlativo, fecha, glosa, tipo, libro, estado, origen, documento
+  asociado, cantidad de líneas y totales de debe/haber en moneda funcional.
+- Se conserva en paralelo la auditoría del documento origen. Las operaciones capaces de
+  generar asientos requieren contexto de usuario también cuando se ejecutan desde SII.
+- El historial del detalle consulta la auditoría directa. Para asientos anteriores a este
+  cambio, si no existe una entrada directa, muestra como respaldo la del documento origen
+  sin inventar usuarios ni fechas históricas.
+- La pantalla general identifica Asientos contables, Documentos de activo fijo y Cierres
+  de ejercicio con nombres legibles. El cambio no requiere una migración.
+
+**Validación:** 67 pruebas del paquete de base de datos aprobadas, incluida la prueba
+unitaria del resumen de auditoría; TypeScript del monorepo, ESLint de la interfaz,
+compilación de producción de Next.js y `git diff --check` correctos. No se generaron
+asientos ni se modificaron datos contables durante esta comprobación.

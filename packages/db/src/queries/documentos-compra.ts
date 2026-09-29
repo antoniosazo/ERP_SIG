@@ -26,7 +26,7 @@ import {
 import { crearActivoDesdeCompra } from "./activos-fijos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { tienePagosAplicados } from "./pagos-saldos";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { resolverCuentaGeneral } from "./reglas-determinacion-cuenta";
 import { periodoDe } from "./periodos";
 import { sembrarSeriesCompra, siguienteCodigo } from "./series";
@@ -1024,6 +1024,7 @@ async function persistirAsientoCompra(
   tx: Tx,
   empresaId: string,
   built: AsientoCompraConstruido,
+  ctx: AuditoriaCtx,
   meta: { tipo: "egreso" | "traspaso"; origen: string } = { tipo: "egreso", origen: "compra" },
 ) {
   const { doc, fechaContab, glosaCabecera, filas } = built;
@@ -1034,6 +1035,7 @@ async function persistirAsientoCompra(
     .insert(asientosContables)
     .values({
       empresaId,
+      usuarioId: ctx.usuarioId,
       correlativo,
       fecha: fechaContab,
       glosa: glosaCabecera,
@@ -1062,13 +1064,14 @@ async function persistirAsientoCompra(
       documentoReferenciaId: doc.id,
     })),
   );
+  await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
   return { asiento, correlativo };
 }
 
-async function generarAsientoCompra(tx: Tx, empresaId: string, docId: string) {
+async function generarAsientoCompra(tx: Tx, empresaId: string, docId: string, ctx: AuditoriaCtx) {
   const built = await construirAsientoCompra(tx, empresaId, docId);
   if (built.errores.length) throw new Error(built.errores[0]);
-  return persistirAsientoCompra(tx, empresaId, built);
+  return persistirAsientoCompra(tx, empresaId, built, ctx);
 }
 
 // ── Entrada de Mercadería (GRPO): stock + costo + asiento Existencias / GR-IR ──
@@ -1340,7 +1343,7 @@ export async function obtenerAsientoCompraContabilizado(asientoId: string, empre
 export async function contabilizarDocumentoCompra(
   id: string,
   empresaId: string,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [prev] = await tx
@@ -1365,7 +1368,7 @@ export async function contabilizarDocumentoCompra(
           glosa: built.glosaCabecera,
         });
       }
-      const { asiento: asi, correlativo: corr } = await persistirAsientoCompra(tx, empresaId, built, {
+      const { asiento: asi, correlativo: corr } = await persistirAsientoCompra(tx, empresaId, built, ctx, {
         tipo: "traspaso",
         origen: "entrada mercadería",
       });
@@ -1404,7 +1407,7 @@ export async function contabilizarDocumentoCompra(
       return docEm!;
     }
 
-    const { asiento, correlativo } = await generarAsientoCompra(tx, empresaId, id);
+    const { asiento, correlativo } = await generarAsientoCompra(tx, empresaId, id, ctx);
     const [doc] = await tx
       .update(documentosCompra)
       .set({
@@ -1491,7 +1494,7 @@ export async function anularDocumentoCompra(
   id: string,
   empresaId: string,
   motivo: string,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [doc] = await tx
@@ -1554,6 +1557,7 @@ export async function anularDocumentoCompra(
         .insert(asientosContables)
         .values({
           empresaId,
+          usuarioId: ctx.usuarioId,
           correlativo,
           fecha: fechaContab,
           glosa: `Reversa: ${cab?.glosa ?? etiquetaDoc(doc)}`,
@@ -1581,6 +1585,7 @@ export async function anularDocumentoCompra(
           documentoReferenciaId: id,
         })),
       );
+      await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
     }
 
     // Devuelve el saldo a las líneas del documento base.

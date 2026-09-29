@@ -3,7 +3,7 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../client";
 import { asientosContables, asientosLineas, cierresEjercicio, periodosContables, planCuentas } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { obtenerAsientoCompraContabilizado } from "./documentos-compra";
 import { listarPeriodos } from "./periodos";
 import { listarPlanCuentasDeEmpresa } from "./plan-cuentas";
@@ -133,7 +133,7 @@ export async function estadoCierreEjercicio(empresaId: string, anio: number): Pr
   };
 }
 
-export async function cerrarEjercicio(empresaId: string, input: CerrarEjercicioInput, ctx?: AuditoriaCtx) {
+export async function cerrarEjercicio(empresaId: string, input: CerrarEjercicioInput, ctx: AuditoriaCtx) {
   return db.transaction(async (tx) => {
     const estado = await estadoCierreEjercicio(empresaId, input.anio);
     if (estado.bloqueos.length) throw new Error(estado.bloqueos[0]);
@@ -153,6 +153,7 @@ export async function cerrarEjercicio(empresaId: string, input: CerrarEjercicioI
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha,
         glosa: `Cierre del ejercicio ${input.anio}`,
@@ -203,6 +204,7 @@ export async function cerrarEjercicio(empresaId: string, input: CerrarEjercicioI
       documentoReferenciaId: asiento.id,
     });
     await tx.insert(asientosLineas).values(lineasAsiento);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     const [existente] = await tx
       .select()
@@ -239,7 +241,7 @@ export async function cerrarEjercicio(empresaId: string, input: CerrarEjercicioI
   });
 }
 
-export async function reabrirEjercicio(empresaId: string, anio: number, motivo: string, ctx?: AuditoriaCtx) {
+export async function reabrirEjercicio(empresaId: string, anio: number, motivo: string, ctx: AuditoriaCtx) {
   return db.transaction(async (tx) => {
     const [cierre] = await tx
       .select()
@@ -265,6 +267,7 @@ export async function reabrirEjercicio(empresaId: string, anio: number, motivo: 
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: `${anio}-12-31`,
         glosa: `Reversa: ${cab?.glosa ?? `Cierre del ejercicio ${anio}`}`,
@@ -291,6 +294,7 @@ export async function reabrirEjercicio(empresaId: string, anio: number, motivo: 
         documentoReferenciaId: reversa.id,
       })),
     );
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
 
     const [act] = await tx
       .update(cierresEjercicio)

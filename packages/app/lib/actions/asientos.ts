@@ -5,7 +5,7 @@ import {
   eliminarBorradorAsiento,
   ejecutarReversionesPendientes,
   guardarAsientoManual,
-  listarAuditoriaDeRegistro,
+  listarAuditoriaDeAsiento,
 } from "@erp/db";
 import { ROLES_FINANZAS, uuid, anularAsientoSchema, asientoManualSchema, type AnularAsientoInput, type AsientoManualInput } from "@erp/shared";
 import { revalidatePath } from "next/cache";
@@ -101,7 +101,7 @@ export async function historialAsientoAction(empresaId: string, registroId: stri
   try {
     if (!await obtenerAccesoEmpresa(empresaId)) throw new Error("No tienes acceso a esta empresa");
     uuid.parse(registroId);
-    const filas = await listarAuditoriaDeRegistro(empresaId, "asientos_contables", registroId);
+    const filas = await listarAuditoriaDeAsiento(empresaId, registroId);
     return {
       ok: true,
       filas: filas.map((f) => ({

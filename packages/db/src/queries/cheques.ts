@@ -17,7 +17,7 @@ import {
   terceros,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { obtenerAsientoCompraContabilizado } from "./documentos-compra";
 import { periodoDe } from "./periodos";
 import { sembrarSeriesPago, siguienteCodigo } from "./series";
@@ -129,7 +129,7 @@ export async function obtenerDepositoConDetalle(depositoId: string, empresaId: s
 
 // ── Depósito ────────────────────────────────────────────────────────────────
 
-export async function registrarDeposito(empresaId: string, input: RegistrarDepositoInput, ctx?: AuditoriaCtx) {
+export async function registrarDeposito(empresaId: string, input: RegistrarDepositoInput, ctx: AuditoriaCtx) {
   await validarPeriodo(empresaId, input.fechaContabilizacion);
   return db.transaction(async (tx) => {
     const [empresa] = await tx
@@ -197,6 +197,7 @@ export async function registrarDeposito(empresaId: string, input: RegistrarDepos
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: input.fechaContabilizacion,
         glosa,
@@ -227,6 +228,7 @@ export async function registrarDeposito(empresaId: string, input: RegistrarDepos
       linea(cb.cuentaContableId, total, 0, glosa),
       ...[...porCuenta.entries()].map(([cuentaId, monto]) => linea(cuentaId, 0, redondear(monto), "Cheques en cartera")),
     ]);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     await tx
       .update(cheques)
@@ -265,7 +267,7 @@ export async function registrarDeposito(empresaId: string, input: RegistrarDepos
   });
 }
 
-export async function anularDeposito(depositoId: string, empresaId: string, motivo: string, ctx?: AuditoriaCtx) {
+export async function anularDeposito(depositoId: string, empresaId: string, motivo: string, ctx: AuditoriaCtx) {
   return db.transaction(async (tx) => {
     const [dep] = await tx
       .select()
@@ -290,6 +292,7 @@ export async function anularDeposito(depositoId: string, empresaId: string, moti
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: dep.fechaContabilizacion,
         glosa: `Reversa: ${cab?.glosa ?? dep.numeroInterno}`,
@@ -317,6 +320,7 @@ export async function anularDeposito(depositoId: string, empresaId: string, moti
         documentoReferenciaId: dep.id,
       })),
     );
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
     // Los cheques vuelven a cartera.
     await tx
       .update(cheques)
@@ -361,7 +365,7 @@ export async function protestarCheque(
   chequeId: string,
   empresaId: string,
   input: ProtestarChequeInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   await validarPeriodo(empresaId, input.fecha);
   return db.transaction(async (tx) => {
@@ -415,6 +419,7 @@ export async function protestarCheque(
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: input.fecha,
         glosa,
@@ -444,6 +449,7 @@ export async function protestarCheque(
       ...(gastos > 0 ? [linea(input.cuentaGastoId!, gastos, 0, null, `Gastos de protesto cheque N° ${cheque.numero}`)] : []),
       linea(cb.cuentaContableId, 0, redondear(monto + gastos), null, glosa),
     ]);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, { ...ctx, motivo: input.motivo });
 
     // ── Reabre la deuda: reversa proporcional de lo aplicado por este pago ──
     let reabiertos: { documentoId: string; monto: number }[] = [];

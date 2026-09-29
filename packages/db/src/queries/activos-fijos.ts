@@ -39,7 +39,7 @@ import {
   periodoDepreciable,
   type ParametrosCuota,
 } from "./activos-fijos-motor";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { periodoDe } from "./periodos";
 import { sembrarSeriesActivoFijo, siguienteCodigo } from "./series";
@@ -432,7 +432,7 @@ async function capitalizarOMejorar(
   activo: typeof activosFijos.$inferSelect,
   input: CapitalizarActivoInput,
   tipoDoc: "CAP" | "MEJ",
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<{ documentoId: string; asientoId: string; libro: LibroContable }[]> {
   if (!activo.claseId) throw new Error("El activo no tiene clase asignada");
 
@@ -504,6 +504,7 @@ async function capitalizarOMejorar(
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: input.fecha,
         glosa: glosaDoc,
@@ -547,6 +548,7 @@ async function capitalizarOMejorar(
         documentoReferenciaId: documento.id,
       },
     ]);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     await tx
       .update(activosFijosDocumentos)
@@ -562,7 +564,7 @@ export async function capitalizarActivo(
   activoId: string,
   empresaId: string,
   input: CapitalizarActivoInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [activo] = await tx
@@ -622,7 +624,7 @@ export async function registrarMejora(
   activoId: string,
   empresaId: string,
   input: RegistrarMejoraInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [activo] = await tx
@@ -818,7 +820,7 @@ export async function transferirClase(
   activoId: string,
   empresaId: string,
   input: TransferirClaseInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [activo] = await tx
@@ -900,6 +902,7 @@ export async function transferirClase(
         .insert(asientosContables)
         .values({
           empresaId,
+          usuarioId: ctx.usuarioId,
           correlativo,
           fecha: input.fecha,
           glosa: glosaDoc,
@@ -944,6 +947,7 @@ export async function transferirClase(
           documentoReferenciaId: documento.id,
         },
       ]);
+      await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
     }
 
     if (asientoId) {
@@ -988,7 +992,7 @@ export async function transferirClase(
  * y solo se retira esa porción del costo/dep. acumulada; con 100% pasa a
  * `"Dado de baja"`.
  */
-export async function bajaActivo(activoId: string, empresaId: string, input: BajaActivoInput, ctx?: AuditoriaCtx) {
+export async function bajaActivo(activoId: string, empresaId: string, input: BajaActivoInput, ctx: AuditoriaCtx) {
   return db.transaction(async (tx) => {
     const [activo] = await tx
       .select()
@@ -1095,6 +1099,7 @@ export async function bajaActivo(activoId: string, empresaId: string, input: Baj
         .insert(asientosContables)
         .values({
           empresaId,
+          usuarioId: ctx.usuarioId,
           correlativo,
           fecha: input.fecha,
           glosa: glosaDoc,
@@ -1141,6 +1146,7 @@ export async function bajaActivo(activoId: string, empresaId: string, input: Baj
             documentoReferenciaId: documento.id,
           })),
       );
+      await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
     }
 
     if (!asientoId) throw new Error("El activo no tiene costo vigente en ningún libro: no hay nada que dar de baja.");
@@ -1392,7 +1398,7 @@ export type SimulacionDepreciacion = {
 export async function ejecutarDepreciacion(
   empresaId: string,
   input: EjecutarDepreciacionInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ): Promise<SimulacionDepreciacion | { documentoId: string; asientoId: string | null; filas: FilaCalculada[]; totalCuota: number }> {
   return db.transaction(async (tx) => {
     const [periodo] = await tx
@@ -1512,6 +1518,7 @@ export async function ejecutarDepreciacion(
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: periodo.fechaFin,
         glosa: glosaDoc,
@@ -1557,6 +1564,7 @@ export async function ejecutarDepreciacion(
       });
     }
     await tx.insert(asientosLineas).values(asientoLineas);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     await tx
       .update(activosFijosDocumentos)
@@ -1605,7 +1613,7 @@ export async function registrarDepreciacionManual(
   activoId: string,
   empresaId: string,
   input: RegistrarDepreciacionManualInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [activo] = await tx
@@ -1696,6 +1704,7 @@ export async function registrarDepreciacionManual(
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: periodo.fechaFin,
         glosa: glosaDoc,
@@ -1739,6 +1748,7 @@ export async function registrarDepreciacionManual(
         documentoReferenciaId: documento.id,
       },
     ]);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     await tx
       .update(activosFijosDocumentos)
@@ -1801,7 +1811,7 @@ export async function anularDocumentoActivoFijo(
   documentoId: string,
   empresaId: string,
   input: AnularDocumentoActivoFijoInput,
-  ctx?: AuditoriaCtx,
+  ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [documento] = await tx
@@ -1888,6 +1898,7 @@ export async function anularDocumentoActivoFijo(
         .insert(asientosContables)
         .values({
           empresaId,
+          usuarioId: ctx.usuarioId,
           correlativo,
           fecha: fechaContab,
           glosa: `Reversa: ${cab?.glosa ?? documento.glosa ?? ""}`,
@@ -1916,6 +1927,7 @@ export async function anularDocumentoActivoFijo(
           documentoReferenciaId: documento.id,
         })),
       );
+      await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo: input.motivo });
       asientoReversaId = reversa.id;
     }
 

@@ -42,7 +42,7 @@ export default async function AuditoriaPage({
     <>
       <TypographyHeading
         title="Auditoría"
-        description="Registro de cambios en los maestros de la empresa (3.8). Solo lectura."
+        description="Registro de cambios y operaciones de la empresa. Solo lectura."
       />
       <AuditoriaTabla
         filas={filas.map((f) => ({

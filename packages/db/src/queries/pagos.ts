@@ -19,7 +19,7 @@ import {
   tercerosGrupos,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
-import { siguienteCorrelativoAsiento } from "./asientos";
+import { registrarAuditoriaCreacionAsiento, siguienteCorrelativoAsiento } from "./asientos";
 import { obtenerAsientoCompraContabilizado } from "./documentos-compra";
 import { periodoDe } from "./periodos";
 import { saldosDocumentos } from "./pagos-saldos";
@@ -124,7 +124,7 @@ export async function listarDocumentosAbiertos(
 
 // ── Registrar (contabiliza al guardar) ──────────────────────────────────────
 
-export async function registrarPago(empresaId: string, input: RegistrarPagoInput, ctx?: AuditoriaCtx) {
+export async function registrarPago(empresaId: string, input: RegistrarPagoInput, ctx: AuditoriaCtx) {
   await validarPeriodo(empresaId, input.tipo, input.fechaContabilizacion);
   const esRecibido = input.tipo === "Recibido";
   const tablaDoc = esRecibido ? "venta" : "compra";
@@ -361,6 +361,7 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: input.fechaContabilizacion,
         glosa,
@@ -395,6 +396,7 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
       ? linea(cuentaTercero, 0, totalMedios, tercero.id, glosa)
       : linea(cuentaTercero, totalMedios, 0, tercero.id, glosa);
     await tx.insert(asientosLineas).values(esRecibido ? [...lineasMedios, lineaTercero] : [lineaTercero, ...lineasMedios]);
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, asiento.id, ctx);
 
     const [final] = await tx
       .update(pagos)
@@ -442,7 +444,7 @@ export async function registrarPago(empresaId: string, input: RegistrarPagoInput
 
 // ── Anular ──────────────────────────────────────────────────────────────────
 
-export async function anularPago(pagoId: string, empresaId: string, motivo: string, ctx?: AuditoriaCtx) {
+export async function anularPago(pagoId: string, empresaId: string, motivo: string, ctx: AuditoriaCtx) {
   return db.transaction(async (tx) => {
     const [pago] = await tx
       .select()
@@ -474,6 +476,7 @@ export async function anularPago(pagoId: string, empresaId: string, motivo: stri
       .insert(asientosContables)
       .values({
         empresaId,
+        usuarioId: ctx.usuarioId,
         correlativo,
         fecha: pago.fechaContabilizacion,
         glosa: `Reversa: ${cab?.glosa ?? pago.numeroInterno}`,
@@ -501,6 +504,7 @@ export async function anularPago(pagoId: string, empresaId: string, motivo: stri
         documentoReferenciaId: pago.id,
       })),
     );
+    await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
     if (chequesPago.length) {
       await tx.update(cheques).set({ estado: "anulado", updatedAt: new Date() }).where(eq(cheques.pagoId, pagoId));
       if (ctx) {
