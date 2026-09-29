@@ -20,16 +20,22 @@ import {
   productosPorIds,
   saldosDocumentos,
   obtenerTerceroConDetalle,
+  pagosDeDocumentoVenta,
   saldosNotaCreditoPorFactura,
 } from "@erp/db";
-import { configFormularioDocSchema } from "@erp/shared";
-import { requireSession } from "@/lib/auth-helpers";
+import {
+  CODIGOS_SII_VENTA_POR_CLASE,
+  configFormularioDocSchema,
+  puedeEditarFinanzas,
+} from "@erp/shared";
+import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
 import { facturaDeDocumento } from "@/lib/factura-documento";
 import { CLAVE_FORM_DOC_VENTA } from "@/lib/documento-venta-campos";
 import { DocumentoVentaForm } from "@/components/panel/documento-venta-form";
 import { DocumentoVentaToolbar } from "@/components/panel/documento-venta-toolbar";
 import { EmitirNotaCreditoBoton } from "@/components/panel/emitir-nota-credito-boton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -51,10 +57,13 @@ export default async function DocumentoVentaDetallePage({
   params: Promise<{ empresaId: string; docId: string }>;
 }) {
   const { empresaId, docId } = await params;
-  const session = await requireSession();
+  const acceso = await obtenerAccesoEmpresa(empresaId);
+  if (!acceso) notFound();
   const detalle = await obtenerDocumentoVentaConLineas(docId, empresaId);
   if (!detalle) notFound();
-  const { documento, lineas, asiento } = detalle;
+  const { documento, lineas, asiento, reversa } = detalle;
+  const puedeEditar = puedeEditarFinanzas(acceso.session.user.esAdminFirma, acceso.rol);
+  const puedeAnular = acceso.session.user.esAdminFirma || acceso.rol === "Administrador";
 
   const esFactura = documento.clase === "Factura";
   const [
@@ -72,6 +81,7 @@ export default async function DocumentoVentaDetallePage({
     terceroDetalle,
     vendedores,
     productos,
+    pagosAplicados,
   ] = await Promise.all([
     listarTerceros(empresaId),
     listarTiposDocumento(),
@@ -83,10 +93,11 @@ export default async function DocumentoVentaDetallePage({
     listarDocumentosVenta(empresaId, { estado: "contabilizado" }),
     saldosNotaCreditoPorFactura(empresaId),
     esFactura ? notasCreditoDeFactura(empresaId, docId) : Promise.resolve([]),
-    obtenerPreferenciaFormulario(session.user.id, CLAVE_FORM_DOC_VENTA),
+    obtenerPreferenciaFormulario(acceso.session.user.id, CLAVE_FORM_DOC_VENTA),
     obtenerTerceroConDetalle(documento.terceroId, empresaId),
     listarUsuariosDeEmpresa(empresaId),
     listarProductosParaDocumento(empresaId),
+    pagosDeDocumentoVenta(empresaId, docId),
   ]);
 
   const [empresa, productosDoc] = await Promise.all([
@@ -120,17 +131,27 @@ export default async function DocumentoVentaDetallePage({
   const tiposNC = tiposDoc
     .filter((t) => t.codigoSii === "61")
     .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }));
-  const tiposNCFallback = tiposNC.length
-    ? tiposNC
-    : tiposDoc
-        .filter((t) => t.tipoOperacion === "Venta" || t.tipoOperacion === "Ambos")
-        .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }));
   const saldoFactura = esFactura ? (saldos[docId] ?? Number(documento.montoTotal)) : 0;
+  const codigosPermitidos = new Set(CODIGOS_SII_VENTA_POR_CLASE[documento.clase]);
+  const hoy = new Date().toISOString().slice(0, 10);
 
   return (
     <>
       <VolverBoton fallbackHref={`/panel/${empresaId}/ventas/${VENTA_CLASE_META[documento.clase].slug}`} />
-      {documento.asientoId && <div className="my-3"><EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${documento.asientoId}`}>Ver asiento contable completo</EnlaceDetalle></div>}
+      {(documento.asientoId || documento.asientoReversaId) && (
+        <div className="my-3 flex flex-wrap gap-3">
+          {documento.asientoId && (
+            <EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${documento.asientoId}`}>
+              Ver asiento contable completo
+            </EnlaceDetalle>
+          )}
+          {documento.asientoReversaId && (
+            <EnlaceDetalle href={`/panel/${empresaId}/contabilidad/asientos/${documento.asientoReversaId}`}>
+              Ver asiento de reversa{reversa?.correlativo ? ` N° ${reversa.correlativo}` : ""}
+            </EnlaceDetalle>
+          )}
+        </div>
+      )}
       <TypographyHeading
         title={`${documento.numeroInterno ?? ""} ${documento.clase}`.trim()}
         description={
@@ -139,7 +160,13 @@ export default async function DocumentoVentaDetallePage({
             : "Documento de venta. Solo se puede editar en borrador; al contabilizar se genera el asiento."
         }
       />
-      <DocumentoVentaToolbar empresaId={empresaId} docId={docId} config={config} factura={factura} />
+      <DocumentoVentaToolbar
+        empresaId={empresaId}
+        docId={docId}
+        config={config}
+        factura={factura}
+        puedeVerContabilidad={puedeEditar}
+      />
       <DocumentoVentaForm
         empresaId={empresaId}
         docId={docId}
@@ -147,6 +174,9 @@ export default async function DocumentoVentaDetallePage({
         numeroInterno={documento.numeroInterno}
         clase={documento.clase}
         asientoCorrelativo={asiento?.correlativo ?? null}
+        puedeEditar={puedeEditar}
+        puedeAnular={puedeAnular}
+        hoy={hoy}
         config={config}
         contactos={contactos}
         vendedores={vendedores.map((u) => ({ id: u.id, label: u.nombre }))}
@@ -161,19 +191,24 @@ export default async function DocumentoVentaDetallePage({
           glosaSugerida: p.glosaSugerida,
         }))}
         clientes={terceros
-          .filter((t) => t.tipoTercero === "Cliente")
+          .filter((t) =>
+            t.tipoTercero === "Cliente" &&
+            ((t.activo && !t.bloqueado) || t.id === documento.terceroId),
+          )
           .map((t) => ({
             id: t.id,
             label: t.razonSocial,
             condicionPagoDias: t.condicionPagoDias,
           }))}
         tiposDocumento={tiposDoc
-          .filter((t) => t.tipoOperacion === "Venta" || t.tipoOperacion === "Ambos")
+          .filter((t) => codigosPermitidos.has(t.codigoSii))
           .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }))}
         cuentas={cuentas
           .filter((c) => c.nivelImputable && c.activa)
           .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}` }))}
-        categorias={categorias.map((c) => ({ id: c.id, label: c.nombre }))}
+        categorias={categorias
+          .filter((c) => c.aplicaA === "Venta" || c.aplicaA === "Ambos")
+          .map((c) => ({ id: c.id, label: c.nombre }))}
         centrosCosto={centros
           .filter((c) => c.estado === "Activo")
           .map((c) => ({ id: c.id, label: `${c.codigo} — ${c.nombre}` }))}
@@ -238,6 +273,47 @@ export default async function DocumentoVentaDetallePage({
         }}
       />
 
+      {(documento.clase === "Factura" || documento.clase === "Nota de Débito") && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-3">
+            <div>
+              <CardTitle>Cobros aplicados</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Saldo pendiente: {(saldoDoc?.saldo ?? Number(documento.montoTotal)).toLocaleString("es-CL")}
+              </p>
+            </div>
+            {puedeEditar && documento.estado === "contabilizado" && (saldoDoc?.saldo ?? 0) > 0.005 && (
+              <Button asChild>
+                <Link href={`/panel/${empresaId}/tesoreria/pagos-recibidos/nuevo?terceroId=${documento.terceroId}&documentoId=${docId}`}>
+                  Registrar cobro
+                </Link>
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            {pagosAplicados.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no hay cobros aplicados a este documento.</p>
+            ) : (
+              <div className="rounded-xl ring-1 ring-foreground/10">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Cobro</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Aplicado</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {pagosAplicados.map((pago) => (
+                      <TableRow key={pago.id}>
+                        <TableCell><Link className="font-mono hover:underline" href={`/panel/${empresaId}/tesoreria/pagos-recibidos/${pago.id}`}>{pago.numeroInterno}</Link></TableCell>
+                        <TableCell>{pago.fechaPago}</TableCell>
+                        <TableCell><Badge variant={pago.estado === "anulado" ? "destructive" : "secondary"}>{pago.estado}</Badge></TableCell>
+                        <TableCell className="text-right tabular-nums">{Number(pago.montoAplicado).toLocaleString("es-CL")}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {esFactura && (
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-2">
@@ -248,12 +324,12 @@ export default async function DocumentoVentaDetallePage({
                 {Number(documento.montoTotal).toLocaleString("es-CL")}
               </p>
             </div>
-            {documento.estado === "contabilizado" && (
+            {documento.estado === "contabilizado" && puedeEditar && (
               <EmitirNotaCreditoBoton
                 empresaId={empresaId}
                 facturaId={docId}
                 saldo={saldoFactura}
-                tiposNC={tiposNCFallback}
+                tiposNC={tiposNC}
               />
             )}
           </CardHeader>

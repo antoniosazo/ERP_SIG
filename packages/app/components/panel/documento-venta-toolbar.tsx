@@ -17,17 +17,21 @@ export function DocumentoVentaToolbar({
   docId,
   config,
   factura,
+  puedeVerContabilidad,
 }: {
   empresaId: string;
   docId: string;
   config: ConfigFormularioDoc;
   factura: FacturaDatos;
+  puedeVerContabilidad: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
       <ConfigFormularioDialog config={config} />
-      <AsientoDialog empresaId={empresaId} docId={docId} />
-      <HistorialDocumentoDialog empresaId={empresaId} docId={docId} />
+      {puedeVerContabilidad && (<>
+        <AsientoDialog empresaId={empresaId} docId={docId} />
+        <HistorialDocumentoDialog empresaId={empresaId} docId={docId} />
+      </>)}
       <VerFacturaBoton f={factura} />
       <Button
         asChild

@@ -358,6 +358,20 @@
       "when": 1790619278559,
       "tag": "0050_greedy_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790699856072,
+      "tag": "0051_illegal_domino",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790705020634,
+      "tag": "0052_graceful_ego",
+      "breakpoints": true
     }
   ]
 }

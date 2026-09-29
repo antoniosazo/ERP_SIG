@@ -7,7 +7,9 @@ import {
   cerrarPedidoCompra,
   contabilizarDocumentoCompra,
   crearDocumentoCompra,
+  descartarBorradorDocumentoCompra,
   guardarDocumentoCompra,
+  guardarYContabilizarFacturaCompra,
   listarAuditoriaDeRegistro,
   obtenerAsientoCompraContabilizado,
   obtenerDocumentoCompraConLineas,
@@ -81,18 +83,14 @@ export async function guardarDocumentoCompraAction(
   }
   try {
     const ctx = auditCtx(session);
-    const doc = await guardarDocumentoCompra(docId, empresaId, parsed.data, ctx);
-    // Las facturas no pasan por borrador: se contabilizan al guardarse.
-    if (doc.docTipo === "factura") {
-      try {
-        await contabilizarDocumentoCompra(docId, empresaId, ctx);
-      } catch (error) {
-        rev(empresaId, docId);
-        return { ok: false, error: `Se guardó, pero no se pudo contabilizar: ${mensajeError(error)}` };
-      }
+    const detalle = await obtenerDocumentoCompraConLineas(docId, empresaId);
+    if (!detalle) return { ok: false, error: "El documento no existe." };
+    if (detalle.documento.docTipo === "factura") {
+      await guardarYContabilizarFacturaCompra(docId, empresaId, parsed.data, ctx);
       rev(empresaId, docId);
       return { ok: true, docId, contabilizado: true };
     }
+    await guardarDocumentoCompra(docId, empresaId, parsed.data, ctx);
     rev(empresaId, docId);
     return { ok: true, docId };
   } catch (error) {
@@ -182,6 +180,39 @@ export async function contabilizarDocumentoCompraAction(
   }
 }
 
+export async function reintentarFacturaCompraPendienteAction(
+  empresaId: string,
+  docId: string,
+): Promise<DocCompraAccionResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    await contabilizarDocumentoCompra(docId, empresaId, auditCtx(session));
+    rev(empresaId, docId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+export async function descartarDocumentoCompraPendienteAction(
+  empresaId: string,
+  docId: string,
+): Promise<DocCompraAccionResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    await descartarBorradorDocumentoCompra(
+      docId,
+      empresaId,
+      "Documento de compra pendiente descartado por el usuario",
+      auditCtx(session),
+    );
+    rev(empresaId, docId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
 export async function anularDocumentoCompraAction(
   empresaId: string,
   docId: string,
@@ -193,7 +224,13 @@ export async function anularDocumentoCompraAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
   try {
-    await anularDocumentoCompra(docId, empresaId, parsed.data.motivo, auditCtx(session));
+    await anularDocumentoCompra(
+      docId,
+      empresaId,
+      parsed.data.motivo,
+      parsed.data.fechaReversa,
+      auditCtx(session),
+    );
     rev(empresaId, docId);
     return { ok: true };
   } catch (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useTransition, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm } from "react-hook-form";
@@ -14,6 +14,7 @@ import {
 import {
   anularDocumentoVentaAction,
   contabilizarDocumentoVentaAction,
+  descartarFacturaPendienteAction,
   actualizarFechasDocumentoVentaAction,
   guardarDocumentoVentaAction,
 } from "@/lib/actions/ventas";
@@ -21,12 +22,22 @@ import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-ve
 import { VENTA_CLASE_META } from "@/lib/ventas";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { MontoInput } from "@/components/panel/monto-input";
+import { SelectorBuscable } from "@/components/panel/selector-buscable";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -73,6 +84,9 @@ export function DocumentoVentaForm({
   numeroInterno,
   clase,
   asientoCorrelativo,
+  puedeEditar,
+  puedeAnular,
+  hoy,
   config,
   valoresIniciales,
   clientes,
@@ -94,6 +108,9 @@ export function DocumentoVentaForm({
   numeroInterno: string | null;
   clase: DocumentoVentaClase;
   asientoCorrelativo: number | null;
+  puedeEditar: boolean;
+  puedeAnular: boolean;
+  hoy: string;
   config: ConfigFormularioDoc;
   valoresIniciales: FormValues;
   clientes: ClienteOpcion[];
@@ -111,11 +128,14 @@ export function DocumentoVentaForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const readOnly = estado !== "borrador";
+  const [anulacionAbierta, setAnulacionAbierta] = useState(false);
+  const [motivoAnulacion, setMotivoAnulacion] = useState("");
+  const [fechaReversa, setFechaReversa] = useState(hoy);
+  const readOnly = estado !== "borrador" || !puedeEditar;
   // Las facturas no pasan por borrador: se contabilizan al guardarse, y ya contabilizadas solo
   // se editan el vencimiento y la fecha de contabilización.
   const esFactura = clase === "Factura";
-  const fechasEditables = esFactura && estado === "contabilizado";
+  const fechasEditables = puedeEditar && esFactura && estado === "contabilizado";
   const tasaImpuesto = useMemo(() => new Map(impuestos.map((i) => [i.id, i.tasa])), [impuestos]);
   const cuentaLabel = useMemo(() => new Map(cuentas.map((c) => [c.id, c.label])), [cuentas]);
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
@@ -233,35 +253,42 @@ export function DocumentoVentaForm({
   }
 
   function anular() {
-    const motivo = prompt("Motivo de la anulación:");
-    if (!motivo?.trim()) return;
+    if (!motivoAnulacion.trim()) {
+      toast.error("Indica el motivo de la anulación.");
+      return;
+    }
     startTransition(async () => {
-      const r = await anularDocumentoVentaAction(empresaId, docId, { motivo });
+      const r = await anularDocumentoVentaAction(empresaId, docId, {
+        motivo: motivoAnulacion,
+        fechaReversa,
+      });
       if (r.ok) {
-        toast.success("Documento anulado");
+        toast.success("Documento anulado y reversado");
+        setAnulacionAbierta(false);
+        router.refresh();
+      } else toast.error(r.error);
+    });
+  }
+
+  function descartar() {
+    startTransition(async () => {
+      const r = await descartarFacturaPendienteAction(empresaId, docId);
+      if (r.ok) {
+        toast.success("Documento pendiente descartado");
         router.refresh();
       } else toast.error(r.error);
     });
   }
 
   const selOpt = (name: keyof FormValues, opciones: Opcion[], placeholder: string) => (
-    <Select
-      value={(watch(name) as string | undefined) ?? NINGUNA}
-      onValueChange={(v) => setValue(name, (v === NINGUNA ? undefined : v) as never)}
+    <SelectorBuscable
+      value={(watch(name) as string | undefined) ?? undefined}
+      onValueChange={(v) => setValue(name, v as never, { shouldValidate: true })}
+      opciones={opciones}
+      placeholder={placeholder}
+      permitirVacio
       disabled={readOnly}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={NINGUNA}>{placeholder}</SelectItem>
-        {opciones.map((o) => (
-          <SelectItem key={o.id} value={o.id}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    />
   );
 
   const campo = (label: string, field: ReactNode, extra?: string, error?: string) => (
@@ -285,30 +312,20 @@ export function DocumentoVentaForm({
               />
             )}
             <div className="min-w-0 flex-1">
-          <Select
-            value={(watch("terceroId") as string | undefined) ?? NINGUNA}
-            onValueChange={(v) => {
-              const cid = v === NINGUNA ? undefined : v;
-              setValue("terceroId", cid as never);
+          <SelectorBuscable
+            value={(watch("terceroId") as string | undefined) ?? undefined}
+            onValueChange={(cid) => {
+              setValue("terceroId", cid as never, { shouldValidate: true });
               const cli = clientes.find((c) => c.id === cid);
               setValue("nombreCliente", cli?.label ?? "");
               setValue("condicionPagoDias", cli?.condicionPagoDias ?? 0);
               recomputarVencimiento(cli?.condicionPagoDias ?? 0);
             }}
+            opciones={clientes}
+            placeholder="Selecciona un cliente"
             disabled={readOnly}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Cliente" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NINGUNA}>Cliente</SelectItem>
-              {clientes.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            invalido={!!errors.terceroId}
+          />
             </div>
           </div>,
         );
@@ -382,7 +399,7 @@ export function DocumentoVentaForm({
           </Select>,
         );
       case "folio":
-        return campo("Folio SII", <Input {...register("folio")} disabled={readOnly} />);
+        return campo("Folio SII *", <Input {...register("folio")} disabled={readOnly} aria-invalid={!!errors.folio} />, undefined, errors.folio?.message);
       case "numAtCard":
         return campo("N° ref. del cliente", <Input {...register("numAtCard")} disabled={readOnly} />);
       case "tipoCambio":
@@ -393,7 +410,10 @@ export function DocumentoVentaForm({
             step="0.000001"
             {...register("tipoCambio", { valueAsNumber: true })}
             disabled={readOnly}
+            aria-invalid={!!errors.tipoCambio}
           />,
+          undefined,
+          errors.tipoCambio?.message,
         );
       case "descuentoGlobalPct":
         return campo(
@@ -486,42 +506,26 @@ export function DocumentoVentaForm({
     switch (id) {
       case "productoId":
         return (
-          <Select
-            value={watch(`lineas.${i}.productoId`) ?? NINGUNA}
-            onValueChange={(v) => elegirProducto(i, v === NINGUNA ? undefined : v)}
+          <SelectorBuscable
+            value={watch(`lineas.${i}.productoId`) ?? undefined}
+            onValueChange={(v) => elegirProducto(i, v)}
+            opciones={productos}
+            placeholder="Selecciona un producto"
+            permitirVacio
             disabled={readOnly}
-          >
-            <SelectTrigger className="w-full min-w-44">
-              <SelectValue placeholder="—" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NINGUNA}>—</SelectItem>
-              {productos.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="min-w-44"
+          />
         );
       case "cuentaIngresoId":
         return (
-          <Select
+          <SelectorBuscable
             value={watch(`lineas.${i}.cuentaIngresoId`)}
-            onValueChange={(v) => setValue(`lineas.${i}.cuentaIngresoId`, v)}
+            onValueChange={(v) => setValue(`lineas.${i}.cuentaIngresoId`, v ?? "", { shouldValidate: true })}
+            opciones={cuentas}
+            placeholder="Selecciona una cuenta"
             disabled={readOnly}
-          >
-            <SelectTrigger className="w-full min-w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {cuentas.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="min-w-48"
+          />
         );
       case "cantidad":
         return (
@@ -658,7 +662,13 @@ export function DocumentoVentaForm({
   }
 
   return (
+    <>
     <form onSubmit={onSubmit} className="space-y-4">
+      {Object.keys(errors).length > 0 && (
+        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          Revisa los campos marcados antes de guardar el documento.
+        </div>
+      )}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>
@@ -796,8 +806,13 @@ export function DocumentoVentaForm({
             {isPending ? "Guardando..." : "Guardar fechas"}
           </Button>
         )}
-        {estado !== "anulado" && (
-          <Button type="button" variant="destructive" disabled={isPending} onClick={anular}>
+        {estado === "borrador" && puedeEditar && (
+          <Button type="button" variant="outline" disabled={isPending} onClick={descartar}>
+            Descartar pendiente
+          </Button>
+        )}
+        {estado === "contabilizado" && puedeAnular && (
+          <Button type="button" variant="destructive" disabled={isPending} onClick={() => setAnulacionAbierta(true)}>
             Anular
           </Button>
         )}
@@ -812,5 +827,32 @@ export function DocumentoVentaForm({
         />
       </div>
     </form>
+    <Dialog open={anulacionAbierta} onOpenChange={setAnulacionAbierta}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Anular y reversar documento</DialogTitle>
+          <DialogDescription>
+            Se creará un asiento de reversa y, si corresponde, movimientos de stock en la misma fecha. Esta acción queda registrada en auditoría.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="fecha-reversa">Fecha de reversa</Label>
+            <Input id="fecha-reversa" type="date" min={valoresIniciales.fechaContabilizacion ?? undefined} value={fechaReversa} onChange={(e) => setFechaReversa(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="motivo-anulacion">Motivo</Label>
+            <Textarea id="motivo-anulacion" value={motivoAnulacion} onChange={(e) => setMotivoAnulacion(e.target.value)} placeholder="Explica por qué se anula el documento" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setAnulacionAbierta(false)}>Cancelar</Button>
+          <Button type="button" variant="destructive" disabled={isPending || !motivoAnulacion.trim() || !fechaReversa} onClick={anular}>
+            {isPending ? "Anulando…" : "Anular y reversar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

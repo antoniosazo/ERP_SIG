@@ -5,14 +5,21 @@ import { useRouter } from "next/navigation";
 import { ArrowDownIcon, ArrowUpIcon, Settings2Icon } from "lucide-react";
 import { toast } from "sonner";
 import type { ConfigFormularioDoc } from "@erp/shared";
-import { guardarConfigFormularioDocVentaAction } from "@/lib/actions/preferencias";
+import {
+  guardarConfigFormularioDocCompraAction,
+  guardarConfigFormularioDocVentaAction,
+} from "@/lib/actions/preferencias";
 import {
   aplicarConfig,
-  CAMPOS_CABECERA,
-  CAMPOS_LINEA,
+  CAMPOS_CABECERA as CAMPOS_CABECERA_VENTA,
+  CAMPOS_LINEA as CAMPOS_LINEA_VENTA,
   CONFIG_VACIA,
   type CampoResuelto,
 } from "@/lib/documento-venta-campos";
+import {
+  CAMPOS_CABECERA as CAMPOS_CABECERA_COMPRA,
+  CAMPOS_LINEA as CAMPOS_LINEA_COMPRA,
+} from "@/lib/documento-compra-campos";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -87,7 +94,15 @@ function Seccion({
 }
 
 /** Diálogo de "Configuración de formulario": orden y visibilidad de campos, por usuario. */
-export function ConfigFormularioDialog({ config }: { config: ConfigFormularioDoc }) {
+export function ConfigFormularioDialog({
+  config,
+  origen = "venta",
+  docTipo,
+}: {
+  config: ConfigFormularioDoc;
+  origen?: "venta" | "compra";
+  docTipo?: string;
+}) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -95,14 +110,20 @@ export function ConfigFormularioDialog({ config }: { config: ConfigFormularioDoc
   const [linea, setLinea] = useState<CampoResuelto[]>([]);
 
   function abrir() {
-    setCabecera(aplicarConfig(CAMPOS_CABECERA, config.cabecera));
-    setLinea(aplicarConfig(CAMPOS_LINEA, config.linea));
+    const camposCabecera = origen === "compra" ? CAMPOS_CABECERA_COMPRA : CAMPOS_CABECERA_VENTA;
+    const camposVisibles = origen === "compra" && docTipo !== "nota_credito" && docTipo !== "nota_debito"
+      ? camposCabecera.filter((campo) => campo.id !== "documentoBaseId")
+      : camposCabecera;
+    setCabecera(aplicarConfig(camposVisibles, config.cabecera));
+    setLinea(aplicarConfig(origen === "compra" ? CAMPOS_LINEA_COMPRA : CAMPOS_LINEA_VENTA, config.linea));
     setAbierto(true);
   }
 
   function guardar(nueva: ConfigFormularioDoc) {
     startTransition(async () => {
-      const r = await guardarConfigFormularioDocVentaAction(nueva);
+      const r = origen === "compra"
+        ? await guardarConfigFormularioDocCompraAction(nueva)
+        : await guardarConfigFormularioDocVentaAction(nueva);
       if (r.ok) {
         setAbierto(false);
         router.refresh();

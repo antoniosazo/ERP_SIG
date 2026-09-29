@@ -20,6 +20,7 @@ export const CAMPOS_CABECERA: CampoDef[] = [
   { id: "fechaContabilizacion", label: "Fecha de contabilización", estructural: true },
   { id: "monedaId", label: "Moneda", estructural: true },
   { id: "folio", label: "Folio SII" },
+  { id: "documentoBaseId", label: "Factura que corrige", estructural: true },
   { id: "numAtCard", label: "N° del documento del proveedor" },
   { id: "tipoCambio", label: "Tipo de cambio" },
   { id: "descuentoGlobalPct", label: "Descuento global %" },

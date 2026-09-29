@@ -5,48 +5,42 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DocumentoCompraTipo } from "@erp/shared";
-import { crearDocumentoCompraAction } from "@/lib/actions/compras";
+import {
+  crearDocumentoCompraAction,
+  descartarDocumentoCompraPendienteAction,
+  reintentarFacturaCompraPendienteAction,
+} from "@/lib/actions/compras";
 import { COMPRA_TIPO_META } from "@/lib/compras";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
+import { SelectorBuscable } from "@/components/panel/selector-buscable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FilaGrupo, useAgrupado, useExpandidos } from "./tabla-agrupada";
 
-export type DocFila = {
+export type DocCompraFila = {
   id: string;
   numeroInterno: string | null;
+  docTipo: DocumentoCompraTipo;
   tipoDocumento: string;
   folio: string | null;
   proveedor: string;
   terceroId: string;
   fechaEmision: string;
+  fechaVencimiento: string | null;
   montoTotal: string;
+  saldo: number;
+  moneda: string;
   estado: string;
+  puedeReintentar: boolean;
 };
 type Opcion = { id: string; label: string };
+type Filtros = { estado: string; q: string; desde: string; hasta: string; terceroId: string };
 const TODOS = "__all__";
 
 function badge(estado: string): "default" | "secondary" | "destructive" {
@@ -54,199 +48,173 @@ function badge(estado: string): "default" | "secondary" | "destructive" {
   if (estado === "anulado") return "destructive";
   return "default";
 }
+const etiquetaEstado = (estado: string) => (estado === "borrador" ? "Pendiente" : estado);
 
 export function DocumentosCompraLista({
   empresaId,
   docTipo,
   documentos,
-  filtroEstado,
+  filtros,
+  pagina,
+  paginas,
+  total,
   tiposDocumento,
   proveedores,
+  proveedoresFiltro,
+  puedeEditar,
+  hoy,
 }: {
   empresaId: string;
   docTipo: DocumentoCompraTipo;
-  documentos: DocFila[];
-  filtroEstado: string;
+  documentos: DocCompraFila[];
+  filtros: Filtros;
+  pagina: number;
+  paginas: number;
+  total: number;
   tiposDocumento: Opcion[];
   proveedores: Opcion[];
+  proveedoresFiltro: Opcion[];
+  puedeEditar: boolean;
+  hoy: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [abierto, setAbierto] = useState(false);
-  const [tipoDocumentoId, setTipoDocumentoId] = useState(tiposDocumento[0]?.id ?? "");
-  const [terceroId, setTerceroId] = useState(proveedores[0]?.id ?? "");
-  const singular = COMPRA_TIPO_META[docTipo].singular;
-  const esPedido = docTipo === "pedido";
-  const esRecepcion = docTipo === "entrada_mercaderia";
+  const [tipoDocumentoId, setTipoDocumentoId] = useState("");
+  const [terceroId, setTerceroId] = useState("");
+  const [q, setQ] = useState(filtros.q);
+  const [desde, setDesde] = useState(filtros.desde);
+  const [hasta, setHasta] = useState(filtros.hasta);
+  const [proveedorFiltro, setProveedorFiltro] = useState(filtros.terceroId);
+  const [descartarId, setDescartarId] = useState<string | null>(null);
+  const meta = COMPRA_TIPO_META[docTipo];
   const porEstado = useAgrupado(documentos, (d) => d.estado);
-  const { expandidos: estadosAbiertos, alternar: alternarEstado } = useExpandidos();
+  const { expandidos, alternar } = useExpandidos(["borrador", "abierto", "contabilizado"]);
+  const detalleHref = (id: string) => `/panel/${empresaId}/compras/documentos/${id}`;
 
-  function filtrar(estado: string) {
-    router.push(estado === TODOS ? pathname : `${pathname}?estado=${estado}`);
+  function navegar(cambios: Partial<Filtros> & { pagina?: string }) {
+    const params = new URLSearchParams();
+    const valores = { ...filtros, q, desde, hasta, terceroId: proveedorFiltro, ...cambios };
+    if (valores.desde && valores.hasta && valores.desde > valores.hasta) {
+      toast.error("La fecha Desde no puede ser posterior a Hasta.");
+      return;
+    }
+    for (const [k, v] of Object.entries(valores)) if (v) params.set(k, v);
+    router.push(`${pathname}${params.size ? `?${params.toString()}` : ""}`);
   }
 
   function crear() {
-    if (!tipoDocumentoId || !terceroId) {
-      toast.error("Elige tipo de documento y proveedor.");
-      return;
-    }
+    if (!tipoDocumentoId || !terceroId) return toast.error("Elige explícitamente el tipo de documento y el proveedor.");
     startTransition(async () => {
       const r = await crearDocumentoCompraAction(empresaId, { docTipo, tipoDocumentoId, terceroId });
       if (r.ok) {
         setAbierto(false);
-        router.push(`/panel/${empresaId}/compras/documentos/${r.docId}`);
-      } else {
-        toast.error(r.error);
-      }
+        router.push(detalleHref(r.docId));
+      } else toast.error(r.error);
     });
   }
 
+  function reintentar(docId: string) {
+    startTransition(async () => {
+      const r = await reintentarFacturaCompraPendienteAction(empresaId, docId);
+      if (r.ok) {
+        toast.success("Documento contabilizado.");
+        router.refresh();
+      } else toast.error(r.error);
+    });
+  }
+
+  async function descartar() {
+    if (!descartarId) return;
+    const r = await descartarDocumentoCompraPendienteAction(empresaId, descartarId);
+    if (r.ok) {
+      toast.success("Documento pendiente descartado.");
+      setDescartarId(null);
+      router.refresh();
+    } else toast.error(r.error);
+  }
+
+  const grupos = ["borrador", "abierto", "contabilizado", "cerrado", "anulado"].filter((e) => porEstado.has(e));
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Select value={filtroEstado || TODOS} onValueChange={filtrar}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Estado" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={TODOS}>Todos los estados</SelectItem>
-            {docTipo !== "factura" && <SelectItem value="borrador">Borrador</SelectItem>}
-            {esPedido && <SelectItem value="abierto">Abierto</SelectItem>}
-            {!esPedido && <SelectItem value="contabilizado">Contabilizado</SelectItem>}
-            {(esPedido || esRecepcion) && <SelectItem value="cerrado">Cerrado</SelectItem>}
-            <SelectItem value="anulado">Anulado</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-3">
-          {proveedores.length === 0 && (
-            <Link
-              href={`/panel/${empresaId}/maestros/terceros`}
-              className="text-sm text-destructive hover:underline"
-            >
-              Crea primero un socio de negocio de tipo {`"Proveedor"`}.
-            </Link>
-          )}
-          <Button onClick={() => setAbierto(true)} disabled={proveedores.length === 0}>
-            Nuevo {singular}
-          </Button>
+      <form className="grid gap-3 rounded-xl border p-3 md:grid-cols-2 xl:grid-cols-6" onSubmit={(e) => { e.preventDefault(); navegar({ pagina: "1" }); }}>
+        <div className="space-y-1 xl:col-span-2">
+          <Label htmlFor="buscar-compra">Folio, número o proveedor</Label>
+          <Input id="buscar-compra" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar…" />
         </div>
-      </div>
+        <div className="space-y-1"><Label htmlFor="compra-desde">Desde</Label><Input id="compra-desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="compra-hasta">Hasta</Label><Input id="compra-hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></div>
+        <div className="space-y-1 xl:col-span-2">
+          <Label>Proveedor</Label>
+          <SelectorBuscable value={proveedorFiltro} onValueChange={(v) => setProveedorFiltro(v ?? "")} opciones={proveedoresFiltro} placeholder="Todos los proveedores" />
+        </div>
+        <div className="flex flex-wrap items-end gap-2 md:col-span-2 xl:col-span-6">
+          <Select value={filtros.estado || TODOS} onValueChange={(v) => navegar({ estado: v === TODOS ? "" : v, pagina: "1" })}>
+            <SelectTrigger className="w-44" aria-label="Filtrar por estado"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los estados</SelectItem>
+              <SelectItem value="borrador">Pendiente</SelectItem>
+              {docTipo === "pedido" && <SelectItem value="abierto">Abierto</SelectItem>}
+              {docTipo !== "pedido" && <SelectItem value="contabilizado">Contabilizado</SelectItem>}
+              {(docTipo === "pedido" || docTipo === "entrada_mercaderia") && <SelectItem value="cerrado">Cerrado</SelectItem>}
+              <SelectItem value="anulado">Anulado</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="submit" variant="secondary">Aplicar filtros</Button>
+          <Button type="button" variant="outline" onClick={() => { setQ(""); setDesde(""); setHasta(""); setProveedorFiltro(""); router.push(pathname); }}>Limpiar</Button>
+          <span className="text-sm text-muted-foreground">{total} registro(s)</span>
+          {puedeEditar && <Button type="button" className="ml-auto" onClick={() => setAbierto(true)} disabled={!proveedores.length || !tiposDocumento.length}>Nuevo {meta.singular}</Button>}
+        </div>
+      </form>
 
+      {!puedeEditar && <p className="text-xs text-muted-foreground">Acceso de consulta a documentos de compra.</p>}
+      {puedeEditar && proveedores.length === 0 && <p className="text-sm text-destructive">Crea o activa un proveedor antes de registrar el documento.</p>}
       {documentos.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin registros.</p>
+        <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No hay documentos que coincidan con los filtros.</p>
       ) : (
-        <div className="rounded-xl ring-1 ring-foreground/10">
+        <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-28">N° interno</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Folio</TableHead>
-                <TableHead>Proveedor</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
+            <TableHeader><TableRow><TableHead>N° interno</TableHead><TableHead>Tipo / folio</TableHead><TableHead>Proveedor</TableHead><TableHead>Emisión</TableHead><TableHead>Vencimiento</TableHead><TableHead>Moneda</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Saldo</TableHead>{puedeEditar && <TableHead className="text-right">Acciones</TableHead>}</TableRow></TableHeader>
             <TableBody>
-              {[...porEstado.entries()].map(([estado, items]) => {
-                const abierto = estadosAbiertos.has(estado);
-                return (
-                  <Fragment key={estado}>
-                    <FilaGrupo abierto={abierto} onToggle={() => alternarEstado(estado)} colSpan={6}>
-                      <Badge variant={badge(estado)}>{estado}</Badge>
-                      <span className="text-muted-foreground">({items.length})</span>
-                    </FilaGrupo>
-                    {abierto &&
-                      items.map((d) => (
-                        <TableRow
-                          key={d.id}
-                          className="cursor-pointer"
-                          onClick={(e) => {
-                            if ((e.target as HTMLElement).closest("a")) return;
-                            router.push(`/panel/${empresaId}/compras/documentos/${d.id}`);
-                          }}
-                        >
-                          <TableCell className="font-mono font-medium">
-                            <Link
-                              href={`/panel/${empresaId}/compras/documentos/${d.id}`}
-                              className="hover:underline"
-                            >
-                              {d.numeroInterno ?? "—"}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{d.tipoDocumento}</TableCell>
-                          <TableCell className="font-mono text-muted-foreground">
-                            {d.folio ?? "—"}
-                          </TableCell>
-                          <TableCell>
-                            <TerceroEnlace empresaId={empresaId} terceroId={d.terceroId}>
-                              {d.proveedor}
-                            </TerceroEnlace>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground tabular-nums">
-                            {d.fechaEmision}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {Number(d.montoTotal).toLocaleString("es-CL")}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </Fragment>
-                );
+              {grupos.map((estado) => {
+                const items = porEstado.get(estado) ?? [];
+                const abiertoGrupo = expandidos.has(estado);
+                return <Fragment key={estado}>
+                  <FilaGrupo abierto={abiertoGrupo} onToggle={() => alternar(estado)} colSpan={puedeEditar ? 9 : 8}><Badge variant={badge(estado)}>{etiquetaEstado(estado)}</Badge><span className="text-muted-foreground">({items.length})</span></FilaGrupo>
+                  {abiertoGrupo && items.map((d) => {
+                    const vencida = d.estado === "contabilizado" && d.saldo > 0.01 && !!d.fechaVencimiento && d.fechaVencimiento < hoy;
+                    return <TableRow key={d.id} className="cursor-pointer" role="link" tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(detalleHref(d.id)); } }}
+                      onClick={(e) => { if ((e.target as HTMLElement).closest("a,button")) return; router.push(detalleHref(d.id)); }}>
+                      <TableCell className="font-mono font-medium"><Link href={detalleHref(d.id)} className="hover:underline">{d.numeroInterno ?? "—"}</Link></TableCell>
+                      <TableCell><div>{d.tipoDocumento}</div><div className="font-mono text-xs text-muted-foreground">Folio {d.folio ?? "—"}</div></TableCell>
+                      <TableCell><TerceroEnlace empresaId={empresaId} terceroId={d.terceroId}>{d.proveedor}</TerceroEnlace></TableCell>
+                      <TableCell>{d.fechaEmision}</TableCell>
+                      <TableCell><span className={vencida ? "font-medium text-destructive" : "text-muted-foreground"}>{d.fechaVencimiento ?? "—"}</span>{vencida && <Badge variant="destructive" className="ml-2">Vencida</Badge>}</TableCell>
+                      <TableCell>{d.moneda}</TableCell><TableCell className="text-right tabular-nums">{Number(d.montoTotal).toLocaleString("es-CL")}</TableCell>
+                      <TableCell className="text-right tabular-nums">{d.estado === "contabilizado" && d.docTipo !== "nota_credito" ? d.saldo.toLocaleString("es-CL") : "—"}</TableCell>
+                      {puedeEditar && <TableCell className="text-right"><div className="flex justify-end gap-1">
+                        {d.estado === "borrador" && (d.puedeReintentar ? <Button type="button" size="xs" variant="secondary" disabled={isPending} onClick={() => reintentar(d.id)}>Reintentar</Button> : <Button asChild size="xs" variant="secondary"><Link href={detalleHref(d.id)}>Completar</Link></Button>)}
+                        {d.estado === "borrador" && <Button type="button" size="xs" variant="destructive" onClick={() => setDescartarId(d.id)}>Descartar</Button>}
+                        {d.docTipo === "factura" && d.estado === "contabilizado" && d.saldo > 0.005 && <Button asChild size="xs" variant="outline"><Link href={`/panel/${empresaId}/tesoreria/pagos-efectuados/nuevo?terceroId=${d.terceroId}&documentoId=${d.id}`}>Pagar</Link></Button>}
+                      </div></TableCell>}
+                    </TableRow>;
+                  })}
+                </Fragment>;
               })}
             </TableBody>
           </Table>
         </div>
       )}
+      {paginas > 1 && <div className="flex items-center justify-end gap-2"><Button type="button" variant="outline" disabled={pagina <= 1} onClick={() => navegar({ pagina: String(pagina - 1) })}>Anterior</Button><span className="text-sm text-muted-foreground">Página {pagina} de {paginas}</span><Button type="button" variant="outline" disabled={pagina >= paginas} onClick={() => navegar({ pagina: String(pagina + 1) })}>Siguiente</Button></div>}
 
-      <Dialog open={abierto} onOpenChange={setAbierto}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nuevo {singular}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Tipo de documento (SII)</Label>
-              <Select value={tipoDocumentoId} onValueChange={setTipoDocumentoId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {tiposDocumento.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Proveedor</Label>
-              <Select value={terceroId} onValueChange={setTerceroId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {proveedores.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAbierto(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={crear} disabled={isPending}>
-              {isPending ? "Creando..." : "Crear y abrir"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Dialog open={abierto} onOpenChange={setAbierto}><DialogContent><DialogHeader><DialogTitle>Nuevo {meta.singular}</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">Elige el tipo SII y el proveedor. La factura se contabilizará al guardar; los demás documentos se revisan desde su detalle.</p>
+        <div className="space-y-4"><div className="space-y-2"><Label>Tipo de documento (SII)</Label><SelectorBuscable value={tipoDocumentoId} onValueChange={(v) => setTipoDocumentoId(v ?? "")} opciones={tiposDocumento} placeholder="Selecciona el tipo" /></div><div className="space-y-2"><Label>Proveedor</Label><SelectorBuscable value={terceroId} onValueChange={(v) => setTerceroId(v ?? "")} opciones={proveedores} placeholder="Selecciona el proveedor" /></div></div>
+        <DialogFooter><Button variant="outline" onClick={() => setAbierto(false)}>Cancelar</Button><Button onClick={crear} disabled={isPending || !tipoDocumentoId || !terceroId}>{isPending ? "Creando…" : "Crear y abrir"}</Button></DialogFooter>
+      </DialogContent></Dialog>
+      <ConfirmDialog open={descartarId !== null} onOpenChange={(open) => !open && setDescartarId(null)} title={`Descartar ${meta.singular} pendiente`} description={`El documento quedará anulado en el historial y no podrá contabilizarse.`} confirmLabel="Descartar" onConfirm={descartar} />
     </div>
   );
 }

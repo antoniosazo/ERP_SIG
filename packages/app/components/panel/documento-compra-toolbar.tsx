@@ -34,6 +34,7 @@ export function DocumentoCompraToolbar({
   estado,
   config,
   lineasPendientes,
+  puedeVerContabilidad,
 }: {
   empresaId: string;
   factura: FacturaDatos;
@@ -42,6 +43,7 @@ export function DocumentoCompraToolbar({
   estado: string;
   config: ConfigFormularioDoc;
   lineasPendientes: LineaPendiente[];
+  puedeVerContabilidad: boolean;
 }) {
   const generaAsiento =
     docTipo === "factura" ||
@@ -53,17 +55,19 @@ export function DocumentoCompraToolbar({
     docTipo === "entrada_mercaderia" && estado === "contabilizado" && lineasPendientes.length > 0;
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-      <ConfigFormularioDialog config={config} />
-      {generaAsiento && (
+      <ConfigFormularioDialog config={config} origen="compra" docTipo={docTipo} />
+      {puedeVerContabilidad && generaAsiento && (
         <AsientoDialog empresaId={empresaId} docId={docId} verAsiento={verAsientoCompraAction} />
       )}
-      <HistorialDocumentoDialog
-        empresaId={empresaId}
-        docId={docId}
-        historial={historialDocumentoCompraAction}
-      />
-      {docTipo === "factura" && <ReclamoSiiDialog empresaId={empresaId} docId={docId} />}
-      {pedidoAbierto && (
+      {puedeVerContabilidad && (
+        <HistorialDocumentoDialog
+          empresaId={empresaId}
+          docId={docId}
+          historial={historialDocumentoCompraAction}
+        />
+      )}
+      {puedeVerContabilidad && docTipo === "factura" && <ReclamoSiiDialog empresaId={empresaId} docId={docId} />}
+      {puedeVerContabilidad && pedidoAbierto && (
         <>
           <TraerDesdeDialog
             empresaId={empresaId}
@@ -83,7 +87,7 @@ export function DocumentoCompraToolbar({
           />
         </>
       )}
-      {grpoPorFacturar && (
+      {puedeVerContabilidad && grpoPorFacturar && (
         <TraerDesdeDialog
           empresaId={empresaId}
           documentoBaseId={docId}

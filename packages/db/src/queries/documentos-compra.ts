@@ -1,21 +1,25 @@
-import type {
-  CrearDocumentoCompraInput,
-  DocumentoCompraTipo,
-  GuardarDocumentoCompraInput,
-  TraerDesdeDocumentoInput,
+import {
+  codigoSiiPermitidoParaCompra,
+  type CrearDocumentoCompraInput,
+  type DocumentoCompraTipo,
+  type GuardarDocumentoCompraInput,
+  type TraerDesdeDocumentoInput,
 } from "@erp/shared";
-import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, or } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
 import {
   asientosContables,
   asientosLineas,
+  categoriasContables,
   centrosCosto,
   documentosCompra,
   documentosCompraLineas,
   empresas,
   impuestos,
   monedas,
+  pagos,
+  pagosDocumentos,
   planCuentas,
   productos,
   stockMovimientos,
@@ -59,6 +63,126 @@ const GENERA_ASIENTO = new Set<DocumentoCompraTipo>([
 ]);
 /** Compras: se bloquea con "Bloqueado" y también con "Bloqueado excepto ventas". */
 const PERIODO_BLOQUEA_COMPRA = new Set(["Bloqueado", "Bloqueado excepto ventas"]);
+
+async function validarTipoDocumentoCompra(
+  tx: Tx,
+  tipoDocumentoId: string,
+  docTipo: DocumentoCompraTipo,
+) {
+  const [tipo] = await tx
+    .select({ codigoSii: tiposDocumento.codigoSii, tipoOperacion: tiposDocumento.tipoOperacion })
+    .from(tiposDocumento)
+    .where(eq(tiposDocumento.id, tipoDocumentoId));
+  if (!tipo) throw new Error("El tipo de documento no existe.");
+  if (tipo.tipoOperacion !== "Compra" && tipo.tipoOperacion !== "Ambos") {
+    throw new Error("El tipo de documento no está habilitado para compras.");
+  }
+  if (!codigoSiiPermitidoParaCompra(docTipo, tipo.codigoSii)) {
+    throw new Error(`El tipo de documento SII no corresponde a ${docTipo}.`);
+  }
+  return tipo;
+}
+
+async function validarMaestrosDocumentoCompra(
+  tx: Tx,
+  empresaId: string,
+  docTipo: DocumentoCompraTipo,
+  input: GuardarDocumentoCompraInput,
+) {
+  if (input.docTipo !== docTipo) throw new Error("El tipo interno del documento no se puede cambiar.");
+  await validarTipoDocumentoCompra(tx, input.tipoDocumentoId, docTipo);
+
+  const [proveedor] = await tx
+    .select({ id: terceros.id, tipo: terceros.tipoTercero, activo: terceros.activo, bloqueado: terceros.bloqueado })
+    .from(terceros)
+    .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
+  if (!proveedor || proveedor.tipo !== "Proveedor") throw new Error("El proveedor no pertenece a esta empresa.");
+  if (!proveedor.activo || proveedor.bloqueado) throw new Error("El proveedor está inactivo o bloqueado.");
+
+  if (ES_FACTURA_COMPRA.has(docTipo) && !input.folio?.trim()) throw new Error("Indica el folio SII.");
+  if (input.fechaVencimiento < input.fechaEmision) {
+    throw new Error("La fecha de vencimiento no puede ser anterior a la fecha del documento.");
+  }
+  const [moneda] = await tx.select({ id: monedas.id }).from(monedas).where(and(
+    eq(monedas.id, input.monedaId),
+    eq(monedas.empresaId, empresaId),
+  ));
+  if (!moneda) throw new Error("La moneda no pertenece a esta empresa.");
+
+  const cuentaIds = [...new Set(input.lineas.map((l) => l.cuentaImputacionId))];
+  const cuentasValidas = cuentaIds.length ? await tx.select({ id: planCuentas.id }).from(planCuentas).where(and(
+    eq(planCuentas.empresaId, empresaId),
+    eq(planCuentas.activa, true),
+    eq(planCuentas.nivelImputable, true),
+    inArray(planCuentas.id, cuentaIds),
+  )) : [];
+  if (cuentasValidas.length !== cuentaIds.length) {
+    throw new Error("Una cuenta de imputación no pertenece a la empresa, está inactiva o no es imputable.");
+  }
+
+  const productoIds = [...new Set(input.lineas.map((l) => l.productoId).filter((x): x is string => !!x))];
+  if (productoIds.length) {
+    const validos = await tx.select({ id: productos.id }).from(productos).where(and(
+      eq(productos.empresaId, empresaId),
+      eq(productos.estado, "Activo"),
+      eq(productos.esCompra, true),
+      inArray(productos.id, productoIds),
+    ));
+    if (validos.length !== productoIds.length) throw new Error("Un producto no está habilitado para compra en esta empresa.");
+  }
+
+  const impuestoIds = [...new Set(input.lineas.map((l) => l.impuestoId).filter((x): x is string => !!x))];
+  if (impuestoIds.length) {
+    const validos = await tx.select({ id: impuestos.id, aplicaA: impuestos.aplicaA }).from(impuestos).where(and(
+      eq(impuestos.empresaId, empresaId),
+      eq(impuestos.activo, true),
+      inArray(impuestos.id, impuestoIds),
+    ));
+    if (validos.length !== impuestoIds.length || validos.some((i) => i.aplicaA !== "Compra" && i.aplicaA !== "Ambos")) {
+      throw new Error("Un impuesto no pertenece a esta empresa, está inactivo o no aplica a compras.");
+    }
+  }
+
+  const categoriaIds = [...new Set(input.lineas.map((l) => l.categoriaContableId).filter((x): x is string => !!x))];
+  if (categoriaIds.length) {
+    const validas = await tx.select({ id: categoriasContables.id, aplicaA: categoriasContables.aplicaA }).from(categoriasContables).where(and(
+      eq(categoriasContables.empresaId, empresaId),
+      inArray(categoriasContables.id, categoriaIds),
+    ));
+    if (validas.length !== categoriaIds.length || validas.some((c) => c.aplicaA !== "Compra" && c.aplicaA !== "Ambos")) {
+      throw new Error("Una categoría contable no pertenece a esta empresa o no aplica a compras.");
+    }
+  }
+
+  const centroIds = [...new Set(input.lineas.map((l) => l.centroCostoId).filter((x): x is string => !!x))];
+  if (centroIds.length) {
+    const validos = await tx.select({ id: centrosCosto.id }).from(centrosCosto).where(and(
+      eq(centrosCosto.empresaId, empresaId),
+      eq(centrosCosto.estado, "Activo"),
+      inArray(centrosCosto.id, centroIds),
+    ));
+    if (validos.length !== centroIds.length) throw new Error("Un centro de costo no pertenece a esta empresa o está inactivo.");
+  }
+
+  if (docTipo === "nota_credito" || docTipo === "nota_debito") {
+    if (!input.documentoBaseId) throw new Error("La nota debe indicar la factura que corrige.");
+    const [base] = await tx.select({
+      docTipo: documentosCompra.docTipo,
+      estado: documentosCompra.estado,
+      terceroId: documentosCompra.terceroId,
+      monedaId: documentosCompra.monedaId,
+    }).from(documentosCompra).where(and(
+      eq(documentosCompra.id, input.documentoBaseId),
+      eq(documentosCompra.empresaId, empresaId),
+    ));
+    if (!base || base.docTipo !== "factura" || base.estado !== "contabilizado") {
+      throw new Error("El documento de referencia debe ser una factura contabilizada de esta empresa.");
+    }
+    if (base.terceroId !== input.terceroId || base.monedaId !== input.monedaId) {
+      throw new Error("La factura de referencia debe corresponder al mismo proveedor y moneda.");
+    }
+  }
+}
 
 /**
  * Totales de un documento de compra. Igual que ventas, pero el IVA de una línea con
@@ -117,21 +241,88 @@ function calcularTotalesCompra(
   };
 }
 
+/** Saldo tributario disponible para notas de crédito de una factura de compra. */
+async function saldoNotaCreditoDeFacturaCompra(
+  tx: Tx,
+  empresaId: string,
+  facturaId: string,
+  excluirDocId?: string,
+) {
+  const [factura] = await tx.select({
+    montoTotal: documentosCompra.montoTotal,
+    docTipo: documentosCompra.docTipo,
+    estado: documentosCompra.estado,
+  }).from(documentosCompra).where(and(
+    eq(documentosCompra.id, facturaId),
+    eq(documentosCompra.empresaId, empresaId),
+  )).for("update");
+  if (!factura || factura.docTipo !== "factura" || factura.estado !== "contabilizado") return null;
+  const notas = await tx.select({ id: documentosCompra.id, total: documentosCompra.montoTotal })
+    .from(documentosCompra).where(and(
+      eq(documentosCompra.empresaId, empresaId),
+      eq(documentosCompra.documentoBaseId, facturaId),
+      eq(documentosCompra.docTipo, "nota_credito"),
+      eq(documentosCompra.estado, "contabilizado"),
+    ));
+  return Number(factura.montoTotal) - notas
+    .filter((n) => n.id !== excluirDocId)
+    .reduce((total, n) => total + Number(n.total), 0);
+}
+
 // ── Lecturas ─────────────────────────────────────────────────────────────────
 
-export async function listarDocumentosCompra(
-  empresaId: string,
-  f: { docTipo?: string; estado?: string; terceroId?: string } = {},
-) {
+export type FiltrosDocumentosCompra = {
+  docTipo?: string;
+  estado?: string;
+  terceroId?: string;
+  desde?: string;
+  hasta?: string;
+  q?: string;
+};
+
+function condicionesDocumentosCompra(empresaId: string, f: FiltrosDocumentosCompra) {
   const cond = [eq(documentosCompra.empresaId, empresaId)];
   if (f.docTipo) cond.push(eq(documentosCompra.docTipo, f.docTipo as never));
   if (f.estado) cond.push(eq(documentosCompra.estado, f.estado as never));
   if (f.terceroId) cond.push(eq(documentosCompra.terceroId, f.terceroId));
-  return db
-    .select()
-    .from(documentosCompra)
-    .where(and(...cond))
+  if (f.desde) cond.push(gte(documentosCompra.fechaEmision, f.desde));
+  if (f.hasta) cond.push(lte(documentosCompra.fechaEmision, f.hasta));
+  if (f.q?.trim()) {
+    const patron = `%${f.q.trim()}%`;
+    const proveedores = db.select({ id: terceros.id }).from(terceros).where(and(
+      eq(terceros.empresaId, empresaId),
+      or(ilike(terceros.razonSocial, patron), ilike(terceros.rut, patron)),
+    ));
+    cond.push(or(
+      ilike(documentosCompra.numeroInterno, patron),
+      ilike(documentosCompra.folio, patron),
+      inArray(documentosCompra.terceroId, proveedores),
+    )!);
+  }
+  return cond;
+}
+
+export async function listarDocumentosCompra(empresaId: string, f: FiltrosDocumentosCompra = {}) {
+  return db.select().from(documentosCompra)
+    .where(and(...condicionesDocumentosCompra(empresaId, f)))
     .orderBy(desc(documentosCompra.fechaEmision), desc(documentosCompra.createdAt));
+}
+
+export async function listarDocumentosCompraPaginados(
+  empresaId: string,
+  f: FiltrosDocumentosCompra & { pagina?: number; porPagina?: number } = {},
+) {
+  const pagina = Math.max(1, Math.trunc(f.pagina ?? 1));
+  const porPagina = Math.min(100, Math.max(10, Math.trunc(f.porPagina ?? 25)));
+  const where = and(...condicionesDocumentosCompra(empresaId, f));
+  const [[totalRow], documentos] = await Promise.all([
+    db.select({ total: count() }).from(documentosCompra).where(where),
+    db.select().from(documentosCompra).where(where)
+      .orderBy(desc(documentosCompra.fechaEmision), desc(documentosCompra.createdAt))
+      .limit(porPagina).offset((pagina - 1) * porPagina),
+  ]);
+  const total = Number(totalRow?.total ?? 0);
+  return { documentos, total, pagina, porPagina, paginas: Math.max(1, Math.ceil(total / porPagina)) };
 }
 
 export async function obtenerDocumentoCompraConLineas(id: string, empresaId: string) {
@@ -146,13 +337,51 @@ export async function obtenerDocumentoCompraConLineas(id: string, empresaId: str
     .where(eq(documentosCompraLineas.documentoCompraId, id))
     .orderBy(asc(documentosCompraLineas.numeroLinea));
   let asiento = null;
+  let reversa = null;
   if (documento.asientoId) {
     [asiento] = await db
       .select()
       .from(asientosContables)
       .where(eq(asientosContables.id, documento.asientoId));
   }
-  return { documento, lineas, asiento: asiento ?? null };
+  if (documento.asientoReversaId) {
+    [reversa] = await db.select().from(asientosContables).where(and(
+      eq(asientosContables.id, documento.asientoReversaId),
+      eq(asientosContables.empresaId, empresaId),
+    ));
+  }
+  return { documento, lineas, asiento: asiento ?? null, reversa: reversa ?? null };
+}
+
+/** Pagos efectuados aplicados al documento, para trazabilidad desde la factura. */
+export async function pagosDeDocumentoCompra(empresaId: string, documentoId: string) {
+  return db.select({
+    id: pagos.id,
+    numeroInterno: pagos.numeroInterno,
+    fechaPago: pagos.fechaPago,
+    estado: pagos.estado,
+    montoAplicado: pagosDocumentos.montoAplicado,
+  }).from(pagosDocumentos)
+    .innerJoin(pagos, eq(pagos.id, pagosDocumentos.pagoId))
+    .where(and(eq(pagos.empresaId, empresaId), eq(pagosDocumentos.documentoCompraId, documentoId)))
+    .orderBy(desc(pagos.fechaPago), desc(pagos.createdAt));
+}
+
+/** Notas de crédito y débito vinculadas a una factura de compra. */
+export async function notasDeFacturaCompra(empresaId: string, facturaId: string) {
+  return db.select({
+    id: documentosCompra.id,
+    docTipo: documentosCompra.docTipo,
+    numeroInterno: documentosCompra.numeroInterno,
+    folio: documentosCompra.folio,
+    fechaEmision: documentosCompra.fechaEmision,
+    montoTotal: documentosCompra.montoTotal,
+    estado: documentosCompra.estado,
+  }).from(documentosCompra).where(and(
+    eq(documentosCompra.empresaId, empresaId),
+    eq(documentosCompra.documentoBaseId, facturaId),
+    or(eq(documentosCompra.docTipo, "nota_credito"), eq(documentosCompra.docTipo, "nota_debito")),
+  )).orderBy(desc(documentosCompra.fechaEmision), desc(documentosCompra.createdAt));
 }
 
 /**
@@ -256,11 +485,13 @@ export async function crearDocumentoCompra(
   ctx?: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
+    await validarTipoDocumentoCompra(tx, input.tipoDocumentoId, input.docTipo);
     const [tercero] = await tx
       .select({
         monedaId: terceros.monedaId,
         condicionPagoDias: terceros.condicionPagoDias,
         tipoTercero: terceros.tipoTercero,
+        activo: terceros.activo,
         bloqueado: terceros.bloqueado,
       })
       .from(terceros)
@@ -269,14 +500,21 @@ export async function crearDocumentoCompra(
     if (tercero.tipoTercero !== "Proveedor") {
       throw new Error("El socio de negocio no es un proveedor");
     }
-    if (tercero.bloqueado) throw new Error("El proveedor está bloqueado");
+    if (!tercero.activo || tercero.bloqueado) throw new Error("El proveedor está inactivo o bloqueado");
 
+    const [empresa] = await tx.select({ monedaFuncionalId: empresas.monedaFuncionalId })
+      .from(empresas).where(eq(empresas.id, empresaId));
+    const monedaPreferida = tercero.monedaId ?? empresa?.monedaFuncionalId;
     const [monedaEmpresa] = await tx
       .select({ id: monedas.id })
       .from(monedas)
-      .where(eq(monedas.empresaId, empresaId))
+      .where(and(
+        eq(monedas.empresaId, empresaId),
+        ...(monedaPreferida ? [eq(monedas.id, monedaPreferida)] : []),
+      ))
       .orderBy(asc(monedas.codigo))
       .limit(1);
+    if (!monedaEmpresa) throw new Error("La empresa no tiene una moneda funcional válida configurada.");
 
     await sembrarSeriesCompra(tx, empresaId);
     const numeroInterno = await siguienteCodigo(tx, empresaId, "compra", input.docTipo);
@@ -292,7 +530,7 @@ export async function crearDocumentoCompra(
         fechaEmision: hoy,
         fechaContabilizacion: hoy,
         fechaVencimiento: sumarDiasISO(hoy, tercero.condicionPagoDias ?? 0),
-        monedaId: tercero.monedaId ?? monedaEmpresa!.id,
+        monedaId: monedaEmpresa.id,
         condicionPagoDias: tercero.condicionPagoDias,
         documentoBaseId: input.documentoBaseId ?? null,
         usuarioCreacionId: ctx?.usuarioId ?? null,
@@ -314,21 +552,23 @@ export async function crearDocumentoCompra(
   });
 }
 
-export async function guardarDocumentoCompra(
+async function guardarDocumentoCompraTx(
+  tx: Tx,
   id: string,
   empresaId: string,
   input: GuardarDocumentoCompraInput,
   ctx?: AuditoriaCtx,
 ) {
-  return db.transaction(async (tx) => {
     const [antes] = await tx
       .select()
       .from(documentosCompra)
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
+      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
+      .for("update");
     if (!antes) throw new Error("El documento no existe en esta empresa");
     if (antes.estado !== "borrador") {
       throw new Error("Solo se puede editar un documento en borrador");
     }
+    await validarMaestrosDocumentoCompra(tx, empresaId, antes.docTipo, input);
     if (input.modalidad === "Servicio" && antes.docTipo === "entrada_mercaderia") {
       throw new Error("Una entrada de mercadería no puede ser de tipo Servicio");
     }
@@ -363,6 +603,13 @@ export async function guardarDocumentoCompra(
       input.descuentoGlobalPct ?? 0,
     );
     const { neto, exento, totalImp, ivaNoRecuperable } = calc;
+    if (calc.total <= 0) throw new Error("El total del documento debe ser mayor a 0.");
+    if (antes.docTipo === "nota_credito" && input.documentoBaseId) {
+      const saldo = await saldoNotaCreditoDeFacturaCompra(tx, empresaId, input.documentoBaseId, id);
+      if (saldo != null && calc.total > saldo + 0.01) {
+        throw new Error(`La nota de crédito ($${pesos(calc.total)}) supera el saldo disponible de la factura ($${pesos(saldo)}).`);
+      }
+    }
     const llevaPendiente =
       antes.docTipo === "pedido" || antes.docTipo === "entrada_mercaderia";
 
@@ -370,7 +617,11 @@ export async function guardarDocumentoCompra(
     // trazabilidad y su saldo pendiente; solo se editan importes/fechas y no se puede
     // agregar/quitar líneas.
     let previas: (typeof documentosCompraLineas.$inferSelect)[] = [];
-    if (antes.documentoBaseId) {
+    if (
+      antes.documentoBaseId &&
+      antes.docTipo !== "nota_credito" &&
+      antes.docTipo !== "nota_debito"
+    ) {
       previas = await tx
         .select()
         .from(documentosCompraLineas)
@@ -429,6 +680,10 @@ export async function guardarDocumentoCompra(
         descuentoGlobalPct: (input.descuentoGlobalPct ?? 0).toString(),
         condicionPagoDias: input.condicionPagoDias ?? null,
         glosa: input.glosa || null,
+        documentoBaseId:
+          antes.docTipo === "nota_credito" || antes.docTipo === "nota_debito"
+            ? (input.documentoBaseId ?? null)
+            : antes.documentoBaseId,
         montoNeto: neto.toString(),
         montoExento: exento.toString(),
         montoImpuesto: totalImp.toString(),
@@ -453,7 +708,15 @@ export async function guardarDocumentoCompra(
       });
     }
     return doc;
-  });
+}
+
+export async function guardarDocumentoCompra(
+  id: string,
+  empresaId: string,
+  input: GuardarDocumentoCompraInput,
+  ctx?: AuditoriaCtx,
+) {
+  return db.transaction((tx) => guardarDocumentoCompraTx(tx, id, empresaId, input, ctx));
 }
 
 // ── Pedido: abrir / traer / cerrar ───────────────────────────────────────────
@@ -838,7 +1101,7 @@ async function construirAsientoCompra(
         codigo: productos.codigo,
       })
       .from(productos)
-      .where(inArray(productos.id, idsProd));
+      .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, idsProd)));
     for (const p of prods) esInventarioPorId.set(p.id, p.esInventario);
     const esCompraPorId = new Map(prods.map((p) => [p.id, p.esCompra]));
     for (const l of lineas) {
@@ -860,11 +1123,17 @@ async function construirAsientoCompra(
     .from(empresas)
     .where(eq(empresas.id, empresaId));
 
-  const [tercero] = await tx.select().from(terceros).where(eq(terceros.id, doc.terceroId));
+  const [tercero] = await tx.select().from(terceros).where(and(
+    eq(terceros.id, doc.terceroId),
+    eq(terceros.empresaId, empresaId),
+  ));
   // Cuenta puente: 1) del proveedor, 2) de su grupo de socios de negocio, 3) fallback
   // GENERAL de "Determinación de cuentas".
   const grupoTercero = tercero?.grupoId
-    ? (await tx.select().from(tercerosGrupos).where(eq(tercerosGrupos.id, tercero.grupoId)))[0]
+    ? (await tx.select().from(tercerosGrupos).where(and(
+        eq(tercerosGrupos.id, tercero.grupoId),
+        eq(tercerosGrupos.empresaId, empresaId),
+      )))[0]
     : undefined;
   const cuentaPuente =
     tercero?.cuentaContableAsociadaId ??
@@ -1117,7 +1386,7 @@ async function construirAsientoEntradaMercaderia(
         codigo: productos.codigo,
       })
       .from(productos)
-      .where(inArray(productos.id, idsProd));
+      .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, idsProd)));
     for (const p of prods) {
       esInventarioPorId.set(p.id, p.esInventario);
       if (!p.esCompra) errores.push(`El artículo ${p.codigo} no está habilitado para compra.`);
@@ -1142,7 +1411,10 @@ async function construirAsientoEntradaMercaderia(
     errores.push("Configura la cuenta puente GR-IR en Determinación de cuentas.");
   }
 
-  const [tercero] = await tx.select().from(terceros).where(eq(terceros.id, doc.terceroId));
+  const [tercero] = await tx.select().from(terceros).where(and(
+    eq(terceros.id, doc.terceroId),
+    eq(terceros.empresaId, empresaId),
+  ));
   const [empresa] = await tx
     .select({ monedaFuncionalId: empresas.monedaFuncionalId })
     .from(empresas)
@@ -1340,19 +1612,65 @@ export async function obtenerAsientoCompraContabilizado(asientoId: string, empre
   };
 }
 
-export async function contabilizarDocumentoCompra(
+async function contabilizarDocumentoCompraTx(
+  tx: Tx,
   id: string,
   empresaId: string,
   ctx: AuditoriaCtx,
 ) {
-  return db.transaction(async (tx) => {
     const [prev] = await tx
-      .select({ estado: documentosCompra.estado, docTipo: documentosCompra.docTipo })
+      .select()
       .from(documentosCompra)
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
+      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
+      .for("update");
     if (!prev) throw new Error("El documento no existe");
     if (prev.estado !== "borrador") throw new Error("El documento ya no está en borrador");
     if (!GENERA_ASIENTO.has(prev.docTipo)) throw new Error("Este tipo de documento no se contabiliza");
+
+    await validarTipoDocumentoCompra(tx, prev.tipoDocumentoId, prev.docTipo);
+    const [proveedor] = await tx.select({
+      tipo: terceros.tipoTercero,
+      activo: terceros.activo,
+      bloqueado: terceros.bloqueado,
+    }).from(terceros).where(and(
+      eq(terceros.id, prev.terceroId),
+      eq(terceros.empresaId, empresaId),
+    ));
+    if (!proveedor || proveedor.tipo !== "Proveedor") {
+      throw new Error("El proveedor no pertenece a esta empresa.");
+    }
+    if (!proveedor.activo || proveedor.bloqueado) {
+      throw new Error("El proveedor está inactivo o bloqueado.");
+    }
+    if (ES_FACTURA_COMPRA.has(prev.docTipo)) {
+      if (!prev.folio?.trim()) throw new Error("Indica el folio SII antes de contabilizar.");
+      if (Number(prev.tipoCambio) <= 0) throw new Error("El tipo de cambio debe ser mayor a 0.");
+      if (Number(prev.montoTotal) <= 0) throw new Error("El total del documento debe ser mayor a 0.");
+    }
+    if (prev.docTipo === "nota_credito" || prev.docTipo === "nota_debito") {
+      if (!prev.documentoBaseId) throw new Error("La nota debe indicar la factura que corrige.");
+      const [base] = await tx.select({
+        docTipo: documentosCompra.docTipo,
+        estado: documentosCompra.estado,
+        terceroId: documentosCompra.terceroId,
+        monedaId: documentosCompra.monedaId,
+      }).from(documentosCompra).where(and(
+        eq(documentosCompra.id, prev.documentoBaseId),
+        eq(documentosCompra.empresaId, empresaId),
+      ));
+      if (!base || base.docTipo !== "factura" || base.estado !== "contabilizado") {
+        throw new Error("El documento de referencia debe ser una factura contabilizada de esta empresa.");
+      }
+      if (base.terceroId !== prev.terceroId || base.monedaId !== prev.monedaId) {
+        throw new Error("La factura de referencia debe corresponder al mismo proveedor y moneda.");
+      }
+      if (prev.docTipo === "nota_credito") {
+        const saldo = await saldoNotaCreditoDeFacturaCompra(tx, empresaId, prev.documentoBaseId, id);
+        if (saldo != null && Number(prev.montoTotal) > saldo + 0.01) {
+          throw new Error(`La nota de crédito ($${pesos(Number(prev.montoTotal))}) supera el saldo disponible de la factura ($${pesos(saldo)}).`);
+        }
+      }
+    }
 
     // ── Entrada de Mercadería: mueve stock + costo, asiento Existencias / GR-IR ──
     if (prev.docTipo === "entrada_mercaderia") {
@@ -1377,6 +1695,7 @@ export async function contabilizarDocumentoCompra(
         .set({ asientoId: asi.id })
         .where(
           and(
+            eq(stockMovimientos.empresaId, empresaId),
             eq(stockMovimientos.origenTabla, "documentos_compra"),
             eq(stockMovimientos.origenId, id),
             eq(stockMovimientos.tipo, "entrada"),
@@ -1487,6 +1806,36 @@ export async function contabilizarDocumentoCompra(
       });
     }
     return doc;
+}
+
+export async function contabilizarDocumentoCompra(
+  id: string,
+  empresaId: string,
+  ctx: AuditoriaCtx,
+) {
+  return db.transaction((tx) => contabilizarDocumentoCompraTx(tx, id, empresaId, ctx));
+}
+
+/** Guarda y contabiliza una factura de compra dentro de una sola transacción. */
+export async function guardarYContabilizarFacturaCompra(
+  id: string,
+  empresaId: string,
+  input: GuardarDocumentoCompraInput,
+  ctx: AuditoriaCtx,
+  opciones: { totalEsperado?: number; tolerancia?: number } = {},
+) {
+  return db.transaction(async (tx) => {
+    const guardado = await guardarDocumentoCompraTx(tx, id, empresaId, input, ctx);
+    if (guardado.docTipo !== "factura") throw new Error("El documento no es una factura de compra.");
+    if (opciones.totalEsperado != null) {
+      const diferencia = Math.abs(Number(guardado.montoTotal) - opciones.totalEsperado);
+      if (diferencia > (opciones.tolerancia ?? 1)) {
+        throw new Error(
+          `El total calculado ($${pesos(Number(guardado.montoTotal))}) difiere del total del DTE ($${pesos(opciones.totalEsperado)}).`,
+        );
+      }
+    }
+    return contabilizarDocumentoCompraTx(tx, id, empresaId, ctx);
   });
 }
 
@@ -1494,155 +1843,173 @@ export async function anularDocumentoCompra(
   id: string,
   empresaId: string,
   motivo: string,
+  fechaReversa: string,
   ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
-    const [doc] = await tx
-      .select()
-      .from(documentosCompra)
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
+    const [doc] = await tx.select().from(documentosCompra).where(and(
+      eq(documentosCompra.id, id),
+      eq(documentosCompra.empresaId, empresaId),
+    )).for("update");
     if (!doc) throw new Error("El documento no existe en esta empresa");
     if (doc.estado === "anulado") throw new Error("El documento ya está anulado");
+    if (doc.estado === "borrador") {
+      throw new Error("Para un documento pendiente usa Descartar.");
+    }
     if (await tienePagosAplicados(tx, empresaId, "compra", id)) {
       throw new Error("El documento tiene pagos aplicados: anula primero el pago.");
     }
 
-    // Entrada de Mercadería: no se puede anular si ya se facturó parte, y hay que
-    // revertir los movimientos de stock antes de la reversa del asiento.
+    const fechaDocumento = doc.fechaContabilizacion ?? doc.fechaEmision;
+    if (doc.asientoId && fechaReversa < fechaDocumento) {
+      throw new Error("La fecha de reversa no puede ser anterior a la contabilización.");
+    }
+
+    let movimientosEntrada: { id: string }[] = [];
     if (doc.docTipo === "entrada_mercaderia") {
-      const misLineas = await tx
-        .select({
-          cantidad: documentosCompraLineas.cantidad,
-          pendiente: documentosCompraLineas.cantidadPendiente,
-        })
-        .from(documentosCompraLineas)
-        .where(eq(documentosCompraLineas.documentoCompraId, id));
-      if (misLineas.some((l) => Number(l.pendiente) < Number(l.cantidad) - 0.000001)) {
-        throw new Error(
-          "No se puede anular: hay mercadería ya facturada. Anula primero la factura.",
-        );
-      }
-      const movs = await tx
-        .select({ id: stockMovimientos.id })
-        .from(stockMovimientos)
-        .where(
-          and(
-            eq(stockMovimientos.empresaId, empresaId),
-            eq(stockMovimientos.origenTabla, "documentos_compra"),
-            eq(stockMovimientos.origenId, id),
-            eq(stockMovimientos.tipo, "entrada"),
-          ),
-        );
-      const hoy = new Date().toISOString().slice(0, 10);
-      for (const m of movs) await aplicarReversaEntrada(tx, empresaId, m.id, hoy);
-    }
-
-    if (doc.estado === "contabilizado" && doc.asientoId) {
-      const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
-      const periodo = await periodoDe(empresaId, fechaContab);
-      if (periodo && PERIODO_BLOQUEA_COMPRA.has(periodo.estado)) {
-        throw new Error("El periodo del documento está bloqueado; reábrelo para anular.");
-      }
-      const original = await tx
-        .select()
-        .from(asientosLineas)
-        .where(eq(asientosLineas.asientoId, doc.asientoId));
-      const [cab] = await tx
-        .select()
-        .from(asientosContables)
-        .where(eq(asientosContables.id, doc.asientoId));
-      const anio = Number(fechaContab.slice(0, 4));
-      const correlativo = await siguienteCorrelativoAsiento(tx, empresaId, anio);
-      const [reversa] = await tx
-        .insert(asientosContables)
-        .values({
-          empresaId,
-          usuarioId: ctx.usuarioId,
-          correlativo,
-          fecha: fechaContab,
-          glosa: `Reversa: ${cab?.glosa ?? etiquetaDoc(doc)}`,
-          tipo: "ajuste",
-          origen: "anulación compra",
-          estado: "contabilizado",
-          documentoOrigenId: id,
-          documentoOrigenTabla: "documentos_compra",
-        })
-        .returning();
-      if (!reversa) throw new Error("No se pudo crear el asiento de reversa");
-      await tx.insert(asientosLineas).values(
-        original.map((l) => ({
-          asientoId: reversa.id,
-          cuentaId: l.cuentaId,
-          centroCostoId: l.centroCostoId,
-          terceroId: l.terceroId,
-          glosa: `Reversa: ${l.glosa ?? ""}`.trim(),
-          montoDebeOrigen: l.montoHaberOrigen,
-          montoHaberOrigen: l.montoDebeOrigen,
-          monedaOrigenId: l.monedaOrigenId,
-          tipoCambioAplicado: l.tipoCambioAplicado,
-          montoDebeFuncional: l.montoHaberFuncional,
-          montoHaberFuncional: l.montoDebeFuncional,
-          documentoReferenciaId: id,
-        })),
-      );
-      await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
-    }
-
-    // Devuelve el saldo a las líneas del documento base.
-    const lineas = await tx
-      .select({
+      const misLineas = await tx.select({
         cantidad: documentosCompraLineas.cantidad,
-        baseLineaId: documentosCompraLineas.documentoBaseLineaId,
-      })
-      .from(documentosCompraLineas)
-      .where(eq(documentosCompraLineas.documentoCompraId, id));
-    for (const l of lineas) {
-      if (!l.baseLineaId) continue;
-      const [bl] = await tx
-        .select({ pend: documentosCompraLineas.cantidadPendiente })
-        .from(documentosCompraLineas)
-        .where(eq(documentosCompraLineas.id, l.baseLineaId));
-      if (bl) {
-        await tx
-          .update(documentosCompraLineas)
-          .set({ cantidadPendiente: (Number(bl.pend) + Number(l.cantidad)).toString() })
-          .where(eq(documentosCompraLineas.id, l.baseLineaId));
+        pendiente: documentosCompraLineas.cantidadPendiente,
+      }).from(documentosCompraLineas).where(eq(documentosCompraLineas.documentoCompraId, id));
+      if (misLineas.some((l) => Number(l.pendiente) < Number(l.cantidad) - 0.000001)) {
+        throw new Error("No se puede anular: hay mercadería ya facturada. Anula primero la factura.");
+      }
+      movimientosEntrada = await tx.select({ id: stockMovimientos.id }).from(stockMovimientos).where(and(
+        eq(stockMovimientos.empresaId, empresaId),
+        eq(stockMovimientos.origenTabla, "documentos_compra"),
+        eq(stockMovimientos.origenId, id),
+        eq(stockMovimientos.tipo, "entrada"),
+      ));
+    }
+
+    let asientoReversaId: string | null = null;
+    let correlativoReversa: number | null = null;
+    if (doc.asientoId) {
+      const periodo = await periodoDe(empresaId, fechaReversa);
+      if (!periodo) throw new Error("No hay un período contable para la fecha de reversa.");
+      if (PERIODO_BLOQUEA_COMPRA.has(periodo.estado)) {
+        throw new Error("El período de la reversa está bloqueado para compras; reábrelo para anular.");
+      }
+      const original = await tx.select().from(asientosLineas).where(eq(asientosLineas.asientoId, doc.asientoId));
+      const [cab] = await tx.select().from(asientosContables).where(and(
+        eq(asientosContables.id, doc.asientoId),
+        eq(asientosContables.empresaId, empresaId),
+      ));
+      const anio = Number(fechaReversa.slice(0, 4));
+      const correlativo = await siguienteCorrelativoAsiento(tx, empresaId, anio);
+      const [reversa] = await tx.insert(asientosContables).values({
+        empresaId,
+        usuarioId: ctx.usuarioId,
+        correlativo,
+        fecha: fechaReversa,
+        glosa: `Reversa: ${cab?.glosa ?? etiquetaDoc(doc)}`,
+        tipo: "ajuste",
+        origen: "anulación compra",
+        estado: "contabilizado",
+        documentoOrigenId: id,
+        documentoOrigenTabla: "documentos_compra",
+      }).returning();
+      if (!reversa) throw new Error("No se pudo crear el asiento de reversa");
+      await tx.insert(asientosLineas).values(original.map((l) => ({
+        asientoId: reversa.id,
+        cuentaId: l.cuentaId,
+        centroCostoId: l.centroCostoId,
+        terceroId: l.terceroId,
+        glosa: `Reversa: ${l.glosa ?? ""}`.trim(),
+        montoDebeOrigen: l.montoHaberOrigen,
+        montoHaberOrigen: l.montoDebeOrigen,
+        monedaOrigenId: l.monedaOrigenId,
+        tipoCambioAplicado: l.tipoCambioAplicado,
+        montoDebeFuncional: l.montoHaberFuncional,
+        montoHaberFuncional: l.montoDebeFuncional,
+        documentoReferenciaId: id,
+      })));
+      await registrarAuditoriaCreacionAsiento(tx, empresaId, reversa.id, { ...ctx, motivo });
+      for (const movimiento of movimientosEntrada) {
+        await aplicarReversaEntrada(tx, empresaId, movimiento.id, fechaReversa, reversa.id);
+      }
+      asientoReversaId = reversa.id;
+      correlativoReversa = correlativo;
+    }
+
+    // Devuelve el saldo a las líneas del documento base (pedido o recepción).
+    const lineas = await tx.select({
+      cantidad: documentosCompraLineas.cantidad,
+      baseLineaId: documentosCompraLineas.documentoBaseLineaId,
+    }).from(documentosCompraLineas).where(eq(documentosCompraLineas.documentoCompraId, id));
+    for (const linea of lineas) {
+      if (!linea.baseLineaId) continue;
+      const [baseLinea] = await tx.select({ pend: documentosCompraLineas.cantidadPendiente })
+        .from(documentosCompraLineas).where(eq(documentosCompraLineas.id, linea.baseLineaId));
+      if (baseLinea) {
+        await tx.update(documentosCompraLineas)
+          .set({ cantidadPendiente: (Number(baseLinea.pend) + Number(linea.cantidad)).toString() })
+          .where(eq(documentosCompraLineas.id, linea.baseLineaId));
       }
     }
     if (doc.documentoBaseId) {
-      const [base] = await tx
-        .select({ docTipo: documentosCompra.docTipo, estado: documentosCompra.estado })
-        .from(documentosCompra)
-        .where(eq(documentosCompra.id, doc.documentoBaseId));
+      const [base] = await tx.select({ docTipo: documentosCompra.docTipo, estado: documentosCompra.estado })
+        .from(documentosCompra).where(and(
+          eq(documentosCompra.id, doc.documentoBaseId),
+          eq(documentosCompra.empresaId, empresaId),
+        ));
       if (base && base.estado === "cerrado") {
-        await tx
-          .update(documentosCompra)
-          .set({
-            estado: base.docTipo === "pedido" ? "abierto" : "contabilizado",
-            updatedAt: new Date(),
-          })
-          .where(eq(documentosCompra.id, doc.documentoBaseId));
+        await tx.update(documentosCompra).set({
+          estado: base.docTipo === "pedido" ? "abierto" : "contabilizado",
+          updatedAt: new Date(),
+        }).where(and(eq(documentosCompra.id, doc.documentoBaseId), eq(documentosCompra.empresaId, empresaId)));
       }
     }
 
-    const [act] = await tx
-      .update(documentosCompra)
-      .set({ estado: "anulado", motivoAnulacion: motivo, updatedAt: new Date() })
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
-      .returning();
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx: { ...ctx, motivo },
-        tabla: "documentos_compra",
-        registroId: id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "cambio_estado",
-        antes: { estado: doc.estado },
-        despues: { estado: "anulado" },
-      });
-    }
-    return act!;
+    const [actualizado] = await tx.update(documentosCompra).set({
+      estado: "anulado",
+      asientoReversaId,
+      motivoAnulacion: motivo,
+      updatedAt: new Date(),
+    }).where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId))).returning();
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx: { ...ctx, motivo },
+      tabla: "documentos_compra",
+      registroId: id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "cambio_estado",
+      antes: { estado: doc.estado },
+      despues: { estado: "anulado", fechaReversa, asientoReversa: correlativoReversa },
+    });
+    return actualizado!;
+  });
+}
+
+export async function descartarBorradorDocumentoCompra(
+  id: string,
+  empresaId: string,
+  motivo: string,
+  ctx: AuditoriaCtx,
+) {
+  return db.transaction(async (tx) => {
+    const [doc] = await tx.select().from(documentosCompra).where(and(
+      eq(documentosCompra.id, id),
+      eq(documentosCompra.empresaId, empresaId),
+    )).for("update");
+    if (!doc) throw new Error("El documento no existe en esta empresa.");
+    if (doc.estado !== "borrador") throw new Error("Solo se puede descartar un documento pendiente.");
+    const [actualizado] = await tx.update(documentosCompra).set({
+      estado: "anulado",
+      motivoAnulacion: motivo,
+      updatedAt: new Date(),
+    }).where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId))).returning();
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx: { ...ctx, motivo },
+      tabla: "documentos_compra",
+      registroId: id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "cambio_estado",
+      antes: { estado: "borrador" },
+      despues: { estado: "anulado" },
+    });
+    return actualizado!;
   });
 }
 

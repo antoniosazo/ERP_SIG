@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useTransition, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm } from "react-hook-form";
@@ -16,6 +16,7 @@ import {
   abrirPedidoCompraAction,
   anularDocumentoCompraAction,
   contabilizarDocumentoCompraAction,
+  descartarDocumentoCompraPendienteAction,
   actualizarFechasDocumentoCompraAction,
   guardarDocumentoCompraAction,
 } from "@/lib/actions/compras";
@@ -24,11 +25,14 @@ import { COMPRA_TIPO_META } from "@/lib/compras";
 import { Badge } from "@/components/ui/badge";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
 import { MontoInput } from "@/components/panel/monto-input";
+import { SelectorBuscable } from "@/components/panel/selector-buscable";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -59,6 +63,7 @@ export type CategoriaOpcion = Opcion & { ivaRecuperableDefault: string | null };
 
 type FormValues = z.input<typeof guardarDocumentoCompraSchema>;
 const NINGUNA = "__none__";
+const ES_TRIBUTARIO = new Set<DocumentoCompraTipo>(["factura", "nota_credito", "nota_debito"]);
 
 const fmt = (n: number) => n.toLocaleString("es-CL", { maximumFractionDigits: 4 });
 
@@ -76,6 +81,9 @@ export function DocumentoCompraForm({
   estado,
   numeroInterno,
   asientoCorrelativo,
+  puedeEditar,
+  puedeAnular,
+  hoy,
   config,
   valoresIniciales,
   proveedores,
@@ -86,6 +94,7 @@ export function DocumentoCompraForm({
   impuestos,
   monedas,
   productos,
+  docsReferencia,
   lineasPendientes,
 }: {
   empresaId: string;
@@ -94,6 +103,9 @@ export function DocumentoCompraForm({
   estado: string;
   numeroInterno: string | null;
   asientoCorrelativo: number | null;
+  puedeEditar: boolean;
+  puedeAnular: boolean;
+  hoy: string;
   config: ConfigFormularioDoc;
   valoresIniciales: FormValues;
   proveedores: ProveedorOpcion[];
@@ -104,16 +116,20 @@ export function DocumentoCompraForm({
   impuestos: (Opcion & { tasa: number })[];
   monedas: Opcion[];
   productos: ProductoCompraOpcion[];
+  docsReferencia: Opcion[];
   /** Saldo pendiente por línea (cuando este documento viene de un pedido). */
   lineasPendientes?: Record<number, number>;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const readOnly = estado !== "borrador";
+  const [anulacionAbierta, setAnulacionAbierta] = useState(false);
+  const [motivoAnulacion, setMotivoAnulacion] = useState("");
+  const [fechaReversa, setFechaReversa] = useState(hoy);
+  const readOnly = estado !== "borrador" || !puedeEditar;
   // Las facturas no pasan por borrador: se contabilizan al guardarse, y ya contabilizadas solo
   // se editan el vencimiento y la fecha de contabilización.
   const esFactura = docTipo === "factura";
-  const fechasEditables = esFactura && estado === "contabilizado";
+  const fechasEditables = puedeEditar && esFactura && estado === "contabilizado";
   const contabiliza = COMPRA_TIPO_META[docTipo].contabiliza;
   const esPedido = docTipo === "pedido";
 
@@ -246,16 +262,39 @@ export function DocumentoCompraForm({
   }
 
   function anular() {
-    const motivo = prompt("Motivo de la anulación:");
-    if (!motivo?.trim()) return;
+    if (!motivoAnulacion.trim()) return toast.error("Indica el motivo de la anulación.");
     startTransition(async () => {
-      const r = await anularDocumentoCompraAction(empresaId, docId, { motivo });
+      const r = await anularDocumentoCompraAction(empresaId, docId, {
+        motivo: motivoAnulacion,
+        fechaReversa,
+      });
       if (r.ok) {
-        toast.success("Documento anulado");
+        toast.success("Documento anulado y reversado");
+        setAnulacionAbierta(false);
         router.refresh();
       } else toast.error(r.error);
     });
   }
+
+  function descartar() {
+    startTransition(async () => {
+      const r = await descartarDocumentoCompraPendienteAction(empresaId, docId);
+      if (r.ok) {
+        toast.success("Documento pendiente descartado");
+        router.refresh();
+      } else toast.error(r.error);
+    });
+  }
+
+  const selOpt = (name: keyof FormValues, opciones: Opcion[], placeholder: string) => (
+    <SelectorBuscable
+      value={(watch(name) as string | undefined) ?? undefined}
+      onValueChange={(v) => setValue(name, v as never, { shouldValidate: true })}
+      opciones={opciones}
+      placeholder={placeholder}
+      disabled={readOnly}
+    />
+  );
 
   const campo = (label: string, field: ReactNode, extra?: string, error?: string) => (
     <div className={`space-y-2 ${extra ?? ""}`}>
@@ -278,29 +317,19 @@ export function DocumentoCompraForm({
               />
             )}
             <div className="min-w-0 flex-1">
-          <Select
-            value={(watch("terceroId") as string | undefined) ?? NINGUNA}
-            onValueChange={(v) => {
-              const pid = v === NINGUNA ? undefined : v;
-              setValue("terceroId", pid as never);
+          <SelectorBuscable
+            value={(watch("terceroId") as string | undefined) ?? undefined}
+            onValueChange={(pid) => {
+              setValue("terceroId", pid as never, { shouldValidate: true });
               const prov = proveedores.find((p) => p.id === pid);
               setValue("condicionPagoDias", prov?.condicionPagoDias ?? 0);
               recomputarVencimiento(prov?.condicionPagoDias ?? 0);
             }}
+            opciones={proveedores}
+            placeholder="Selecciona un proveedor"
             disabled={readOnly}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Proveedor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NINGUNA}>Proveedor</SelectItem>
-              {proveedores.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            invalido={!!errors.terceroId}
+          />
             </div>
           </div>,
         );
@@ -327,26 +356,7 @@ export function DocumentoCompraForm({
           </Select>,
         );
       case "tipoDocumentoId":
-        return campo(
-          "Tipo de documento",
-          <Select
-            value={(watch("tipoDocumentoId") as string | undefined) ?? NINGUNA}
-            onValueChange={(v) => setValue("tipoDocumentoId", (v === NINGUNA ? undefined : v) as never)}
-            disabled={readOnly}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NINGUNA}>Tipo</SelectItem>
-              {tiposDocumento.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>,
-        );
+        return campo("Tipo de documento", selOpt("tipoDocumentoId", tiposDocumento, "Selecciona el tipo"));
       case "fechaEmision":
         return campo(
           "Fecha del documento",
@@ -393,7 +403,15 @@ export function DocumentoCompraForm({
           </Select>,
         );
       case "folio":
-        return campo("Folio SII", <Input {...register("folio")} disabled={readOnly} />);
+        return campo(ES_TRIBUTARIO.has(docTipo) ? "Folio SII *" : "Folio", <Input {...register("folio")} disabled={readOnly} aria-invalid={!!errors.folio} />, undefined, errors.folio?.message);
+      case "documentoBaseId":
+        if (docTipo !== "nota_credito" && docTipo !== "nota_debito") return null;
+        return campo(
+          "Factura que corrige *",
+          selOpt("documentoBaseId", docsReferencia, "Selecciona la factura"),
+          undefined,
+          errors.documentoBaseId?.message,
+        );
       case "numAtCard":
         return campo(
           "N° del documento del proveedor",
@@ -407,7 +425,10 @@ export function DocumentoCompraForm({
             step="0.000001"
             {...register("tipoCambio", { valueAsNumber: true })}
             disabled={readOnly}
+            aria-invalid={!!errors.tipoCambio}
           />,
+          undefined,
+          errors.tipoCambio?.message,
         );
       case "descuentoGlobalPct":
         return campo(
@@ -465,42 +486,25 @@ export function DocumentoCompraForm({
     switch (id) {
       case "productoId":
         return (
-          <Select
-            value={watch(`lineas.${i}.productoId`) ?? NINGUNA}
-            onValueChange={(v) => elegirProducto(i, v === NINGUNA ? undefined : v)}
+          <SelectorBuscable
+            value={watch(`lineas.${i}.productoId`) ?? undefined}
+            onValueChange={(v) => elegirProducto(i, v)}
+            opciones={productos}
+            placeholder="Selecciona un producto"
             disabled={readOnly}
-          >
-            <SelectTrigger className="w-full min-w-44">
-              <SelectValue placeholder="—" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NINGUNA}>—</SelectItem>
-              {productos.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="min-w-44"
+          />
         );
       case "cuentaImputacionId":
         return (
-          <Select
+          <SelectorBuscable
             value={watch(`lineas.${i}.cuentaImputacionId`)}
-            onValueChange={(v) => setValue(`lineas.${i}.cuentaImputacionId`, v)}
+            onValueChange={(v) => setValue(`lineas.${i}.cuentaImputacionId`, v ?? "", { shouldValidate: true })}
+            opciones={cuentas}
+            placeholder="Selecciona una cuenta"
             disabled={readOnly}
-          >
-            <SelectTrigger className="w-full min-w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {cuentas.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="min-w-48"
+          />
         );
       case "cantidad":
         return (
@@ -652,7 +656,13 @@ export function DocumentoCompraForm({
   }
 
   return (
+    <>
     <form onSubmit={onSubmit} className="space-y-4">
+      {Object.keys(errors).length > 0 && (
+        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          Revisa los campos marcados antes de guardar el documento.
+        </div>
+      )}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>
@@ -799,10 +809,11 @@ export function DocumentoCompraForm({
             {isPending ? "Guardando..." : "Guardar fechas"}
           </Button>
         )}
-        {estado !== "anulado" && estado !== "cerrado" && (
-          <Button type="button" variant="destructive" disabled={isPending} onClick={anular}>
-            Anular
-          </Button>
+        {estado === "borrador" && puedeEditar && (
+          <Button type="button" variant="outline" disabled={isPending} onClick={descartar}>Descartar pendiente</Button>
+        )}
+        {estado !== "borrador" && estado !== "anulado" && puedeAnular && (
+          <Button type="button" variant="destructive" disabled={isPending} onClick={() => setAnulacionAbierta(true)}>Anular</Button>
         )}
         {estado === "contabilizado" && asientoCorrelativo != null && (
           <span className="text-sm text-muted-foreground">
@@ -815,5 +826,16 @@ export function DocumentoCompraForm({
         />
       </div>
     </form>
+    <Dialog open={anulacionAbierta} onOpenChange={setAnulacionAbierta}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Anular y reversar documento</DialogTitle><DialogDescription>Se creará un asiento de reversa y, si corresponde, movimientos de stock en la misma fecha. La acción queda registrada en auditoría.</DialogDescription></DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2"><Label htmlFor="compra-fecha-reversa">Fecha de reversa</Label><Input id="compra-fecha-reversa" type="date" min={valoresIniciales.fechaContabilizacion ?? undefined} value={fechaReversa} onChange={(e) => setFechaReversa(e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="compra-motivo-anulacion">Motivo</Label><Textarea id="compra-motivo-anulacion" value={motivoAnulacion} onChange={(e) => setMotivoAnulacion(e.target.value)} placeholder="Explica por qué se anula el documento" /></div>
+        </div>
+        <DialogFooter><Button type="button" variant="outline" onClick={() => setAnulacionAbierta(false)}>Cancelar</Button><Button type="button" variant="destructive" disabled={isPending || !motivoAnulacion.trim() || !fechaReversa} onClick={anular}>{isPending ? "Anulando…" : "Anular y reversar"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

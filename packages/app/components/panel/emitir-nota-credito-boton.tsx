@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { MontoInput } from "@/components/panel/monto-input";
 import {
   Select,
   SelectContent,
@@ -39,6 +40,7 @@ export function EmitirNotaCreditoBoton({
   const [isPending, startTransition] = useTransition();
   const [abierto, setAbierto] = useState(false);
   const [tipoDocumentoId, setTipoDocumentoId] = useState(tiposNC[0]?.id ?? "");
+  const [monto, setMonto] = useState(saldo);
 
   if (saldo <= 0.01) {
     return (
@@ -53,8 +55,12 @@ export function EmitirNotaCreditoBoton({
       toast.error("Elige el tipo de documento.");
       return;
     }
+    if (!(monto > 0) || monto > saldo + 0.01) {
+      toast.error("El monto debe ser mayor que cero y no superar el saldo disponible.");
+      return;
+    }
     startTransition(async () => {
-      const r = await emitirNotaCreditoDesdeFacturaAction(empresaId, facturaId, tipoDocumentoId);
+      const r = await emitirNotaCreditoDesdeFacturaAction(empresaId, facturaId, tipoDocumentoId, monto);
       if (r.ok) {
         setAbierto(false);
         router.push(`/panel/${empresaId}/ventas/documentos/${r.docId}`);
@@ -77,9 +83,15 @@ export function EmitirNotaCreditoBoton({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Se creará una nota de crédito en borrador referenciando esta factura, con sus
-              líneas copiadas. Saldo disponible: {saldo.toLocaleString("es-CL")}.
+              Se creará una nota de crédito en borrador referenciando esta factura. Las líneas
+              se ajustarán proporcionalmente al monto indicado y podrás revisarlas antes de contabilizar.
+              Saldo disponible: {saldo.toLocaleString("es-CL")}.
             </p>
+            <div className="space-y-2">
+              <Label>Monto de la nota de crédito</Label>
+              <MontoInput valor={monto} onValorChange={setMonto} />
+              {monto > saldo + 0.01 && <p className="text-sm text-destructive">El monto supera el saldo disponible.</p>}
+            </div>
             <div className="space-y-2">
               <Label>Tipo de documento (SII)</Label>
               <Select value={tipoDocumentoId} onValueChange={setTipoDocumentoId}>
@@ -100,7 +112,7 @@ export function EmitirNotaCreditoBoton({
             <Button variant="outline" onClick={() => setAbierto(false)}>
               Cancelar
             </Button>
-            <Button onClick={emitir} disabled={isPending}>
+            <Button onClick={emitir} disabled={isPending || !tipoDocumentoId || !(monto > 0) || monto > saldo + 0.01}>
               {isPending ? "Emitiendo..." : "Emitir y abrir"}
             </Button>
           </DialogFooter>

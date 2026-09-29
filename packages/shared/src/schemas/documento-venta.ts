@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENTO_MODALIDAD, DOCUMENTO_VENTA_CLASE } from "../enums";
+import { DOCUMENTO_MODALIDAD, DOCUMENTO_VENTA_CLASE, type DocumentoVentaClase } from "../enums";
 import { fechaISO, uuid } from "./primitives";
 
 /** Alta rápida de un documento de venta: clase + tipo SII + cliente. El resto va en el detalle. */
@@ -9,6 +9,17 @@ export const crearDocumentoVentaSchema = z.object({
   terceroId: uuid,
 });
 export type CrearDocumentoVentaInput = z.infer<typeof crearDocumentoVentaSchema>;
+
+/** Tipos tributarios compatibles con cada clase de documento de venta. */
+export const CODIGOS_SII_VENTA_POR_CLASE: Record<DocumentoVentaClase, readonly string[]> = {
+  Factura: ["33", "34", "46"],
+  "Nota de Crédito": ["61"],
+  "Nota de Débito": ["56"],
+};
+
+export function codigoSiiPermitidoParaVenta(clase: DocumentoVentaClase, codigoSii: string) {
+  return CODIGOS_SII_VENTA_POR_CLASE[clase].includes(codigoSii);
+}
 
 const lineaSchema = z.object({
   glosa: z.string().trim().max(300).nullish(),
@@ -30,13 +41,13 @@ export const guardarDocumentoVentaSchema = z
   modalidad: z.enum(DOCUMENTO_MODALIDAD).default("Artículo"),
   terceroId: uuid,
   tipoDocumentoId: uuid,
-  folio: z.string().trim().max(40).nullish(),
+  folio: z.string().trim().min(1, "Indica el folio SII").max(40),
   fechaEmision: fechaISO,
   fechaVencimiento: fechaISO,
   fechaContabilizacion: fechaISO,
   numAtCard: z.string().trim().max(60).nullish(),
   monedaId: uuid,
-  tipoCambio: z.number().min(0),
+  tipoCambio: z.number().positive("El tipo de cambio debe ser mayor a 0"),
   descuentoGlobalPct: z.number().min(0).max(100).default(0),
   glosa: z.string().trim().max(1000).nullish(),
   documentoReferenciaId: uuid.nullish(),
@@ -60,6 +71,7 @@ export type GuardarDocumentoVentaInput = z.infer<typeof guardarDocumentoVentaSch
 
 export const anularDocumentoVentaSchema = z.object({
   motivo: z.string().trim().min(1, "Indica el motivo").max(500),
+  fechaReversa: fechaISO,
 });
 export type AnularDocumentoVentaInput = z.infer<typeof anularDocumentoVentaSchema>;
 
@@ -67,5 +79,6 @@ export type AnularDocumentoVentaInput = z.infer<typeof anularDocumentoVentaSchem
 export const emitirNotaCreditoSchema = z.object({
   facturaId: uuid,
   tipoDocumentoId: uuid,
+  montoMaximo: z.number().positive("El monto debe ser mayor a 0"),
 });
 export type EmitirNotaCreditoInput = z.infer<typeof emitirNotaCreditoSchema>;

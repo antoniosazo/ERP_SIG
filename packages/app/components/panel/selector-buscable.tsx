@@ -14,26 +14,37 @@ const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toL
  */
 export function SelectorBuscable({
   opciones,
+  value,
+  onValueChange,
   valor,
   onCambio,
   placeholder = "Buscar…",
   disabled,
   className,
   ariaLabel,
+  invalido,
 }: {
   opciones: OpcionBuscable[];
-  valor: string | null;
-  onCambio: (id: string | null) => void;
+  value?: string | null;
+  onValueChange?: (id: string | undefined) => void;
+  /** Nombres originales conservados para los formularios contables existentes. */
+  valor?: string | null;
+  onCambio?: (id: string | null) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
   ariaLabel?: string;
+  permitirVacio?: boolean;
+  etiquetaVacia?: string;
+  titulo?: string;
+  invalido?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [activo, setActivo] = useState(0);
   const raiz = useRef<HTMLDivElement>(null);
-  const seleccionada = opciones.find((o) => o.id === valor);
+  const valorActual = value ?? valor ?? null;
+  const seleccionada = opciones.find((o) => o.id === valorActual);
 
   const filtradas = useMemo(() => {
     const q = normalizar(texto.trim());
@@ -50,9 +61,14 @@ export function SelectorBuscable({
     return () => document.removeEventListener("mousedown", cerrar);
   }, [abierto]);
 
+  function cambiar(id: string | null) {
+    if (onValueChange) onValueChange(id ?? undefined);
+    else onCambio?.(id);
+  }
+
   function elegir(o: OpcionBuscable | undefined) {
     if (!o) return;
-    onCambio(o.id);
+    cambiar(o.id);
     setAbierto(false);
     setTexto("");
   }
@@ -63,6 +79,7 @@ export function SelectorBuscable({
         <input
           autoFocus
           aria-label={ariaLabel}
+          aria-invalid={invalido}
           className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           placeholder={placeholder}
           value={texto}
@@ -90,6 +107,7 @@ export function SelectorBuscable({
           type="button"
           disabled={disabled}
           aria-label={ariaLabel}
+          data-invalid={invalido || undefined}
           onClick={() => setAbierto(true)}
           onFocus={(e) => {
             // Navegar con Tab abre el buscador, como el campo de cuenta de SAP.
@@ -108,7 +126,7 @@ export function SelectorBuscable({
               className="text-muted-foreground hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
-                onCambio(null);
+                cambiar(null);
               }}
             >
               <XIcon className="size-3.5" />

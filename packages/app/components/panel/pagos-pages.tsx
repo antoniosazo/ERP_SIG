@@ -55,13 +55,29 @@ export async function PagosListaPage({ empresaId, tipo }: { empresaId: string; t
   );
 }
 
-export async function PagoNuevoPage({ empresaId, tipo }: { empresaId: string; tipo: PagoTipo }) {
+export async function PagoNuevoPage({
+  empresaId,
+  tipo,
+  terceroInicialId,
+  documentoInicialId,
+}: {
+  empresaId: string;
+  tipo: PagoTipo;
+  terceroInicialId?: string;
+  documentoInicialId?: string;
+}) {
   const meta = PAGO_META[tipo];
   const [terceros, metodos, bancos] = await Promise.all([
     listarTerceros(empresaId),
     listarMetodosPago(empresaId),
     listarBancos(),
   ]);
+  const opcionesTerceros = terceros
+    .filter((t) => t.tipoTercero === meta.terceroTipo && t.activo && !t.bloqueado)
+    .map((t) => ({ id: t.id, label: `${t.razonSocial} (${t.rut})` }));
+  const terceroValido = opcionesTerceros.some((t) => t.id === terceroInicialId)
+    ? terceroInicialId
+    : undefined;
   return (
     <>
       <TypographyHeading
@@ -71,9 +87,9 @@ export async function PagoNuevoPage({ empresaId, tipo }: { empresaId: string; ti
       <PagoForm
         empresaId={empresaId}
         tipo={tipo}
-        terceros={terceros
-          .filter((t) => t.tipoTercero === meta.terceroTipo && t.activo)
-          .map((t) => ({ id: t.id, label: `${t.razonSocial} (${t.rut})` }))}
+        terceros={opcionesTerceros}
+        terceroInicialId={terceroValido}
+        documentoInicialId={terceroValido ? documentoInicialId : undefined}
         metodos={metodos
           .filter((m) => m.activo && (m.sentido === "Ambos" || m.sentido === tipo))
           .map((m) => ({ id: m.id, nombre: m.nombre, tipo: m.tipo }))}

@@ -2,14 +2,13 @@ import { ComprasListaPage } from "@/components/panel/compras-lista-page";
 
 export const dynamic = "force-dynamic";
 
-export default async function NotasDebitoCompraPage({
+export default async function Page({
   params,
   searchParams,
 }: {
   params: Promise<{ empresaId: string }>;
-  searchParams: Promise<{ estado?: string }>;
+  searchParams: Promise<{ estado?: string; q?: string; desde?: string; hasta?: string; terceroId?: string; pagina?: string }>;
 }) {
-  const { empresaId } = await params;
-  const { estado } = await searchParams;
-  return <ComprasListaPage empresaId={empresaId} docTipo="nota_debito" estado={estado} />;
+  const [{ empresaId }, filtros] = await Promise.all([params, searchParams]);
+  return <ComprasListaPage empresaId={empresaId} docTipo="nota_debito" filtros={filtros} />;
 }

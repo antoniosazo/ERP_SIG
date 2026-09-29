@@ -62,6 +62,7 @@ export const documentosVenta = pgTable(
       { onDelete: "set null" },
     ),
     asientoId: uuid("asiento_id").references(() => asientosContables.id, { onDelete: "set null" }),
+    asientoReversaId: uuid("asiento_reversa_id").references(() => asientosContables.id, { onDelete: "set null" }),
     /** Fecha contable: define la fecha del asiento y el periodo que se valida. Editable en borrador. */
     fechaContabilizacion: date("fecha_contabilizacion"),
     usuarioContabilizacionId: uuid("usuario_contabilizacion_id").references(() => usuarios.id, {

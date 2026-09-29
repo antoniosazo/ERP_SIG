@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENTO_COMPRA_TIPO, DOCUMENTO_MODALIDAD, IVA_RECUPERABLE } from "../enums";
+import { DOCUMENTO_COMPRA_TIPO, DOCUMENTO_MODALIDAD, IVA_RECUPERABLE, type DocumentoCompraTipo } from "../enums";
 import { fechaISO, uuid } from "./primitives";
 
 /** Alta rápida de un documento de compra: tipo interno + tipo SII + proveedor. */
@@ -10,6 +10,18 @@ export const crearDocumentoCompraSchema = z.object({
   documentoBaseId: uuid.nullish(),
 });
 export type CrearDocumentoCompraInput = z.infer<typeof crearDocumentoCompraSchema>;
+
+/** Tipos SII válidos para documentos tributarios de compra. */
+export const CODIGOS_SII_COMPRA_POR_TIPO: Partial<Record<DocumentoCompraTipo, readonly string[]>> = {
+  factura: ["33", "34", "46", "HON"],
+  nota_credito: ["61"],
+  nota_debito: ["56"],
+};
+
+export function codigoSiiPermitidoParaCompra(tipo: DocumentoCompraTipo, codigoSii: string) {
+  const permitidos = CODIGOS_SII_COMPRA_POR_TIPO[tipo];
+  return permitidos ? permitidos.includes(codigoSii) : true;
+}
 
 const lineaCompraSchema = z.object({
   glosa: z.string().trim().max(300).nullish(),
@@ -39,7 +51,7 @@ export const guardarDocumentoCompraSchema = z
   fechaContabilizacion: fechaISO,
   numAtCard: z.string().trim().max(60).nullish(),
   monedaId: uuid,
-  tipoCambio: z.number().min(0),
+  tipoCambio: z.number().positive("El tipo de cambio debe ser mayor a 0"),
   descuentoGlobalPct: z.number().min(0).max(100).default(0),
   condicionPagoDias: z.number().int().min(0).max(3650).nullish(),
   glosa: z.string().trim().max(1000).nullish(),
@@ -47,6 +59,15 @@ export const guardarDocumentoCompraSchema = z
   lineas: z.array(lineaCompraSchema).min(1, "Agrega al menos una línea").max(200),
   })
   .superRefine((v, ctx) => {
+    if (["factura", "nota_credito", "nota_debito"].includes(v.docTipo) && !v.folio?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["folio"], message: "Indica el folio SII" });
+    }
+    if ((v.docTipo === "nota_credito" || v.docTipo === "nota_debito") && !v.documentoBaseId) {
+      ctx.addIssue({ code: "custom", path: ["documentoBaseId"], message: "Indica la factura que corrige" });
+    }
+    if (v.fechaVencimiento < v.fechaEmision) {
+      ctx.addIssue({ code: "custom", path: ["fechaVencimiento"], message: "El vencimiento no puede ser anterior a la emisión" });
+    }
     if (v.modalidad !== "Servicio") return;
     if (v.docTipo === "entrada_mercaderia") {
       ctx.addIssue({ code: "custom", path: ["modalidad"], message: "Una entrada de mercadería no puede ser de tipo Servicio" });
@@ -61,6 +82,7 @@ export type GuardarDocumentoCompraInput = z.infer<typeof guardarDocumentoCompraS
 
 export const anularDocumentoCompraSchema = z.object({
   motivo: z.string().trim().min(1, "Indica el motivo").max(500),
+  fechaReversa: fechaISO,
 });
 export type AnularDocumentoCompraInput = z.infer<typeof anularDocumentoCompraSchema>;
 

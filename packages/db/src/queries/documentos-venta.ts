@@ -1,25 +1,33 @@
-import type {
-  CrearDocumentoVentaInput,
-  GuardarDocumentoVentaInput,
+import {
+  codigoSiiPermitidoParaVenta,
+  type CrearDocumentoVentaInput,
+  type DocumentoVentaClase,
+  type GuardarDocumentoVentaInput,
 } from "@erp/shared";
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
 import {
   asientosContables,
   asientosLineas,
+  categoriasContables,
   centrosCosto,
   documentosVenta,
   documentosVentaLineas,
   empresas,
   impuestos,
   monedas,
+  pagos,
+  pagosDocumentos,
   planCuentas,
   productos,
   productosGrupos,
   stockMovimientos,
   terceros,
+  tercerosContactos,
   tercerosGrupos,
+  tiposDocumento,
+  usuarioEmpresa,
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { tienePagosAplicados } from "./pagos-saldos";
@@ -51,6 +59,150 @@ const pesos = (x: number) => Math.round(x).toLocaleString("es-CL");
 
 const etiquetaDoc = (d: { numeroInterno: string | null; clase: string; folio: string | null }) =>
   `${d.numeroInterno ?? ""} ${d.clase}${d.folio ? ` folio ${d.folio}` : ""}`.trim();
+
+async function validarTipoDocumentoVenta(
+  tx: Tx,
+  tipoDocumentoId: string,
+  clase: DocumentoVentaClase,
+) {
+  const [tipo] = await tx
+    .select({ codigoSii: tiposDocumento.codigoSii, tipoOperacion: tiposDocumento.tipoOperacion })
+    .from(tiposDocumento)
+    .where(eq(tiposDocumento.id, tipoDocumentoId));
+  if (!tipo || !codigoSiiPermitidoParaVenta(clase, tipo.codigoSii)) {
+    throw new Error(`El tipo de documento SII no corresponde a ${clase}.`);
+  }
+  if (tipo.codigoSii !== "46" && tipo.tipoOperacion !== "Venta" && tipo.tipoOperacion !== "Ambos") {
+    throw new Error("El tipo de documento no está habilitado para ventas.");
+  }
+  return tipo;
+}
+
+async function validarMaestrosDocumentoVenta(
+  tx: Tx,
+  empresaId: string,
+  clase: DocumentoVentaClase,
+  input: GuardarDocumentoVentaInput,
+) {
+  await validarTipoDocumentoVenta(tx, input.tipoDocumentoId, clase);
+
+  const [cliente] = await tx
+    .select({ id: terceros.id, activo: terceros.activo, bloqueado: terceros.bloqueado, tipo: terceros.tipoTercero })
+    .from(terceros)
+    .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
+  if (!cliente || cliente.tipo !== "Cliente") throw new Error("El cliente no pertenece a esta empresa.");
+  if (!cliente.activo || cliente.bloqueado) throw new Error("El cliente está inactivo o bloqueado.");
+
+  if (!input.folio?.trim()) throw new Error("Indica el folio SII.");
+  if (input.fechaVencimiento < input.fechaEmision) {
+    throw new Error("La fecha de vencimiento no puede ser anterior a la fecha del documento.");
+  }
+
+  const [moneda] = await tx
+    .select({ id: monedas.id })
+    .from(monedas)
+    .where(and(eq(monedas.id, input.monedaId), eq(monedas.empresaId, empresaId)));
+  if (!moneda) throw new Error("La moneda no pertenece a esta empresa.");
+
+  const cuentaIds = [...new Set(input.lineas.map((l) => l.cuentaIngresoId))];
+  const cuentasValidas = cuentaIds.length
+    ? await tx.select({ id: planCuentas.id }).from(planCuentas).where(and(
+        eq(planCuentas.empresaId, empresaId),
+        eq(planCuentas.activa, true),
+        eq(planCuentas.nivelImputable, true),
+        inArray(planCuentas.id, cuentaIds),
+      ))
+    : [];
+  if (cuentasValidas.length !== cuentaIds.length) {
+    throw new Error("Una cuenta de ingreso no pertenece a la empresa, está inactiva o no es imputable.");
+  }
+
+  const productoIds = [...new Set(input.lineas.map((l) => l.productoId).filter((x): x is string => !!x))];
+  if (productoIds.length) {
+    const validos = await tx.select({ id: productos.id }).from(productos).where(and(
+      eq(productos.empresaId, empresaId),
+      eq(productos.estado, "Activo"),
+      eq(productos.esVenta, true),
+      inArray(productos.id, productoIds),
+    ));
+    if (validos.length !== productoIds.length) throw new Error("Un producto no está habilitado para venta en esta empresa.");
+  }
+
+  const impuestoIds = [...new Set(input.lineas.map((l) => l.impuestoId).filter((x): x is string => !!x))];
+  if (impuestoIds.length) {
+    const validos = await tx.select({ id: impuestos.id, aplicaA: impuestos.aplicaA }).from(impuestos).where(and(
+      eq(impuestos.empresaId, empresaId),
+      eq(impuestos.activo, true),
+      inArray(impuestos.id, impuestoIds),
+    ));
+    if (
+      validos.length !== impuestoIds.length ||
+      validos.some((i) => i.aplicaA !== "Venta" && i.aplicaA !== "Ambos")
+    ) {
+      throw new Error("Un impuesto no pertenece a esta empresa, está inactivo o no aplica a ventas.");
+    }
+  }
+
+  const centroIds = [...new Set(input.lineas.map((l) => l.centroCostoId).filter((x): x is string => !!x))];
+  if (centroIds.length) {
+    const validos = await tx.select({ id: centrosCosto.id }).from(centrosCosto).where(and(
+      eq(centrosCosto.empresaId, empresaId),
+      eq(centrosCosto.estado, "Activo"),
+      inArray(centrosCosto.id, centroIds),
+    ));
+    if (validos.length !== centroIds.length) throw new Error("Un centro de costo no pertenece a esta empresa o está inactivo.");
+  }
+
+  const categoriaIds = [...new Set(input.lineas.map((l) => l.categoriaContableId).filter((x): x is string => !!x))];
+  if (categoriaIds.length) {
+    const validos = await tx.select({ id: categoriasContables.id, aplicaA: categoriasContables.aplicaA }).from(categoriasContables).where(and(
+      eq(categoriasContables.empresaId, empresaId),
+      inArray(categoriasContables.id, categoriaIds),
+    ));
+    if (
+      validos.length !== categoriaIds.length ||
+      validos.some((c) => c.aplicaA !== "Venta" && c.aplicaA !== "Ambos")
+    ) {
+      throw new Error("Una categoría contable no pertenece a esta empresa o no aplica a ventas.");
+    }
+  }
+
+  if (input.contactoId) {
+    const [contacto] = await tx.select({ id: tercerosContactos.id }).from(tercerosContactos).where(and(
+      eq(tercerosContactos.id, input.contactoId),
+      eq(tercerosContactos.terceroId, input.terceroId),
+      eq(tercerosContactos.activo, true),
+    ));
+    if (!contacto) throw new Error("La persona de contacto no pertenece al cliente o está inactiva.");
+  }
+  if (input.vendedorId) {
+    const [vendedor] = await tx.select({ id: usuarioEmpresa.id }).from(usuarioEmpresa).where(and(
+      eq(usuarioEmpresa.usuarioId, input.vendedorId),
+      eq(usuarioEmpresa.empresaId, empresaId),
+    ));
+    if (!vendedor) throw new Error("El vendedor no tiene acceso a esta empresa.");
+  }
+
+  if (clase !== "Factura") {
+    if (!input.documentoReferenciaId) throw new Error(`${clase} debe indicar el documento que corrige.`);
+    const [referencia] = await tx.select({
+      id: documentosVenta.id,
+      clase: documentosVenta.clase,
+      estado: documentosVenta.estado,
+      terceroId: documentosVenta.terceroId,
+      monedaId: documentosVenta.monedaId,
+    }).from(documentosVenta).where(and(
+      eq(documentosVenta.id, input.documentoReferenciaId),
+      eq(documentosVenta.empresaId, empresaId),
+    ));
+    if (!referencia || referencia.clase !== "Factura" || referencia.estado !== "contabilizado") {
+      throw new Error("El documento de referencia debe ser una factura contabilizada de esta empresa.");
+    }
+    if (referencia.terceroId !== input.terceroId || referencia.monedaId !== input.monedaId) {
+      throw new Error("El documento de referencia debe corresponder al mismo cliente y moneda.");
+    }
+  }
+}
 
 /**
  * A partir de líneas con `cantidad × precioUnitario`, su descuento de línea y el
@@ -117,7 +269,8 @@ async function saldoNotaCreditoDeFactura(
       estado: documentosVenta.estado,
     })
     .from(documentosVenta)
-    .where(and(eq(documentosVenta.id, facturaId), eq(documentosVenta.empresaId, empresaId)));
+    .where(and(eq(documentosVenta.id, facturaId), eq(documentosVenta.empresaId, empresaId)))
+    .for("update");
   if (!factura || factura.clase !== "Factura" || factura.estado !== "contabilizado") return null;
 
   const ncs = await tx
@@ -139,21 +292,65 @@ async function saldoNotaCreditoDeFactura(
 
 // ── Lecturas ─────────────────────────────────────────────────────────────────
 
-export async function listarDocumentosVenta(
-  empresaId: string,
-  f: { clase?: string; estado?: string; terceroId?: string; desde?: string; hasta?: string } = {},
-) {
+export type FiltrosDocumentosVenta = {
+  clase?: string;
+  estado?: string;
+  terceroId?: string;
+  desde?: string;
+  hasta?: string;
+  q?: string;
+};
+
+function condicionesDocumentosVenta(empresaId: string, f: FiltrosDocumentosVenta) {
   const cond = [eq(documentosVenta.empresaId, empresaId)];
   if (f.clase) cond.push(eq(documentosVenta.clase, f.clase as never));
   if (f.estado) cond.push(eq(documentosVenta.estado, f.estado as never));
   if (f.terceroId) cond.push(eq(documentosVenta.terceroId, f.terceroId));
   if (f.desde) cond.push(gte(documentosVenta.fechaEmision, f.desde));
   if (f.hasta) cond.push(lte(documentosVenta.fechaEmision, f.hasta));
+  if (f.q?.trim()) {
+    const patron = `%${f.q.trim()}%`;
+    const clientes = db.select({ id: terceros.id }).from(terceros).where(and(
+      eq(terceros.empresaId, empresaId),
+      or(ilike(terceros.razonSocial, patron), ilike(terceros.rut, patron)),
+    ));
+    cond.push(or(
+      ilike(documentosVenta.numeroInterno, patron),
+      ilike(documentosVenta.folio, patron),
+      ilike(documentosVenta.nombreCliente, patron),
+      inArray(documentosVenta.terceroId, clientes),
+    )!);
+  }
+  return cond;
+}
+
+export async function listarDocumentosVenta(
+  empresaId: string,
+  f: FiltrosDocumentosVenta = {},
+) {
   return db
     .select()
     .from(documentosVenta)
-    .where(and(...cond))
+    .where(and(...condicionesDocumentosVenta(empresaId, f)))
     .orderBy(desc(documentosVenta.fechaEmision), desc(documentosVenta.createdAt));
+}
+
+export async function listarDocumentosVentaPaginados(
+  empresaId: string,
+  f: FiltrosDocumentosVenta & { pagina?: number; porPagina?: number } = {},
+) {
+  const pagina = Math.max(1, Math.trunc(f.pagina ?? 1));
+  const porPagina = Math.min(100, Math.max(10, Math.trunc(f.porPagina ?? 25)));
+  const where = and(...condicionesDocumentosVenta(empresaId, f));
+  const [[totalRow], documentos] = await Promise.all([
+    db.select({ total: count() }).from(documentosVenta).where(where),
+    db.select().from(documentosVenta).where(where)
+      .orderBy(desc(documentosVenta.fechaEmision), desc(documentosVenta.createdAt))
+      .limit(porPagina)
+      .offset((pagina - 1) * porPagina),
+  ]);
+  const total = Number(totalRow?.total ?? 0);
+  return { documentos, total, pagina, porPagina, paginas: Math.max(1, Math.ceil(total / porPagina)) };
 }
 
 export async function obtenerDocumentoVentaConLineas(id: string, empresaId: string) {
@@ -168,13 +365,39 @@ export async function obtenerDocumentoVentaConLineas(id: string, empresaId: stri
     .where(eq(documentosVentaLineas.documentoVentaId, id))
     .orderBy(asc(documentosVentaLineas.numeroLinea));
   let asiento = null;
+  let reversa = null;
   if (documento.asientoId) {
     [asiento] = await db
       .select()
       .from(asientosContables)
       .where(eq(asientosContables.id, documento.asientoId));
   }
-  return { documento, lineas, asiento: asiento ?? null };
+  if (documento.asientoReversaId) {
+    [reversa] = await db
+      .select()
+      .from(asientosContables)
+      .where(and(eq(asientosContables.id, documento.asientoReversaId), eq(asientosContables.empresaId, empresaId)));
+  }
+  return { documento, lineas, asiento: asiento ?? null, reversa: reversa ?? null };
+}
+
+/** Cobros aplicados al documento, para su trazabilidad desde la factura. */
+export async function pagosDeDocumentoVenta(empresaId: string, documentoId: string) {
+  return db
+    .select({
+      id: pagos.id,
+      numeroInterno: pagos.numeroInterno,
+      fechaPago: pagos.fechaPago,
+      estado: pagos.estado,
+      montoAplicado: pagosDocumentos.montoAplicado,
+    })
+    .from(pagosDocumentos)
+    .innerJoin(pagos, eq(pagos.id, pagosDocumentos.pagoId))
+    .where(and(
+      eq(pagos.empresaId, empresaId),
+      eq(pagosDocumentos.documentoVentaId, documentoId),
+    ))
+    .orderBy(desc(pagos.fechaPago), desc(pagos.createdAt));
 }
 
 /** Notas de crédito (cualquier estado) que referencian una factura. */
@@ -248,23 +471,38 @@ export async function crearDocumentoVenta(
   ctx?: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
+    await validarTipoDocumentoVenta(tx, input.tipoDocumentoId, input.clase);
     // Moneda funcional de la empresa por defecto.
     const [tercero] = await tx
       .select({
         monedaId: terceros.monedaId,
         condicionPagoDias: terceros.condicionPagoDias,
         razonSocial: terceros.razonSocial,
+        tipoTercero: terceros.tipoTercero,
+        activo: terceros.activo,
+        bloqueado: terceros.bloqueado,
       })
       .from(terceros)
       .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
-    if (!tercero) throw new Error("El cliente no existe en esta empresa");
+    if (!tercero || tercero.tipoTercero !== "Cliente") throw new Error("El cliente no existe en esta empresa");
+    if (!tercero.activo || tercero.bloqueado) throw new Error("El cliente está inactivo o bloqueado");
 
+    const [empresa] = await tx
+      .select({ monedaFuncionalId: empresas.monedaFuncionalId })
+      .from(empresas)
+      .where(eq(empresas.id, empresaId));
+    const monedaPreferida = tercero.monedaId ?? empresa?.monedaFuncionalId;
     const [monedaEmpresa] = await tx
       .select({ id: monedas.id })
       .from(monedas)
-      .where(eq(monedas.empresaId, empresaId))
+      .where(and(
+        eq(monedas.empresaId, empresaId),
+        ...(monedaPreferida ? [eq(monedas.id, monedaPreferida)] : []),
+      ))
       .orderBy(asc(monedas.codigo))
       .limit(1);
+    const monedaId = monedaEmpresa?.id;
+    if (!monedaId) throw new Error("La empresa no tiene una moneda funcional válida configurada.");
 
     const numeroInterno = await siguienteCodigo(tx, empresaId, "venta", "documento");
     const hoy = new Date().toISOString().slice(0, 10);
@@ -279,7 +517,7 @@ export async function crearDocumentoVenta(
         fechaEmision: hoy,
         fechaContabilizacion: hoy,
         fechaVencimiento: sumarDiasISO(hoy, tercero.condicionPagoDias ?? 0),
-        monedaId: tercero.monedaId ?? monedaEmpresa!.id,
+        monedaId,
         nombreCliente: tercero.razonSocial,
         condicionPagoDias: tercero.condicionPagoDias,
         usuarioCreacionId: ctx?.usuarioId ?? null,
@@ -303,131 +541,144 @@ export async function crearDocumentoVenta(
 
 // ── Guardado (borrador) ──────────────────────────────────────────────────────
 
+async function guardarDocumentoVentaTx(
+  tx: Tx,
+  id: string,
+  empresaId: string,
+  input: GuardarDocumentoVentaInput,
+  ctx?: AuditoriaCtx,
+) {
+  const [antes] = await tx
+    .select()
+    .from(documentosVenta)
+    .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
+    .for("update");
+  if (!antes) throw new Error("El documento no existe en esta empresa");
+  if (antes.estado !== "borrador") {
+    throw new Error("Solo se puede editar un documento en borrador");
+  }
+
+  await validarMaestrosDocumentoVenta(tx, empresaId, antes.clase, input);
+
+  const [moneda] = await tx
+    .select({ decimales: monedas.decimales })
+    .from(monedas)
+    .where(and(eq(monedas.id, input.monedaId), eq(monedas.empresaId, empresaId)));
+  if (!moneda) throw new Error("La moneda no pertenece a esta empresa");
+
+  const idsImp = input.lineas.map((l) => l.impuestoId).filter((x): x is string => !!x);
+  const tasas = new Map<string, number>();
+  if (idsImp.length) {
+    const rows = await tx
+      .select({ id: impuestos.id, tasa: impuestos.tasa })
+      .from(impuestos)
+      .where(and(eq(impuestos.empresaId, empresaId), inArray(impuestos.id, idsImp)));
+    for (const r of rows) tasas.set(r.id, Number(r.tasa));
+  }
+
+  const calc = calcularTotalesVenta(
+    input.lineas.map((l) => ({
+      cantidad: l.cantidad,
+      precioUnitario: l.precioUnitario,
+      descuentoLineaPct: l.descuentoLineaPct ?? 0,
+      esExento: l.esExento,
+      impuestoId: l.impuestoId,
+    })),
+    tasas,
+    moneda.decimales,
+    input.descuentoGlobalPct ?? 0,
+  );
+  const { neto, exento, totalImp } = calc;
+  if (calc.total <= 0) throw new Error("El total del documento debe ser mayor a 0.");
+  const lineasCalc = input.lineas.map((l, i) => ({
+    documentoVentaId: id,
+    numeroLinea: i,
+    glosa: l.glosa ?? null,
+    productoId: input.modalidad === "Servicio" ? null : (l.productoId ?? null),
+    cuentaIngresoId: l.cuentaIngresoId,
+    categoriaContableId: l.categoriaContableId ?? null,
+    centroCostoId: l.centroCostoId ?? null,
+    impuestoId: l.impuestoId ?? null,
+    cantidad: l.cantidad.toString(),
+    precioUnitario: l.precioUnitario.toString(),
+    descuentoLineaPct: (l.descuentoLineaPct ?? 0).toString(),
+    montoNeto: calc.netoPorLinea[i]!.toString(),
+    esExento: l.esExento,
+    montoImpuesto: calc.impuestoPorLinea[i]!.toString(),
+    fechaDiferimiento: l.fechaDiferimiento || null,
+  }));
+
+  // Nota de crédito: no puede superar el saldo disponible de la factura que corrige.
+  if (antes.clase === "Nota de Crédito" && input.documentoReferenciaId) {
+    const saldo = await saldoNotaCreditoDeFactura(tx, empresaId, input.documentoReferenciaId, {
+      excluirDocId: id,
+    });
+    if (saldo != null && calc.total > saldo + 0.01) {
+      throw new Error(
+        `La nota de crédito ($${pesos(calc.total)}) supera el saldo disponible de la factura ($${pesos(saldo)}).`,
+      );
+    }
+  }
+
+  await tx.delete(documentosVentaLineas).where(eq(documentosVentaLineas.documentoVentaId, id));
+  await tx.insert(documentosVentaLineas).values(lineasCalc);
+
+  const [doc] = await tx
+    .update(documentosVenta)
+    .set({
+      modalidad: input.modalidad,
+      terceroId: input.terceroId,
+      tipoDocumentoId: input.tipoDocumentoId,
+      folio: input.folio || null,
+      fechaEmision: input.fechaEmision,
+      fechaVencimiento: input.fechaVencimiento,
+      fechaContabilizacion: input.fechaContabilizacion,
+      numAtCard: input.numAtCard || null,
+      monedaId: input.monedaId,
+      tipoCambio: input.tipoCambio.toString(),
+      descuentoGlobalPct: (input.descuentoGlobalPct ?? 0).toString(),
+      glosa: input.glosa || null,
+      documentoReferenciaId: input.documentoReferenciaId ?? null,
+      nombreCliente: input.nombreCliente || null,
+      condicionPagoDias: input.condicionPagoDias ?? null,
+      vendedorId: input.vendedorId ?? null,
+      contactoId: input.contactoId ?? null,
+      direccionFacturacion: input.direccionFacturacion || null,
+      direccionDespacho: input.direccionDespacho || null,
+      montoNeto: neto.toString(),
+      montoExento: exento.toString(),
+      montoImpuesto: totalImp.toString(),
+      montoTotal: (neto + exento + totalImp).toString(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
+    .returning();
+  if (!doc) throw new Error("No se pudo guardar el documento");
+
+  if (ctx) {
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx,
+      tabla: "documentos_venta",
+      registroId: doc.id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "editar",
+      antes,
+      despues: doc,
+    });
+  }
+  return doc;
+}
+
 export async function guardarDocumentoVenta(
   id: string,
   empresaId: string,
   input: GuardarDocumentoVentaInput,
   ctx?: AuditoriaCtx,
 ) {
-  return db.transaction(async (tx) => {
-    const [antes] = await tx
-      .select()
-      .from(documentosVenta)
-      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)));
-    if (!antes) throw new Error("El documento no existe en esta empresa");
-    if (antes.estado !== "borrador") {
-      throw new Error("Solo se puede editar un documento en borrador");
-    }
-
-    const [moneda] = await tx
-      .select({ decimales: monedas.decimales })
-      .from(monedas)
-      .where(and(eq(monedas.id, input.monedaId), eq(monedas.empresaId, empresaId)));
-    if (!moneda) throw new Error("La moneda no pertenece a esta empresa");
-
-    const idsImp = input.lineas.map((l) => l.impuestoId).filter((x): x is string => !!x);
-    const tasas = new Map<string, number>();
-    if (idsImp.length) {
-      const rows = await tx
-        .select({ id: impuestos.id, tasa: impuestos.tasa })
-        .from(impuestos)
-        .where(and(eq(impuestos.empresaId, empresaId), inArray(impuestos.id, idsImp)));
-      for (const r of rows) tasas.set(r.id, Number(r.tasa));
-    }
-
-    const calc = calcularTotalesVenta(
-      input.lineas.map((l) => ({
-        cantidad: l.cantidad,
-        precioUnitario: l.precioUnitario,
-        descuentoLineaPct: l.descuentoLineaPct ?? 0,
-        esExento: l.esExento,
-        impuestoId: l.impuestoId,
-      })),
-      tasas,
-      moneda.decimales,
-      input.descuentoGlobalPct ?? 0,
-    );
-    const { neto, exento, totalImp } = calc;
-    const lineasCalc = input.lineas.map((l, i) => ({
-      documentoVentaId: id,
-      numeroLinea: i,
-      glosa: l.glosa ?? null,
-      productoId: input.modalidad === "Servicio" ? null : (l.productoId ?? null),
-      cuentaIngresoId: l.cuentaIngresoId,
-      categoriaContableId: l.categoriaContableId ?? null,
-      centroCostoId: l.centroCostoId ?? null,
-      impuestoId: l.impuestoId ?? null,
-      cantidad: l.cantidad.toString(),
-      precioUnitario: l.precioUnitario.toString(),
-      descuentoLineaPct: (l.descuentoLineaPct ?? 0).toString(),
-      montoNeto: calc.netoPorLinea[i]!.toString(),
-      esExento: l.esExento,
-      montoImpuesto: calc.impuestoPorLinea[i]!.toString(),
-      fechaDiferimiento: l.fechaDiferimiento || null,
-    }));
-
-    // Nota de crédito: no puede superar el saldo disponible de la factura que corrige.
-    if (antes.clase === "Nota de Crédito" && input.documentoReferenciaId) {
-      const saldo = await saldoNotaCreditoDeFactura(tx, empresaId, input.documentoReferenciaId, {
-        excluirDocId: id,
-      });
-      if (saldo != null && calc.total > saldo + 0.01) {
-        throw new Error(
-          `La nota de crédito ($${pesos(calc.total)}) supera el saldo disponible de la factura ($${pesos(saldo)}).`,
-        );
-      }
-    }
-
-    await tx.delete(documentosVentaLineas).where(eq(documentosVentaLineas.documentoVentaId, id));
-    await tx.insert(documentosVentaLineas).values(lineasCalc);
-
-    const [doc] = await tx
-      .update(documentosVenta)
-      .set({
-        modalidad: input.modalidad,
-        terceroId: input.terceroId,
-        tipoDocumentoId: input.tipoDocumentoId,
-        folio: input.folio || null,
-        fechaEmision: input.fechaEmision,
-        fechaVencimiento: input.fechaVencimiento,
-        fechaContabilizacion: input.fechaContabilizacion,
-        numAtCard: input.numAtCard || null,
-        monedaId: input.monedaId,
-        tipoCambio: input.tipoCambio.toString(),
-        descuentoGlobalPct: (input.descuentoGlobalPct ?? 0).toString(),
-        glosa: input.glosa || null,
-        documentoReferenciaId: input.documentoReferenciaId ?? null,
-        nombreCliente: input.nombreCliente || null,
-        condicionPagoDias: input.condicionPagoDias ?? null,
-        vendedorId: input.vendedorId ?? null,
-        contactoId: input.contactoId ?? null,
-        direccionFacturacion: input.direccionFacturacion || null,
-        direccionDespacho: input.direccionDespacho || null,
-        montoNeto: neto.toString(),
-        montoExento: exento.toString(),
-        montoImpuesto: totalImp.toString(),
-        montoTotal: (neto + exento + totalImp).toString(),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
-      .returning();
-    if (!doc) throw new Error("No se pudo guardar el documento");
-
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "documentos_venta",
-        registroId: doc.id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "editar",
-        antes,
-        despues: doc,
-      });
-    }
-    return doc;
-  });
+  return db.transaction((tx) => guardarDocumentoVentaTx(tx, id, empresaId, input, ctx));
 }
+
 
 // ── Contabilizar (genera el asiento) ─────────────────────────────────────────
 
@@ -470,6 +721,13 @@ async function construirAsientoVenta(
     .from(documentosVenta)
     .where(and(eq(documentosVenta.id, docId), eq(documentosVenta.empresaId, empresaId)));
   if (!doc) throw new Error("El documento no existe");
+  await validarTipoDocumentoVenta(tx, doc.tipoDocumentoId, doc.clase);
+  if (!doc.folio?.trim()) errores.push("El documento no tiene folio SII.");
+  if (Number(doc.montoTotal) <= 0) errores.push("El total del documento debe ser mayor a 0.");
+  if (Number(doc.tipoCambio) <= 0) errores.push("El tipo de cambio debe ser mayor a 0.");
+  if (doc.clase !== "Factura" && !doc.documentoReferenciaId) {
+    errores.push(`${doc.clase} debe indicar el documento que corrige.`);
+  }
 
   const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
 
@@ -507,7 +765,11 @@ async function construirAsientoVenta(
     .from(empresas)
     .where(eq(empresas.id, empresaId));
 
-  const [tercero] = await tx.select().from(terceros).where(eq(terceros.id, doc.terceroId));
+  const [tercero] = await tx
+    .select()
+    .from(terceros)
+    .where(and(eq(terceros.id, doc.terceroId), eq(terceros.empresaId, empresaId)));
+  if (!tercero) errores.push("El cliente no pertenece a esta empresa.");
   // Cuenta puente: 1) del cliente, 2) de su grupo de socios de negocio, 3) fallback
   // GENERAL de "Determinación de cuentas".
   const grupoTercero = tercero?.grupoId
@@ -534,6 +796,7 @@ async function construirAsientoVenta(
       "IVA Débito": "iva_debito",
       "IVA Crédito": "iva_credito",
     };
+    if (rows.length !== idsImp.length) errores.push("Un impuesto no pertenece a esta empresa.");
     for (const r of rows) {
       let cuenta = r.cuenta ?? "";
       if (!cuenta && rolPorTipo[r.tipo]) {
@@ -621,8 +884,9 @@ async function construirAsientoVenta(
         grupoId: productos.grupoId,
       })
       .from(productos)
-      .where(inArray(productos.id, idsProd));
+      .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, idsProd)));
     const prodPorId = new Map(prods.map((p) => [p.id, p]));
+    if (prods.length !== idsProd.length) errores.push("Un producto no pertenece a esta empresa.");
     const gruposIds = [...new Set(prods.map((p) => p.grupoId))];
     const grupos = gruposIds.length
       ? await tx
@@ -702,6 +966,15 @@ async function construirAsientoVenta(
         haber: esCredito ? 0 : c.monto,
       });
     }
+  }
+
+  const centroIds = [...new Set(filas.map((f) => f.centroCostoId).filter((x): x is string => !!x))];
+  if (centroIds.length) {
+    const centros = await tx
+      .select({ id: centrosCosto.id })
+      .from(centrosCosto)
+      .where(and(eq(centrosCosto.empresaId, empresaId), eq(centrosCosto.estado, "Activo"), inArray(centrosCosto.id, centroIds)));
+    if (centros.length !== centroIds.length) errores.push("Un centro de costo no pertenece a esta empresa o está inactivo.");
   }
 
   // Validación de las cuentas usadas (RN-01 imputable, RN-02 control, RN-06 moneda).
@@ -814,7 +1087,8 @@ async function generarAsientoVenta(tx: Tx, empresaId: string, docId: string, ctx
   const [doc] = await tx
     .select({ estado: documentosVenta.estado })
     .from(documentosVenta)
-    .where(and(eq(documentosVenta.id, docId), eq(documentosVenta.empresaId, empresaId)));
+    .where(and(eq(documentosVenta.id, docId), eq(documentosVenta.empresaId, empresaId)))
+    .for("update");
   if (!doc) throw new Error("El documento no existe");
   if (doc.estado !== "borrador") throw new Error("El documento ya no está en borrador");
 
@@ -935,84 +1209,118 @@ export async function obtenerAsientoVentaContabilizado(asientoId: string, empres
   };
 }
 
+async function contabilizarDocumentoVentaTx(
+  tx: Tx,
+  id: string,
+  empresaId: string,
+  ctx: AuditoriaCtx,
+) {
+  const { asiento, correlativo } = await generarAsientoVenta(tx, empresaId, id, ctx);
+  const [doc] = await tx
+    .update(documentosVenta)
+    .set({
+      estado: "contabilizado",
+      asientoId: asiento.id,
+      usuarioContabilizacionId: ctx?.usuarioId ?? null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
+    .returning();
+  if (!doc) throw new Error("No se pudo contabilizar el documento");
+
+  // Salida (o entrada, si es NC) de stock por las líneas de producto de inventario.
+  const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
+  const esCredito = doc.clase === "Nota de Crédito";
+  const lineasDoc = await tx
+    .select({ productoId: documentosVentaLineas.productoId, cantidad: documentosVentaLineas.cantidad })
+    .from(documentosVentaLineas)
+    .where(eq(documentosVentaLineas.documentoVentaId, id));
+  const idsLinea = [...new Set(lineasDoc.map((l) => l.productoId).filter((x): x is string => !!x))];
+  if (idsLinea.length) {
+    const invRows = await tx
+      .select({ id: productos.id })
+      .from(productos)
+      .where(and(
+        eq(productos.empresaId, empresaId),
+        inArray(productos.id, idsLinea),
+        eq(productos.esInventario, true),
+      ));
+    const esInv = new Set(invRows.map((r) => r.id));
+    for (const l of lineasDoc) {
+      if (!l.productoId || !esInv.has(l.productoId) || Number(l.cantidad) === 0) continue;
+      if (esCredito) {
+        const stock = await obtenerStock(tx, empresaId, l.productoId);
+        await aplicarEntradaStock(tx, empresaId, l.productoId, {
+          cantidad: Number(l.cantidad),
+          costoUnitario: stock?.costoPromedio ?? 0,
+          fecha: fechaContab,
+          origenTabla: "documentos_venta",
+          origenId: id,
+          glosa: etiquetaDoc(doc),
+        });
+      } else {
+        await aplicarSalidaStock(tx, empresaId, l.productoId, {
+          cantidad: Number(l.cantidad),
+          fecha: fechaContab,
+          origenTabla: "documentos_venta",
+          origenId: id,
+          glosa: etiquetaDoc(doc),
+        });
+      }
+    }
+    await tx
+      .update(stockMovimientos)
+      .set({ asientoId: asiento.id })
+      .where(
+        and(
+          eq(stockMovimientos.empresaId, empresaId),
+          eq(stockMovimientos.origenTabla, "documentos_venta"),
+          eq(stockMovimientos.origenId, id),
+        ),
+      );
+  }
+  if (ctx) {
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx,
+      tabla: "documentos_venta",
+      registroId: doc.id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "cambio_estado",
+      antes: { estado: "borrador" },
+      despues: { estado: "contabilizado", asiento: correlativo },
+    });
+  }
+  return doc;
+}
+
 export async function contabilizarDocumentoVenta(
   id: string,
   empresaId: string,
   ctx: AuditoriaCtx,
 ) {
-  return db.transaction(async (tx) => {
-    const { asiento, correlativo } = await generarAsientoVenta(tx, empresaId, id, ctx);
-    const [doc] = await tx
-      .update(documentosVenta)
-      .set({
-        estado: "contabilizado",
-        asientoId: asiento.id,
-        usuarioContabilizacionId: ctx?.usuarioId ?? null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
-      .returning();
-    if (!doc) throw new Error("No se pudo contabilizar el documento");
+  return db.transaction((tx) => contabilizarDocumentoVentaTx(tx, id, empresaId, ctx));
+}
 
-    // Salida (o entrada, si es NC) de stock por las líneas de producto de inventario.
-    const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
-    const esCredito = doc.clase === "Nota de Crédito";
-    const lineasDoc = await tx
-      .select({ productoId: documentosVentaLineas.productoId, cantidad: documentosVentaLineas.cantidad })
-      .from(documentosVentaLineas)
-      .where(eq(documentosVentaLineas.documentoVentaId, id));
-    const idsLinea = [...new Set(lineasDoc.map((l) => l.productoId).filter((x): x is string => !!x))];
-    if (idsLinea.length) {
-      const invRows = await tx
-        .select({ id: productos.id })
-        .from(productos)
-        .where(and(inArray(productos.id, idsLinea), eq(productos.esInventario, true)));
-      const esInv = new Set(invRows.map((r) => r.id));
-      for (const l of lineasDoc) {
-        if (!l.productoId || !esInv.has(l.productoId) || Number(l.cantidad) === 0) continue;
-        if (esCredito) {
-          const stock = await obtenerStock(tx, empresaId, l.productoId);
-          await aplicarEntradaStock(tx, empresaId, l.productoId, {
-            cantidad: Number(l.cantidad),
-            costoUnitario: stock?.costoPromedio ?? 0,
-            fecha: fechaContab,
-            origenTabla: "documentos_venta",
-            origenId: id,
-            glosa: etiquetaDoc(doc),
-          });
-        } else {
-          await aplicarSalidaStock(tx, empresaId, l.productoId, {
-            cantidad: Number(l.cantidad),
-            fecha: fechaContab,
-            origenTabla: "documentos_venta",
-            origenId: id,
-            glosa: etiquetaDoc(doc),
-          });
-        }
-      }
-      await tx
-        .update(stockMovimientos)
-        .set({ asientoId: asiento.id })
-        .where(
-          and(
-            eq(stockMovimientos.origenTabla, "documentos_venta"),
-            eq(stockMovimientos.origenId, id),
-          ),
+export async function guardarYContabilizarFacturaVenta(
+  id: string,
+  empresaId: string,
+  input: GuardarDocumentoVentaInput,
+  ctx: AuditoriaCtx,
+  opciones: { totalEsperado?: number; tolerancia?: number } = {},
+) {
+  return db.transaction(async (tx) => {
+    const guardado = await guardarDocumentoVentaTx(tx, id, empresaId, input, ctx);
+    if (guardado.clase !== "Factura") throw new Error("El documento no es una factura.");
+    if (opciones.totalEsperado != null) {
+      const diferencia = Math.abs(Number(guardado.montoTotal) - opciones.totalEsperado);
+      if (diferencia > (opciones.tolerancia ?? 1)) {
+        throw new Error(
+          `El total calculado ($${pesos(Number(guardado.montoTotal))}) difiere del total del DTE ($${pesos(opciones.totalEsperado)}).`,
         );
+      }
     }
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "documentos_venta",
-        registroId: doc.id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "cambio_estado",
-        antes: { estado: "borrador" },
-        despues: { estado: "contabilizado", asiento: correlativo },
-      });
-    }
-    return doc;
+    return contabilizarDocumentoVentaTx(tx, id, empresaId, ctx);
   });
 }
 
@@ -1022,24 +1330,31 @@ export async function anularDocumentoVenta(
   id: string,
   empresaId: string,
   motivo: string,
+  fechaReversa: string,
   ctx: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
     const [doc] = await tx
       .select()
       .from(documentosVenta)
-      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)));
+      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
+      .for("update");
     if (!doc) throw new Error("El documento no existe en esta empresa");
     if (doc.estado === "anulado") throw new Error("El documento ya está anulado");
+    if (doc.estado !== "contabilizado" || !doc.asientoId) {
+      throw new Error("Solo se anula un documento contabilizado; para un pendiente usa Descartar.");
+    }
+    const fechaDocumento = doc.fechaContabilizacion ?? doc.fechaEmision;
+    if (fechaReversa < fechaDocumento) throw new Error("La fecha de reversa no puede ser anterior a la contabilización.");
     if (await tienePagosAplicados(tx, empresaId, "venta", id)) {
       throw new Error("El documento tiene pagos aplicados: anula primero el pago.");
     }
 
     if (doc.estado === "contabilizado" && doc.asientoId) {
-      const fechaContab = doc.fechaContabilizacion ?? doc.fechaEmision;
-      const periodo = await periodoDe(empresaId, fechaContab);
-      if (periodo && periodo.estado === PERIODO_BLOQUEA_VENTA) {
-        throw new Error("El periodo del documento está bloqueado; reábrelo para anular.");
+      const periodo = await periodoDe(empresaId, fechaReversa);
+      if (!periodo) throw new Error("No hay un período contable para la fecha de reversa.");
+      if (periodo.estado === PERIODO_BLOQUEA_VENTA) {
+        throw new Error("El período de la reversa está bloqueado; reábrelo para anular.");
       }
       const original = await tx
         .select()
@@ -1050,7 +1365,7 @@ export async function anularDocumentoVenta(
         .from(asientosContables)
         .where(eq(asientosContables.id, doc.asientoId));
 
-      const anio = Number(fechaContab.slice(0, 4));
+      const anio = Number(fechaReversa.slice(0, 4));
       const correlativo = await siguienteCorrelativoAsiento(tx, empresaId, anio);
       const [reversa] = await tx
         .insert(asientosContables)
@@ -1058,7 +1373,7 @@ export async function anularDocumentoVenta(
           empresaId,
           usuarioId: ctx.usuarioId,
           correlativo,
-          fecha: fechaContab,
+          fecha: fechaReversa,
           glosa: `Reversa: ${cab?.glosa ?? etiquetaDoc(doc)}`,
           tipo: "ajuste",
           origen: "anulación venta",
@@ -1097,31 +1412,69 @@ export async function anularDocumentoVenta(
             eq(stockMovimientos.origenId, id),
           ),
         );
-      const hoy = new Date().toISOString().slice(0, 10);
       for (const m of movs) {
-        if (m.tipo === "salida") await aplicarReversaSalida(tx, empresaId, m.id, hoy);
-        else if (m.tipo === "entrada") await aplicarReversaEntrada(tx, empresaId, m.id, hoy);
+        if (m.tipo === "salida") await aplicarReversaSalida(tx, empresaId, m.id, fechaReversa, reversa.id);
+        else if (m.tipo === "entrada") await aplicarReversaEntrada(tx, empresaId, m.id, fechaReversa, reversa.id);
       }
+
+      const [actualizado] = await tx
+        .update(documentosVenta)
+        .set({
+          estado: "anulado",
+          asientoReversaId: reversa.id,
+          motivoAnulacion: motivo,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
+        .returning();
+
+      if (ctx) {
+        await registrarAuditoria(tx, {
+          empresaId,
+          ctx: { ...ctx, motivo },
+          tabla: "documentos_venta",
+          registroId: id,
+          etiqueta: etiquetaDoc(doc),
+          accion: "cambio_estado",
+          antes: { estado: doc.estado },
+          despues: { estado: "anulado", fechaReversa, asientoReversa: correlativo },
+        });
+      }
+      return actualizado!;
     }
 
-    const [actualizado] = await tx
-      .update(documentosVenta)
-      .set({ estado: "anulado", motivoAnulacion: motivo, updatedAt: new Date() })
-      .where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId)))
-      .returning();
+    throw new Error("No se pudo anular el documento.");
+  });
+}
 
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx: { ...ctx, motivo },
-        tabla: "documentos_venta",
-        registroId: id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "cambio_estado",
-        antes: { estado: doc.estado },
-        despues: { estado: "anulado" },
-      });
-    }
+export async function descartarBorradorDocumentoVenta(
+  id: string,
+  empresaId: string,
+  motivo: string,
+  ctx: AuditoriaCtx,
+) {
+  return db.transaction(async (tx) => {
+    const [doc] = await tx.select().from(documentosVenta).where(and(
+      eq(documentosVenta.id, id),
+      eq(documentosVenta.empresaId, empresaId),
+    )).for("update");
+    if (!doc) throw new Error("El documento no existe en esta empresa.");
+    if (doc.estado !== "borrador") throw new Error("Solo se puede descartar un documento pendiente.");
+    const [actualizado] = await tx.update(documentosVenta).set({
+      estado: "anulado",
+      motivoAnulacion: motivo,
+      updatedAt: new Date(),
+    }).where(and(eq(documentosVenta.id, id), eq(documentosVenta.empresaId, empresaId))).returning();
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx: { ...ctx, motivo },
+      tabla: "documentos_venta",
+      registroId: id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "cambio_estado",
+      antes: { estado: "borrador" },
+      despues: { estado: "anulado" },
+    });
     return actualizado!;
   });
 }
@@ -1130,13 +1483,14 @@ export async function anularDocumentoVenta(
 
 /**
  * Crea una NC en borrador a partir de una factura contabilizada, copiando cliente,
- * moneda, tipo de cambio y líneas (con sus montos originales). Rechaza si la factura
+ * moneda y líneas escaladas proporcionalmente al monto solicitado. Rechaza si la factura
  * no tiene saldo disponible (`montoTotal − Σ NC contabilizadas`).
  */
 export async function crearNotaCreditoDesdeFactura(
   empresaId: string,
   facturaId: string,
   tipoDocumentoId: string,
+  montoMaximo: number,
   ctx?: AuditoriaCtx,
 ) {
   return db.transaction(async (tx) => {
@@ -1151,16 +1505,20 @@ export async function crearNotaCreditoDesdeFactura(
     if (factura.estado !== "contabilizado") {
       throw new Error("La factura debe estar contabilizada");
     }
+    await validarTipoDocumentoVenta(tx, tipoDocumentoId, "Nota de Crédito");
 
     const saldo = await saldoNotaCreditoDeFactura(tx, empresaId, facturaId);
     if (saldo == null || saldo <= 0.01) {
       throw new Error("La factura no tiene saldo disponible para notas de crédito.");
     }
+    if (montoMaximo <= 0 || montoMaximo > saldo + 0.01) {
+      throw new Error(`El monto de la nota de crédito debe ser mayor a cero y no superar $${pesos(saldo)}.`);
+    }
 
     const [tercero] = await tx
       .select({ condicionPagoDias: terceros.condicionPagoDias })
       .from(terceros)
-      .where(eq(terceros.id, factura.terceroId));
+      .where(and(eq(terceros.id, factura.terceroId), eq(terceros.empresaId, empresaId)));
 
     const lineasFactura = await tx
       .select()
@@ -1182,20 +1540,35 @@ export async function crearNotaCreditoDesdeFactura(
     const [moneda] = await tx
       .select({ decimales: monedas.decimales })
       .from(monedas)
-      .where(eq(monedas.id, factura.monedaId));
+      .where(and(eq(monedas.id, factura.monedaId), eq(monedas.empresaId, empresaId)));
 
-    const calc = calcularTotalesVenta(
-      lineasFactura.map((l) => ({
-        cantidad: Number(l.cantidad),
-        precioUnitario: Number(l.precioUnitario),
-        descuentoLineaPct: Number(l.descuentoLineaPct),
-        esExento: l.esExento,
-        impuestoId: l.impuestoId,
-      })),
+    const totalFactura = Number(factura.montoTotal);
+    let factor = totalFactura > 0 ? Math.min(1, montoMaximo / totalFactura) : 1;
+    const lineasEscaladas = () => lineasFactura.map((l) => ({
+      cantidad: redondear(Number(l.cantidad) * factor, 6),
+      precioUnitario: Number(l.precioUnitario),
+      descuentoLineaPct: Number(l.descuentoLineaPct),
+      esExento: l.esExento,
+      impuestoId: l.impuestoId,
+    }));
+    let calc = calcularTotalesVenta(
+      lineasEscaladas(),
       tasas,
       moneda?.decimales ?? 0,
       Number(factura.descuentoGlobalPct),
     );
+    if (calc.total > montoMaximo + 0.01) {
+      factor *= montoMaximo / calc.total;
+      calc = calcularTotalesVenta(
+        lineasEscaladas(),
+        tasas,
+        moneda?.decimales ?? 0,
+        Number(factura.descuentoGlobalPct),
+      );
+    }
+    if (calc.total <= 0 || calc.total > saldo + 0.01) {
+      throw new Error("No se pudo calcular una nota de crédito dentro del saldo disponible.");
+    }
 
     const numeroInterno = await siguienteCodigo(tx, empresaId, "venta", "documento");
     const hoy = new Date().toISOString().slice(0, 10);
@@ -1241,7 +1614,7 @@ export async function crearNotaCreditoDesdeFactura(
           categoriaContableId: l.categoriaContableId,
           centroCostoId: l.centroCostoId,
           impuestoId: l.impuestoId,
-          cantidad: l.cantidad,
+          cantidad: redondear(Number(l.cantidad) * factor, 6).toString(),
           precioUnitario: l.precioUnitario,
           descuentoLineaPct: l.descuentoLineaPct,
           montoNeto: calc.netoPorLinea[i]!.toString(),

@@ -59,6 +59,7 @@ export const documentosCompra = pgTable(
       { onDelete: "set null" },
     ),
     asientoId: uuid("asiento_id").references(() => asientosContables.id, { onDelete: "set null" }),
+    asientoReversaId: uuid("asiento_reversa_id").references(() => asientosContables.id, { onDelete: "set null" }),
     usuarioCreacionId: uuid("usuario_creacion_id").references(() => usuarios.id, {
       onDelete: "set null",
     }),

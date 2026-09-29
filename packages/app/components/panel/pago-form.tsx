@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { PagoTipo } from "@erp/shared";
@@ -49,23 +49,27 @@ export function PagoForm({
   terceros,
   metodos,
   bancos,
+  terceroInicialId,
+  documentoInicialId,
 }: {
   empresaId: string;
   tipo: PagoTipo;
   terceros: Opcion[];
   metodos: MetodoOpcion[];
   bancos: Opcion[];
+  terceroInicialId?: string;
+  documentoInicialId?: string;
 }) {
   const meta = PAGO_META[tipo];
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [terceroId, setTerceroId] = useState("");
+  const [terceroId, setTerceroId] = useState(terceroInicialId ?? "");
   const [fechaPago, setFechaPago] = useState(hoy());
   const [fechaContab, setFechaContab] = useState(hoy());
   const [glosa, setGlosa] = useState("");
   const [referencia, setReferencia] = useState("");
   const [docs, setDocs] = useState<DocAbierto[]>([]);
-  const [cargandoDocs, setCargandoDocs] = useState(false);
+  const [cargandoDocs, setCargandoDocs] = useState(!!terceroInicialId);
   const [seleccion, setSeleccion] = useState<Record<string, string>>({}); // documentoId → monto
   const [medios, setMedios] = useState<MedioForm[]>([nuevoMedio(1)]);
   const [medioManual, setMedioManual] = useState(false);
@@ -73,6 +77,20 @@ export function PagoForm({
   function nuevoMedio(clave: number): MedioForm {
     return { clave, metodoPagoId: "", monto: "", referencia: "", chequeNumero: "", chequeBancoId: "", fechaCobro: "" };
   }
+
+  useEffect(() => {
+    if (!terceroInicialId) return;
+    documentosAbiertosAction(empresaId, tipo, terceroInicialId).then((r) => {
+      setCargandoDocs(false);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      setDocs(r.documentos);
+      const objetivo = r.documentos.find((d) => d.id === documentoInicialId);
+      if (objetivo) setSeleccion({ [objetivo.id]: String(objetivo.saldo) });
+    });
+  }, [documentoInicialId, empresaId, terceroInicialId, tipo]);
 
   function elegirTercero(id: string) {
     setTerceroId(id);

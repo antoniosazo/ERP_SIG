@@ -21,8 +21,8 @@ export function agruparPor<T, K extends string>(items: T[], claveDe: (item: T) =
 }
 
 /** Set de claves de grupo expandidas — todo empieza colapsado. */
-export function useExpandidos() {
-  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+export function useExpandidos(iniciales: Iterable<string> = []) {
+  const [expandidos, setExpandidos] = useState<Set<string>>(() => new Set(iniciales));
   const alternar = (clave: string) =>
     setExpandidos((prev) => {
       const next = new Set(prev);
@@ -50,7 +50,14 @@ export function FilaGrupo({
       className="cursor-pointer bg-muted/40 hover:bg-muted/60"
       onClick={onToggle}
       role="button"
+      tabIndex={0}
       aria-expanded={abierto}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
     >
       <TableCell colSpan={colSpan} className="py-2">
         <span className="inline-flex items-center gap-1.5 text-sm font-medium">

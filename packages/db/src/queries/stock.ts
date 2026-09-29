@@ -99,6 +99,7 @@ export async function aplicarReversaEntrada(
   empresaId: string,
   movimientoOrigenId: string,
   fecha: string,
+  asientoId?: string,
 ) {
   const [mov] = await tx
     .select()
@@ -149,6 +150,7 @@ export async function aplicarReversaEntrada(
     saldoCostoPromedio: nuevoProm.toString(),
     origenTabla: mov.origenTabla,
     origenId: mov.origenId,
+    asientoId: asientoId ?? null,
     glosa: `Reversa de entrada — ${mov.glosa ?? ""}`.trim(),
   });
 
@@ -226,6 +228,7 @@ export async function aplicarReversaSalida(
   empresaId: string,
   movimientoOrigenId: string,
   fecha: string,
+  asientoId?: string,
 ) {
   const [mov] = await tx
     .select()
@@ -271,6 +274,7 @@ export async function aplicarReversaSalida(
     saldoCostoPromedio: nuevoProm.toString(),
     origenTabla: mov.origenTabla,
     origenId: mov.origenId,
+    asientoId: asientoId ?? null,
     glosa: `Reversa de salida — ${mov.glosa ?? ""}`.trim(),
   });
 

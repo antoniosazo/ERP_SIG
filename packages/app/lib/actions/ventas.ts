@@ -6,7 +6,9 @@ import {
   contabilizarDocumentoVenta,
   crearDocumentoVenta,
   crearNotaCreditoDesdeFactura,
+  descartarBorradorDocumentoVenta,
   guardarDocumentoVenta,
+  guardarYContabilizarFacturaVenta,
   listarAuditoriaDeRegistro,
   obtenerAsientoVentaContabilizado,
   obtenerDocumentoVentaConLineas,
@@ -77,18 +79,14 @@ export async function guardarDocumentoVentaAction(
   }
   try {
     const ctx = auditCtx(session);
-    const doc = await guardarDocumentoVenta(docId, empresaId, parsed.data, ctx);
-    // Las facturas no pasan por borrador: se contabilizan al guardarse.
-    if (doc.clase === "Factura") {
-      try {
-        await contabilizarDocumentoVenta(docId, empresaId, ctx);
-      } catch (error) {
-        rev(empresaId, docId);
-        return { ok: false, error: `Se guardó, pero no se pudo contabilizar: ${mensajeError(error)}` };
-      }
+    const detalle = await obtenerDocumentoVentaConLineas(docId, empresaId);
+    if (!detalle) return { ok: false, error: "El documento no existe." };
+    if (detalle.documento.clase === "Factura") {
+      await guardarYContabilizarFacturaVenta(docId, empresaId, parsed.data, ctx);
       rev(empresaId, docId);
       return { ok: true, docId, contabilizado: true };
     }
+    await guardarDocumentoVenta(docId, empresaId, parsed.data, ctx);
     rev(empresaId, docId);
     return { ok: true, docId };
   } catch (error) {
@@ -135,9 +133,10 @@ export async function emitirNotaCreditoDesdeFacturaAction(
   empresaId: string,
   facturaId: string,
   tipoDocumentoId: string,
+  montoMaximo: number,
 ): Promise<DocVentaResultado> {
   const session = await requireRolEnEmpresa(empresaId, ROLES);
-  const parsed = emitirNotaCreditoSchema.safeParse({ facturaId, tipoDocumentoId });
+  const parsed = emitirNotaCreditoSchema.safeParse({ facturaId, tipoDocumentoId, montoMaximo });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
@@ -146,6 +145,7 @@ export async function emitirNotaCreditoDesdeFacturaAction(
       empresaId,
       parsed.data.facturaId,
       parsed.data.tipoDocumentoId,
+      parsed.data.montoMaximo,
       auditCtx(session),
     );
     rev(empresaId, facturaId);
@@ -236,6 +236,39 @@ export async function historialDocumentoVentaAction(
   }
 }
 
+export async function reintentarFacturaPendienteAction(
+  empresaId: string,
+  docId: string,
+): Promise<DocVentaAccionResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    await contabilizarDocumentoVenta(docId, empresaId, auditCtx(session));
+    rev(empresaId, docId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+export async function descartarFacturaPendienteAction(
+  empresaId: string,
+  docId: string,
+): Promise<DocVentaAccionResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  try {
+    await descartarBorradorDocumentoVenta(
+      docId,
+      empresaId,
+      "Factura pendiente descartada por el usuario",
+      auditCtx(session),
+    );
+    rev(empresaId, docId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
 export async function anularDocumentoVentaAction(
   empresaId: string,
   docId: string,
@@ -247,7 +280,13 @@ export async function anularDocumentoVentaAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
   try {
-    await anularDocumentoVenta(docId, empresaId, parsed.data.motivo, auditCtx(session));
+    await anularDocumentoVenta(
+      docId,
+      empresaId,
+      parsed.data.motivo,
+      parsed.data.fechaReversa,
+      auditCtx(session),
+    );
     rev(empresaId, docId);
     return { ok: true };
   } catch (error) {

@@ -18,8 +18,13 @@ import {
 } from "../schema";
 import { registrarAuditoria, type AuditoriaCtx } from "./auditoria";
 import { crearTercero } from "./terceros";
-import { contabilizarDocumentoCompra, crearDocumentoCompra, guardarDocumentoCompra } from "./documentos-compra";
-import { contabilizarDocumentoVenta, crearDocumentoVenta, guardarDocumentoVenta } from "./documentos-venta";
+import { contabilizarDocumentoCompra, crearDocumentoCompra, guardarDocumentoCompra, guardarYContabilizarFacturaCompra } from "./documentos-compra";
+import {
+  contabilizarDocumentoVenta,
+  crearDocumentoVenta,
+  guardarDocumentoVenta,
+  guardarYContabilizarFacturaVenta,
+} from "./documentos-venta";
 import { resolverCuentaGeneral } from "./reglas-determinacion-cuenta";
 
 // ── Credenciales ────────────────────────────────────────────────────────────
@@ -125,7 +130,10 @@ export type LineaDteSii = {
   esExento: boolean;
 };
 
-export type DocSii = DocRcv & { lineas?: LineaDteSii[] };
+export type DocSii = DocRcv & {
+  lineas?: LineaDteSii[];
+  referencias?: { tipoDocRef: string; folioRef: string; fechaRef?: string; razonRef?: string }[];
+};
 
 async function prepararEntornoSii(empresaId: string) {
   const tiposDoc = await db.select().from(tiposDocumento);
@@ -192,6 +200,7 @@ function docSiiDeFila(f: DtePendienteRow): DocSii {
     montoNeto: Number(f.montoNeto),
     montoIva: Number(f.montoIva),
     montoTotal: Number(f.montoTotal),
+    referencias: dte.referencias,
     lineas: dte.lineas
       .filter((l) => l.montoItem > 0)
       .map((l) => {
@@ -285,40 +294,76 @@ async function crearBorradorSii(
   if (origen === "compra") {
     cuentaImput = cuentaImput ?? env.gastoGeneral;
     if (!cuentaImput) throw new Error("Sin cuenta de gasto: define la regla GENERAL compra/gasto.");
+    let documentoBaseId: string | undefined;
+    if (clase.compra === "nota_credito" || clase.compra === "nota_debito") {
+      const referenciasFactura = (d.referencias ?? []).filter((r) =>
+        ["33", "34", "46", "HON"].includes(r.tipoDocRef.trim()),
+      );
+      for (const ref of referenciasFactura) {
+        const [referencia] = await db.select({ id: documentosCompra.id })
+          .from(documentosCompra)
+          .innerJoin(tiposDocumento, eq(tiposDocumento.id, documentosCompra.tipoDocumentoId))
+          .where(and(
+            eq(documentosCompra.empresaId, empresaId),
+            eq(documentosCompra.terceroId, contraparte.id),
+            eq(documentosCompra.docTipo, "factura"),
+            eq(documentosCompra.estado, "contabilizado"),
+            eq(documentosCompra.folio, ref.folioRef),
+            eq(tiposDocumento.codigoSii, ref.tipoDocRef.trim()),
+          )).limit(1);
+        if (referencia) {
+          documentoBaseId = referencia.id;
+          break;
+        }
+      }
+      if (!documentoBaseId) {
+        throw new Error(
+          "La nota SII no pudo vincularse a una factura de compra contabilizada del mismo proveedor; carga primero la factura referenciada.",
+        );
+      }
+    }
     const doc = await crearDocumentoCompra(
       empresaId,
-      { docTipo: clase.compra as never, tipoDocumentoId, terceroId: contraparte.id },
+      { docTipo: clase.compra as never, tipoDocumentoId, terceroId: contraparte.id, documentoBaseId },
       ctx,
     );
-    const guardado = await guardarDocumentoCompra(
-      doc.id,
-      empresaId,
-      {
-        docTipo: clase.compra as never,
-        modalidad: d.lineas?.length ? "Servicio" : "Artículo",
-        terceroId: contraparte.id,
-        tipoDocumentoId,
-        folio: d.folio,
-        fechaEmision: d.fechaEmision,
-        fechaVencimiento: fechaVenc,
-        fechaContabilizacion: d.fechaRecepcionSii || d.fechaEmision,
-        monedaId: doc.monedaId,
-        tipoCambio: 1,
-        descuentoGlobalPct: 0,
-        condicionPagoDias: contraparte.condicionPagoDias ?? undefined,
-        lineas: lineas.map((l) => ({
-          glosa: l.glosa ? l.glosa.slice(0, 300) : undefined,
-          cuentaImputacionId: cuentaImput!,
-          cantidad: l.cantidad,
-          precioUnitario: l.precioUnitario,
-          descuentoLineaPct: 0,
-          esExento: l.esExento,
-          impuestoId: l.esExento ? undefined : env.ivaCompra?.id,
-          ivaRecuperable: ivaRecuperable ?? undefined,
-        })),
-      },
-      ctx,
-    );
+    const inputCompra = {
+      docTipo: clase.compra as never,
+      modalidad: d.lineas?.length ? "Servicio" as const : "Artículo" as const,
+      terceroId: contraparte.id,
+      tipoDocumentoId,
+      folio: d.folio,
+      fechaEmision: d.fechaEmision,
+      fechaVencimiento: fechaVenc,
+      fechaContabilizacion: d.fechaRecepcionSii || d.fechaEmision,
+      monedaId: doc.monedaId,
+      tipoCambio: 1,
+      descuentoGlobalPct: 0,
+      condicionPagoDias: contraparte.condicionPagoDias ?? undefined,
+      documentoBaseId,
+      lineas: lineas.map((l) => ({
+        glosa: l.glosa ? l.glosa.slice(0, 300) : undefined,
+        cuentaImputacionId: cuentaImput!,
+        cantidad: l.cantidad,
+        precioUnitario: l.precioUnitario,
+        descuentoLineaPct: 0,
+        esExento: l.esExento,
+        impuestoId: l.esExento ? undefined : env.ivaCompra?.id,
+        ivaRecuperable: ivaRecuperable ?? undefined,
+      })),
+    };
+    let guardado;
+    try {
+      guardado = clase.compra === "factura"
+        ? await guardarYContabilizarFacturaCompra(doc.id, empresaId, inputCompra, ctx, {
+            totalEsperado,
+            tolerancia: 1,
+          })
+        : await guardarDocumentoCompra(doc.id, empresaId, inputCompra, ctx);
+    } catch (e) {
+      await db.delete(documentosCompra).where(eq(documentosCompra.id, doc.id));
+      throw new Error(`No se pudo guardar y contabilizar: ${e instanceof Error ? e.message : "error desconocido"}`);
+    }
     await db
       .update(documentosCompra)
       .set({ estadoRcv: d.estadoRcv ?? null, siiTrackId: d.trackId ?? null })
@@ -328,37 +373,76 @@ async function crearBorradorSii(
   } else {
     cuentaImput = cuentaImput ?? env.ingresoGeneral;
     if (!cuentaImput) throw new Error("Sin cuenta de ingreso: define la regla GENERAL venta/ingreso.");
+    let documentoReferenciaId: string | undefined;
+    if (clase.venta !== "Factura") {
+      const referenciasFactura = (d.referencias ?? []).filter((r) =>
+        ["33", "34", "46"].includes(r.tipoDocRef.trim()),
+      );
+      for (const ref of referenciasFactura) {
+        const [referencia] = await db
+          .select({ id: documentosVenta.id })
+          .from(documentosVenta)
+          .innerJoin(tiposDocumento, eq(tiposDocumento.id, documentosVenta.tipoDocumentoId))
+          .where(and(
+            eq(documentosVenta.empresaId, empresaId),
+            eq(documentosVenta.terceroId, contraparte.id),
+            eq(documentosVenta.clase, "Factura"),
+            eq(documentosVenta.estado, "contabilizado"),
+            eq(documentosVenta.folio, ref.folioRef),
+            eq(tiposDocumento.codigoSii, ref.tipoDocRef.trim()),
+          ))
+          .limit(1);
+        if (referencia) {
+          documentoReferenciaId = referencia.id;
+          break;
+        }
+      }
+      if (!documentoReferenciaId) {
+        throw new Error(
+          "La nota SII no pudo vincularse a una factura contabilizada del mismo cliente; carga primero la factura referenciada.",
+        );
+      }
+    }
+
     const doc = await crearDocumentoVenta(
       empresaId,
       { clase: clase.venta as never, tipoDocumentoId, terceroId: contraparte.id },
       ctx,
     );
-    const guardado = await guardarDocumentoVenta(
-      doc.id,
-      empresaId,
-      {
-        modalidad: d.lineas?.length ? "Servicio" : "Artículo",
-        terceroId: contraparte.id,
-        tipoDocumentoId,
-        folio: d.folio,
-        fechaEmision: d.fechaEmision,
-        fechaVencimiento: fechaVenc,
-        fechaContabilizacion: d.fechaEmision,
-        monedaId: doc.monedaId,
-        tipoCambio: 1,
-        descuentoGlobalPct: 0,
-        lineas: lineas.map((l) => ({
-          glosa: l.glosa ? l.glosa.slice(0, 300) : undefined,
-          cuentaIngresoId: cuentaImput!,
-          cantidad: l.cantidad,
-          precioUnitario: l.precioUnitario,
-          descuentoLineaPct: 0,
-          esExento: l.esExento,
-          impuestoId: l.esExento ? undefined : env.ivaVenta?.id,
-        })),
-      } as never,
-      ctx,
-    );
+    const inputVenta = {
+      modalidad: d.lineas?.length ? "Servicio" as const : "Artículo" as const,
+      terceroId: contraparte.id,
+      tipoDocumentoId,
+      folio: d.folio,
+      fechaEmision: d.fechaEmision,
+      fechaVencimiento: fechaVenc,
+      fechaContabilizacion: d.fechaEmision,
+      monedaId: doc.monedaId,
+      tipoCambio: 1,
+      descuentoGlobalPct: 0,
+      documentoReferenciaId,
+      lineas: lineas.map((l) => ({
+        glosa: l.glosa ? l.glosa.slice(0, 300) : undefined,
+        cuentaIngresoId: cuentaImput!,
+        cantidad: l.cantidad,
+        precioUnitario: l.precioUnitario,
+        descuentoLineaPct: 0,
+        esExento: l.esExento,
+        impuestoId: l.esExento ? undefined : env.ivaVenta?.id,
+      })),
+    };
+    let guardado;
+    try {
+      guardado = clase.venta === "Factura"
+        ? await guardarYContabilizarFacturaVenta(doc.id, empresaId, inputVenta, ctx, {
+            totalEsperado,
+            tolerancia: 1,
+          })
+        : await guardarDocumentoVenta(doc.id, empresaId, inputVenta, ctx);
+    } catch (e) {
+      await db.delete(documentosVenta).where(eq(documentosVenta.id, doc.id));
+      throw new Error(`No se pudo guardar y contabilizar: ${e instanceof Error ? e.message : "error desconocido"}`);
+    }
     await db
       .update(documentosVenta)
       .set({ estadoRcv: d.estadoRcv ?? null })
@@ -371,20 +455,8 @@ async function crearBorradorSii(
   // bloqueado, cuenta sin configurar…) el documento recién creado se descarta y el motivo
   // queda en la bandeja, donde el DTE sigue pendiente para reintentar.
   const esFactura = origen === "compra" ? clase.compra === "factura" : clase.venta === "Factura";
-  if (esFactura) {
-    try {
-      if (origen === "compra") await contabilizarDocumentoCompra(documentoId, empresaId, ctx);
-      else await contabilizarDocumentoVenta(documentoId, empresaId, ctx);
-    } catch (e) {
-      await (origen === "compra"
-        ? db.delete(documentosCompra).where(eq(documentosCompra.id, documentoId))
-        : db.delete(documentosVenta).where(eq(documentosVenta.id, documentoId)));
-      throw new Error(`No se pudo contabilizar: ${e instanceof Error ? e.message : "error desconocido"}`);
-    }
-  }
-
   const advertencia =
-    Math.abs(totalGuardado - totalEsperado) > 1
+    !esFactura && Math.abs(totalGuardado - totalEsperado) > 1
       ? `El total calculado (${totalGuardado}) difiere del total del DTE (${totalEsperado}); revisa el borrador.`
       : undefined;
   return { resultado: "creado", documentoId, advertencia, contabilizado: esFactura };
@@ -409,7 +481,7 @@ export async function importarDocumentosRcv(
         res.detalle.push({ folio: d.folio, rut: rutNorm, resultado: "ya existía" });
       } else {
         res.creados++;
-        res.detalle.push({ folio: d.folio, rut: rutNorm, resultado: "creado (borrador)" });
+        res.detalle.push({ folio: d.folio, rut: rutNorm, resultado: r.contabilizado ? "creado y contabilizado" : "creado (borrador)" });
       }
     } catch (e) {
       res.errores++;

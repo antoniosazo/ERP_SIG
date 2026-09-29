@@ -78,6 +78,7 @@ export function facturaDeDocumento(e: Entrada): FacturaDatos {
       };
     }),
     referencias: [],
+    extras,
     montoNeto: Number(d.montoNeto),
     montoExento: Number(d.montoExento),
     montoIva: Number(d.montoImpuesto),
