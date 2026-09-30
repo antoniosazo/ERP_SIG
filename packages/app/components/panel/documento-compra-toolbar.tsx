@@ -20,6 +20,7 @@ type LineaPendiente = {
   glosa: string | null;
   cantidadPendiente: number;
   precioUnitario: number;
+  esInventario: boolean;
 };
 
 /**
@@ -50,6 +51,8 @@ export function DocumentoCompraToolbar({
     docTipo === "nota_credito" ||
     docTipo === "nota_debito" ||
     docTipo === "entrada_mercaderia";
+  const lineasInventario = lineasPendientes.filter((l) => l.esInventario);
+  const lineasFacturablesDirectas = lineasPendientes.filter((l) => !l.esInventario);
   const pedidoAbierto = docTipo === "pedido" && estado === "abierto" && lineasPendientes.length > 0;
   const grpoPorFacturar =
     docTipo === "entrada_mercaderia" && estado === "contabilizado" && lineasPendientes.length > 0;
@@ -69,22 +72,26 @@ export function DocumentoCompraToolbar({
       {puedeVerContabilidad && docTipo === "factura" && <ReclamoSiiDialog empresaId={empresaId} docId={docId} />}
       {puedeVerContabilidad && pedidoAbierto && (
         <>
-          <TraerDesdeDialog
-            empresaId={empresaId}
-            documentoBaseId={docId}
-            lineas={lineasPendientes}
-            docTipoDestino="entrada_mercaderia"
-            boton="Traer a recepción"
-            titulo="Traer líneas del pedido a una Entrada de Mercadería"
-          />
-          <TraerDesdeDialog
-            empresaId={empresaId}
-            documentoBaseId={docId}
-            lineas={lineasPendientes}
-            docTipoDestino="factura"
-            boton="Traer a factura"
-            titulo="Traer líneas del pedido a una factura"
-          />
+          {lineasInventario.length > 0 && (
+            <TraerDesdeDialog
+              empresaId={empresaId}
+              documentoBaseId={docId}
+              lineas={lineasInventario}
+              docTipoDestino="entrada_mercaderia"
+              boton="Traer a recepción"
+              titulo="Traer líneas del pedido a una Entrada de Mercadería"
+            />
+          )}
+          {lineasFacturablesDirectas.length > 0 && (
+            <TraerDesdeDialog
+              empresaId={empresaId}
+              documentoBaseId={docId}
+              lineas={lineasFacturablesDirectas}
+              docTipoDestino="factura"
+              boton="Traer a factura"
+              titulo="Traer líneas no inventariables del pedido a una factura"
+            />
+          )}
         </>
       )}
       {puedeVerContabilidad && grpoPorFacturar && (

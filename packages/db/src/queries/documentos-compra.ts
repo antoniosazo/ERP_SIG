@@ -1,11 +1,14 @@
 import {
   codigoSiiPermitidoParaCompra,
+  costoUnitarioNetoEntrada,
+  destinoDesdeDocumentoPermitido,
+  montoGrIrParaCantidad,
   type CrearDocumentoCompraInput,
   type DocumentoCompraTipo,
   type GuardarDocumentoCompraInput,
   type TraerDesdeDocumentoInput,
 } from "@erp/shared";
-import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
 import {
@@ -22,6 +25,7 @@ import {
   pagosDocumentos,
   planCuentas,
   productos,
+  productosGrupos,
   stockMovimientos,
   terceros,
   tercerosGrupos,
@@ -268,6 +272,72 @@ async function saldoNotaCreditoDeFacturaCompra(
     .filter((n) => n.id !== excluirDocId)
     .reduce((total, n) => total + Number(n.total), 0);
 }
+async function devolverReservaDocumentoBase(
+  tx: Tx,
+  empresaId: string,
+  doc: typeof documentosCompra.$inferSelect,
+) {
+  if (!doc.documentoBaseId) return;
+
+  const lineas = await tx
+    .select({
+      cantidad: documentosCompraLineas.cantidad,
+      baseLineaId: documentosCompraLineas.documentoBaseLineaId,
+    })
+    .from(documentosCompraLineas)
+    .where(eq(documentosCompraLineas.documentoCompraId, doc.id));
+
+  const porLinea = new Map<string, number>();
+  for (const linea of lineas) {
+    if (!linea.baseLineaId) continue;
+    porLinea.set(
+      linea.baseLineaId,
+      (porLinea.get(linea.baseLineaId) ?? 0) + Number(linea.cantidad),
+    );
+  }
+  if (porLinea.size === 0) return;
+
+  const ids = [...porLinea.keys()];
+  const bases = await tx
+    .select({ id: documentosCompraLineas.id })
+    .from(documentosCompraLineas)
+    .where(inArray(documentosCompraLineas.id, ids))
+    .for("update");
+  if (bases.length !== ids.length) {
+    throw new Error("No se pudo devolver la reserva: falta una línea del documento base.");
+  }
+
+  for (const [lineaId, cantidad] of porLinea) {
+    await tx
+      .update(documentosCompraLineas)
+      .set({
+        cantidadPendiente: sql`${documentosCompraLineas.cantidadPendiente} + ${cantidad}`,
+      })
+      .where(eq(documentosCompraLineas.id, lineaId));
+  }
+
+  const [base] = await tx
+    .select({ docTipo: documentosCompra.docTipo, estado: documentosCompra.estado })
+    .from(documentosCompra)
+    .where(and(
+      eq(documentosCompra.id, doc.documentoBaseId),
+      eq(documentosCompra.empresaId, empresaId),
+    ))
+    .for("update");
+  if (base?.estado === "cerrado") {
+    await tx
+      .update(documentosCompra)
+      .set({
+        estado: base.docTipo === "pedido" ? "abierto" : "contabilizado",
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(documentosCompra.id, doc.documentoBaseId),
+        eq(documentosCompra.empresaId, empresaId),
+      ));
+  }
+}
+
 
 // ── Lecturas ─────────────────────────────────────────────────────────────────
 
@@ -420,7 +490,8 @@ export async function listarEntradasPendientesFacturar(empresaId: string) {
       fechaEmision: documentosCompra.fechaEmision,
       terceroId: documentosCompra.terceroId,
       cantidadPendiente: documentosCompraLineas.cantidadPendiente,
-      precioUnitario: documentosCompraLineas.precioUnitario,
+      cantidad: documentosCompraLineas.cantidad,
+      montoNeto: documentosCompraLineas.montoNeto,
     })
     .from(documentosCompra)
     .innerJoin(
@@ -450,7 +521,11 @@ export async function listarEntradasPendientesFacturar(empresaId: string) {
         terceroId: r.terceroId,
         valorPendiente: 0,
       };
-    acc.valorPendiente += Number(r.cantidadPendiente) * Number(r.precioUnitario);
+    acc.valorPendiente += montoGrIrParaCantidad(
+      Number(r.cantidad),
+      Number(r.montoNeto),
+      Number(r.cantidadPendiente),
+    );
     porDoc.set(r.id, acc);
   }
   return [...porDoc.values()].filter((d) => d.valorPendiente > 0.000001);
@@ -572,12 +647,31 @@ async function guardarDocumentoCompraTx(
     if (input.modalidad === "Servicio" && antes.docTipo === "entrada_mercaderia") {
       throw new Error("Una entrada de mercadería no puede ser de tipo Servicio");
     }
+    const esDerivadoLogistico =
+      !!antes.documentoBaseId &&
+      antes.docTipo !== "nota_credito" &&
+      antes.docTipo !== "nota_debito";
+    if (esDerivadoLogistico) {
+      if (input.terceroId !== antes.terceroId || input.monedaId !== antes.monedaId) {
+        throw new Error("Un documento derivado debe conservar el proveedor y la moneda del origen.");
+      }
+      if (input.modalidad !== antes.modalidad) {
+        throw new Error("Un documento derivado debe conservar la modalidad del origen.");
+      }
+    }
 
     const [moneda] = await tx
       .select({ decimales: monedas.decimales })
       .from(monedas)
       .where(and(eq(monedas.id, input.monedaId), eq(monedas.empresaId, empresaId)));
     if (!moneda) throw new Error("La moneda no pertenece a esta empresa");
+    const [empresa] = await tx
+      .select({ monedaFuncionalId: empresas.monedaFuncionalId })
+      .from(empresas)
+      .where(eq(empresas.id, empresaId));
+    if (empresa?.monedaFuncionalId === input.monedaId && Math.abs(input.tipoCambio - 1) > 0.000001) {
+      throw new Error("El tipo de cambio de un documento en moneda funcional debe ser 1.");
+    }
 
     const idsImp = input.lineas.map((l) => l.impuestoId).filter((x): x is string => !!x);
     const tasas = new Map<string, number>();
@@ -617,11 +711,7 @@ async function guardarDocumentoCompraTx(
     // trazabilidad y su saldo pendiente; solo se editan importes/fechas y no se puede
     // agregar/quitar líneas.
     let previas: (typeof documentosCompraLineas.$inferSelect)[] = [];
-    if (
-      antes.documentoBaseId &&
-      antes.docTipo !== "nota_credito" &&
-      antes.docTipo !== "nota_debito"
-    ) {
+    if (esDerivadoLogistico) {
       previas = await tx
         .select()
         .from(documentosCompraLineas)
@@ -632,6 +722,17 @@ async function guardarDocumentoCompraTx(
           "Este documento se generó desde otro: no se pueden agregar ni quitar líneas.",
         );
       }
+      previas.forEach((previa, i) => {
+        if (!previa.documentoBaseLineaId) {
+          throw new Error("Una línea derivada perdió su referencia al documento de origen.");
+        }
+        if (Math.abs(Number(previa.cantidad) - input.lineas[i]!.cantidad) > 0.000001) {
+          throw new Error(
+            `La cantidad de la línea ${i + 1} proviene del documento base y no se puede modificar.`,
+          );
+        }
+      });
+
     }
 
     const lineasCalc = input.lineas.map((l, i) => ({
@@ -726,7 +827,8 @@ export async function abrirPedidoCompra(id: string, empresaId: string, ctx?: Aud
     const [doc] = await tx
       .select()
       .from(documentosCompra)
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
+      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
+      .for("update");
     if (!doc) throw new Error("El documento no existe en esta empresa");
     if (doc.docTipo !== "pedido") throw new Error("Solo se abren pedidos de compra");
     if (doc.estado !== "borrador") throw new Error("El pedido ya no está en borrador");
@@ -778,7 +880,8 @@ export async function traerDesdeDocumento(
           eq(documentosCompra.id, input.documentoBaseId),
           eq(documentosCompra.empresaId, empresaId),
         ),
-      );
+      )
+      .for("update");
     if (!base) throw new Error("El documento base no existe en esta empresa");
     // Un pedido abierto se recibe/factura; una entrada de mercadería contabilizada se factura.
     const baseValida =
@@ -787,12 +890,32 @@ export async function traerDesdeDocumento(
     if (!baseValida) {
       throw new Error("El documento base no está disponible para traer líneas");
     }
+    if (!destinoDesdeDocumentoPermitido(base.docTipo, input.docTipoDestino)) {
+      throw new Error(
+        `No se puede crear ${input.docTipoDestino} desde ${base.docTipo}.`,
+      );
+    }
+    if (input.docTipoDestino === "entrada_mercaderia") {
+      const [empresa] = await tx
+        .select({ monedaFuncionalId: empresas.monedaFuncionalId })
+        .from(empresas)
+        .where(eq(empresas.id, empresaId));
+      if (!empresa?.monedaFuncionalId || base.monedaId !== empresa.monedaFuncionalId) {
+        throw new Error(
+          "La recepción de inventario solo está disponible en la moneda funcional de la empresa.",
+        );
+      }
+      if (Math.abs(Number(base.tipoCambio) - 1) > 0.000001) {
+        throw new Error("El tipo de cambio de una recepción en moneda funcional debe ser 1.");
+      }
+    }
 
     const baseLineas = await tx
       .select()
       .from(documentosCompraLineas)
       .where(eq(documentosCompraLineas.documentoCompraId, base.id))
-      .orderBy(asc(documentosCompraLineas.numeroLinea));
+      .orderBy(asc(documentosCompraLineas.numeroLinea))
+      .for("update");
     const porId = new Map(baseLineas.map((l) => [l.id, l]));
 
     const seleccion = input.lineas.map((s) => {
@@ -806,6 +929,51 @@ export async function traerDesdeDocumento(
       }
       return { bl, cantidad: s.cantidad };
     });
+    const idsSeleccionados = input.lineas.map((l) => l.lineaBaseId);
+    if (new Set(idsSeleccionados).size !== idsSeleccionados.length) {
+      throw new Error("No se puede seleccionar dos veces la misma línea.");
+    }
+
+    const productoIds = [
+      ...new Set(seleccion.map(({ bl }) => bl.productoId).filter((id): id is string => !!id)),
+    ];
+    const productosSeleccionados = productoIds.length
+      ? await tx
+          .select({
+            id: productos.id,
+            codigo: productos.codigo,
+            estado: productos.estado,
+            esCompra: productos.esCompra,
+            esInventario: productos.esInventario,
+          })
+          .from(productos)
+          .where(and(
+            eq(productos.empresaId, empresaId),
+            inArray(productos.id, productoIds),
+          ))
+      : [];
+    const productoPorId = new Map(productosSeleccionados.map((p) => [p.id, p]));
+
+    for (const { bl } of seleccion) {
+      const producto = bl.productoId ? productoPorId.get(bl.productoId) : undefined;
+      if (input.docTipoDestino === "entrada_mercaderia") {
+        if (!producto || producto.estado !== "Activo" || !producto.esCompra || !producto.esInventario) {
+          throw new Error(
+            `La línea ${bl.numeroLinea + 1} no corresponde a un producto de inventario activo y comprable.`,
+          );
+        }
+      }
+      if (
+        base.docTipo === "pedido" &&
+        input.docTipoDestino === "factura" &&
+        producto?.esInventario
+      ) {
+        throw new Error(
+          `El artículo ${producto.codigo} es de inventario: crea primero una Entrada de Mercadería.`,
+        );
+      }
+    }
+
 
     // Cabecera del documento destino, heredando datos comerciales del base.
     await sembrarSeriesCompra(tx, empresaId);
@@ -816,6 +984,7 @@ export async function traerDesdeDocumento(
       .values({
         empresaId,
         docTipo: input.docTipoDestino,
+        modalidad: base.modalidad,
         numeroInterno,
         tipoDocumentoId: base.tipoDocumentoId,
         terceroId: base.terceroId,
@@ -833,8 +1002,7 @@ export async function traerDesdeDocumento(
     if (!nuevo) throw new Error("No se pudo crear el documento");
 
     // Pedido y entrada de mercadería llevan saldo pendiente aguas abajo.
-    const llevaPendiente =
-      input.docTipoDestino === "pedido" || input.docTipoDestino === "entrada_mercaderia";
+    const llevaPendiente = input.docTipoDestino === "entrada_mercaderia";
     let i = 0;
     for (const { bl, cantidad } of seleccion) {
       await tx.insert(documentosCompraLineas).values({
@@ -859,7 +1027,9 @@ export async function traerDesdeDocumento(
       // Descuenta el saldo pendiente de la línea base.
       await tx
         .update(documentosCompraLineas)
-        .set({ cantidadPendiente: (Number(bl.cantidadPendiente) - cantidad).toString() })
+        .set({
+          cantidadPendiente: sql`${documentosCompraLineas.cantidadPendiente} - ${cantidad}`,
+        })
         .where(eq(documentosCompraLineas.id, bl.id));
     }
 
@@ -964,7 +1134,8 @@ export async function cerrarPedidoCompra(
     const [doc] = await tx
       .select()
       .from(documentosCompra)
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)));
+      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
+      .for("update");
     if (!doc) throw new Error("El documento no existe en esta empresa");
     if (doc.docTipo !== "pedido") throw new Error("Solo se cierran pedidos de compra");
     if (doc.estado !== "abierto") throw new Error("El pedido no está abierto");
@@ -1065,20 +1236,45 @@ async function construirAsientoCompra(
   const baseLineaIds = [
     ...new Set(lineas.map((l) => l.documentoBaseLineaId).filter((x): x is string => !!x)),
   ];
-  const desdeGrpo = new Set<string>();
+  const basePorId = new Map<
+    string,
+    {
+      docTipo: DocumentoCompraTipo;
+      cantidad: number;
+      montoNeto: number;
+      productoId: string | null;
+    }
+  >();
   if (baseLineaIds.length) {
     const bases = await tx
-      .select({ lineaId: documentosCompraLineas.id, docTipo: documentosCompra.docTipo })
+      .select({
+        lineaId: documentosCompraLineas.id,
+        docTipo: documentosCompra.docTipo,
+        cantidad: documentosCompraLineas.cantidad,
+        montoNeto: documentosCompraLineas.montoNeto,
+        productoId: documentosCompraLineas.productoId,
+      })
       .from(documentosCompraLineas)
       .innerJoin(
         documentosCompra,
         eq(documentosCompraLineas.documentoCompraId, documentosCompra.id),
       )
-      .where(inArray(documentosCompraLineas.id, baseLineaIds));
-    for (const b of bases) if (b.docTipo === "entrada_mercaderia") desdeGrpo.add(b.lineaId);
+      .where(and(
+        eq(documentosCompra.empresaId, empresaId),
+        inArray(documentosCompraLineas.id, baseLineaIds),
+      ));
+    for (const b of bases) {
+      basePorId.set(b.lineaId, {
+        docTipo: b.docTipo,
+        cantidad: Number(b.cantidad),
+        montoNeto: Number(b.montoNeto),
+        productoId: b.productoId,
+      });
+    }
   }
   const lineaEsDesdeGrpo = (l: (typeof lineas)[number]) =>
-    !!l.documentoBaseLineaId && desdeGrpo.has(l.documentoBaseLineaId);
+    !!l.documentoBaseLineaId &&
+    basePorId.get(l.documentoBaseLineaId)?.docTipo === "entrada_mercaderia";
 
   const necesitaGrIr = lineas.some(lineaEsDesdeGrpo);
   const cuentaGrIr = necesitaGrIr
@@ -1091,30 +1287,35 @@ async function construirAsientoCompra(
   // RN-A: una línea de producto de inventario que NO viene de un GRPO se rechaza
   // (las compras de inventario pasan por una Entrada de Mercadería).
   const idsProd = [...new Set(lineas.map((l) => l.productoId).filter((x): x is string => !!x))];
-  const esInventarioPorId = new Map<string, boolean>();
-  if (idsProd.length) {
-    const prods = await tx
-      .select({
-        id: productos.id,
-        esInventario: productos.esInventario,
-        esCompra: productos.esCompra,
-        codigo: productos.codigo,
-      })
-      .from(productos)
-      .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, idsProd)));
-    for (const p of prods) esInventarioPorId.set(p.id, p.esInventario);
-    const esCompraPorId = new Map(prods.map((p) => [p.id, p.esCompra]));
-    for (const l of lineas) {
-      if (!l.productoId) continue;
-      const cod = prods.find((p) => p.id === l.productoId)?.codigo ?? "";
-      if (esCompraPorId.get(l.productoId) === false) {
-        errores.push(`El artículo ${cod} no está habilitado para compra.`);
-      }
-      if (esInventarioPorId.get(l.productoId) && !lineaEsDesdeGrpo(l)) {
-        errores.push(
-          `El artículo ${cod} es de inventario: usa una Entrada de Mercadería y luego "Traer a factura".`,
-        );
-      }
+  const prods = idsProd.length
+    ? await tx
+        .select({
+          id: productos.id,
+          esInventario: productos.esInventario,
+          esCompra: productos.esCompra,
+          codigo: productos.codigo,
+          cuentaDiferenciaPrecioId: productosGrupos.cuentaDiferenciaPrecioDefaultId,
+        })
+        .from(productos)
+        .innerJoin(productosGrupos, eq(productos.grupoId, productosGrupos.id))
+        .where(and(
+          eq(productos.empresaId, empresaId),
+          eq(productosGrupos.empresaId, empresaId),
+          inArray(productos.id, idsProd),
+        ))
+    : [];
+  const productoPorId = new Map(prods.map((p) => [p.id, p]));
+  for (const l of lineas) {
+    if (!l.productoId) continue;
+    const producto = productoPorId.get(l.productoId);
+    const cod = producto?.codigo ?? "";
+    if (!producto?.esCompra) {
+      errores.push(`El artículo ${cod} no está habilitado para compra.`);
+    }
+    if (producto?.esInventario && !lineaEsDesdeGrpo(l)) {
+      errores.push(
+        `El artículo ${cod} es de inventario: usa una Entrada de Mercadería y luego "Traer a factura".`,
+      );
     }
   }
 
@@ -1168,21 +1369,59 @@ async function construirAsientoCompra(
     doc.docTipo;
   const filas: FilaAsiento[] = [];
 
-  // Cargo consolidado por cuenta + centro de costo. Las líneas que vienen de un GRPO
-  // cargan contra GR-IR (cancela el transitorio); el resto, contra su cuenta de imputación.
+  // Cargo consolidado por cuenta + centro. Una factura basada en una recepción descarga
+  // GR-IR por el valor neto recibido; cualquier diferencia con la factura va a la cuenta
+  // de diferencia de precio del grupo del artículo.
   const gastoPorClave = new Map<
     string,
     { cuentaId: string; centroCostoId: string | null; monto: number }
   >();
+  const diferenciaPorCuenta = new Map<string, number>();
   for (const l of lineas) {
-    const monto = Number(l.montoNeto);
-    if (monto === 0) continue;
-    const cuentaId = lineaEsDesdeGrpo(l) ? cuentaGrIr! : l.cuentaImputacionId;
-    const centro = lineaEsDesdeGrpo(l) ? null : l.centroCostoId;
+    const montoFactura = Number(l.montoNeto);
+    if (montoFactura === 0) continue;
+
+    const desdeEntrada = lineaEsDesdeGrpo(l);
+    if (desdeEntrada && !cuentaGrIr) continue;
+    let montoCargo = montoFactura;
+    let cuentaId = l.cuentaImputacionId;
+    let centro = l.centroCostoId;
+
+    if (desdeEntrada) {
+      const base = basePorId.get(l.documentoBaseLineaId!);
+      if (!base) {
+        errores.push("No se encontró la línea de la recepción vinculada.");
+        continue;
+      }
+      cuentaId = cuentaGrIr!;
+      centro = null;
+      montoCargo = redondear(
+        montoGrIrParaCantidad(base.cantidad, base.montoNeto, Number(l.cantidad)),
+        4,
+      );
+      const diferencia = redondear(montoFactura - montoCargo, 4);
+      if (Math.abs(diferencia) > 0.0001) {
+        const productoId = l.productoId ?? base.productoId;
+        const cuentaDiferencia = productoId
+          ? productoPorId.get(productoId)?.cuentaDiferenciaPrecioId
+          : null;
+        if (!cuentaDiferencia) {
+          errores.push(
+            `Configura la cuenta de diferencia de precio para el artículo de la línea ${l.numeroLinea + 1}.`,
+          );
+        } else {
+          diferenciaPorCuenta.set(
+            cuentaDiferencia,
+            redondear((diferenciaPorCuenta.get(cuentaDiferencia) ?? 0) + diferencia, 4),
+          );
+        }
+      }
+    }
+
     const clave = `${cuentaId}::${centro ?? ""}`;
     const acc =
       gastoPorClave.get(clave) ?? { cuentaId, centroCostoId: centro, monto: 0 };
-    acc.monto += monto;
+    acc.monto = redondear(acc.monto + montoCargo, 4);
     gastoPorClave.set(clave, acc);
   }
   for (const g of gastoPorClave.values()) {
@@ -1193,6 +1432,17 @@ async function construirAsientoCompra(
       glosa: glosaCabecera,
       debe: esCredito ? 0 : g.monto,
       haber: esCredito ? g.monto : 0,
+    });
+  }
+  for (const [cuentaId, diferencia] of diferenciaPorCuenta) {
+    const montoConSigno = esCredito ? -diferencia : diferencia;
+    filas.push({
+      cuentaId,
+      centroCostoId: null,
+      terceroId: null,
+      glosa: "Diferencia de precio de compra",
+      debe: montoConSigno > 0 ? montoConSigno : 0,
+      haber: montoConSigno < 0 ? -montoConSigno : 0,
     });
   }
 
@@ -1376,35 +1626,45 @@ async function construirAsientoEntradaMercaderia(
     .orderBy(asc(documentosCompraLineas.numeroLinea));
 
   const idsProd = [...new Set(lineas.map((l) => l.productoId).filter((x): x is string => !!x))];
-  const esInventarioPorId = new Map<string, boolean>();
-  if (idsProd.length) {
-    const prods = await tx
-      .select({
-        id: productos.id,
-        esInventario: productos.esInventario,
-        esCompra: productos.esCompra,
-        codigo: productos.codigo,
-      })
-      .from(productos)
-      .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, idsProd)));
-    for (const p of prods) {
-      esInventarioPorId.set(p.id, p.esInventario);
-      if (!p.esCompra) errores.push(`El artículo ${p.codigo} no está habilitado para compra.`);
-    }
-  }
+  const prods = idsProd.length
+    ? await tx
+        .select({
+          id: productos.id,
+          esInventario: productos.esInventario,
+          esCompra: productos.esCompra,
+          estado: productos.estado,
+          codigo: productos.codigo,
+        })
+        .from(productos)
+        .where(and(eq(productos.empresaId, empresaId), inArray(productos.id, idsProd)))
+    : [];
+  const productoPorId = new Map(prods.map((p) => [p.id, p]));
+  const lineasInventario: {
+    productoId: string;
+    cantidad: number;
+    costoUnitario: number;
+    cuentaId: string;
+    centroCostoId: string | null;
+  }[] = [];
 
-  const lineasInventario = lineas
-    .filter((l) => l.productoId && esInventarioPorId.get(l.productoId))
-    .map((l) => ({
-      productoId: l.productoId!,
-      cantidad: Number(l.cantidad),
-      costoUnitario: Number(l.precioUnitario),
+  for (const l of lineas) {
+    const producto = l.productoId ? productoPorId.get(l.productoId) : undefined;
+    if (!producto || producto.estado !== "Activo" || !producto.esCompra || !producto.esInventario) {
+      errores.push(
+        `La línea ${l.numeroLinea + 1} debe corresponder a un producto de inventario activo y comprable.`,
+      );
+      continue;
+    }
+    const cantidad = Number(l.cantidad);
+    lineasInventario.push({
+      productoId: producto.id,
+      cantidad,
+      costoUnitario: costoUnitarioNetoEntrada(cantidad, Number(l.montoNeto)),
       cuentaId: l.cuentaImputacionId,
       centroCostoId: l.centroCostoId,
-    }));
-  if (lineasInventario.length === 0) {
-    errores.push("La entrada de mercadería no tiene líneas de producto de inventario.");
+    });
   }
+  if (lineas.length === 0) errores.push("La entrada de mercadería no tiene líneas.");
 
   const cuentaGrIr = await resolverCuentaGeneral(tx, empresaId, "compra", "gr_ir");
   if (!cuentaGrIr) {
@@ -1419,6 +1679,14 @@ async function construirAsientoEntradaMercaderia(
     .select({ monedaFuncionalId: empresas.monedaFuncionalId })
     .from(empresas)
     .where(eq(empresas.id, empresaId));
+  if (!empresa?.monedaFuncionalId || doc.monedaId !== empresa.monedaFuncionalId) {
+    errores.push(
+      "Las entradas de mercadería deben registrarse en la moneda funcional de la empresa.",
+    );
+  }
+  if (Math.abs(Number(doc.tipoCambio) - 1) > 0.000001) {
+    errores.push("El tipo de cambio de una entrada en moneda funcional debe ser 1.");
+  }
 
   const glosaCabecera =
     `Entrada ${doc.numeroInterno ?? ""} — ${tercero?.razonSocial ?? ""}`.trim() || "Entrada de mercadería";
@@ -1515,7 +1783,14 @@ async function construirAsientoEntradaMercaderia(
 
 export async function vistaPreviaAsientoCompra(empresaId: string, docId: string) {
   return db.transaction(async (tx) => {
-    const built = await construirAsientoCompra(tx, empresaId, docId);
+    const [doc] = await tx
+      .select({ docTipo: documentosCompra.docTipo })
+      .from(documentosCompra)
+      .where(and(eq(documentosCompra.id, docId), eq(documentosCompra.empresaId, empresaId)));
+    if (!doc) throw new Error("El documento no existe");
+    const built = doc.docTipo === "entrada_mercaderia"
+      ? await construirAsientoEntradaMercaderia(tx, empresaId, docId)
+      : await construirAsientoCompra(tx, empresaId, docId);
     const cuentaIds = [...new Set(built.filas.map((f) => f.cuentaId))];
     const centroIds = [
       ...new Set(built.filas.map((f) => f.centroCostoId).filter((x): x is string => !!x)),
@@ -1859,6 +2134,22 @@ export async function anularDocumentoCompra(
     if (await tienePagosAplicados(tx, empresaId, "compra", id)) {
       throw new Error("El documento tiene pagos aplicados: anula primero el pago.");
     }
+    const dependientes = await tx
+      .select({
+        numeroInterno: documentosCompra.numeroInterno,
+        estado: documentosCompra.estado,
+      })
+      .from(documentosCompra)
+      .where(and(
+        eq(documentosCompra.empresaId, empresaId),
+        eq(documentosCompra.documentoBaseId, id),
+      ));
+    const dependienteActivo = dependientes.find((d) => d.estado !== "anulado");
+    if (dependienteActivo) {
+      throw new Error(
+        `No se puede anular: el documento posterior ${dependienteActivo.numeroInterno ?? "sin número"} sigue activo. Anúlalo o descártalo primero.`,
+      );
+    }
 
     const fechaDocumento = doc.fechaContabilizacion ?? doc.fechaEmision;
     if (doc.asientoId && fechaReversa < fechaDocumento) {
@@ -1932,34 +2223,8 @@ export async function anularDocumentoCompra(
       correlativoReversa = correlativo;
     }
 
-    // Devuelve el saldo a las líneas del documento base (pedido o recepción).
-    const lineas = await tx.select({
-      cantidad: documentosCompraLineas.cantidad,
-      baseLineaId: documentosCompraLineas.documentoBaseLineaId,
-    }).from(documentosCompraLineas).where(eq(documentosCompraLineas.documentoCompraId, id));
-    for (const linea of lineas) {
-      if (!linea.baseLineaId) continue;
-      const [baseLinea] = await tx.select({ pend: documentosCompraLineas.cantidadPendiente })
-        .from(documentosCompraLineas).where(eq(documentosCompraLineas.id, linea.baseLineaId));
-      if (baseLinea) {
-        await tx.update(documentosCompraLineas)
-          .set({ cantidadPendiente: (Number(baseLinea.pend) + Number(linea.cantidad)).toString() })
-          .where(eq(documentosCompraLineas.id, linea.baseLineaId));
-      }
-    }
-    if (doc.documentoBaseId) {
-      const [base] = await tx.select({ docTipo: documentosCompra.docTipo, estado: documentosCompra.estado })
-        .from(documentosCompra).where(and(
-          eq(documentosCompra.id, doc.documentoBaseId),
-          eq(documentosCompra.empresaId, empresaId),
-        ));
-      if (base && base.estado === "cerrado") {
-        await tx.update(documentosCompra).set({
-          estado: base.docTipo === "pedido" ? "abierto" : "contabilizado",
-          updatedAt: new Date(),
-        }).where(and(eq(documentosCompra.id, doc.documentoBaseId), eq(documentosCompra.empresaId, empresaId)));
-      }
-    }
+    // Libera la reserva que este documento mantenía sobre su pedido o recepción.
+    await devolverReservaDocumentoBase(tx, empresaId, doc);
 
     const [actualizado] = await tx.update(documentosCompra).set({
       estado: "anulado",
@@ -1994,6 +2259,7 @@ export async function descartarBorradorDocumentoCompra(
     )).for("update");
     if (!doc) throw new Error("El documento no existe en esta empresa.");
     if (doc.estado !== "borrador") throw new Error("Solo se puede descartar un documento pendiente.");
+    await devolverReservaDocumentoBase(tx, empresaId, doc);
     const [actualizado] = await tx.update(documentosCompra).set({
       estado: "anulado",
       motivoAnulacion: motivo,

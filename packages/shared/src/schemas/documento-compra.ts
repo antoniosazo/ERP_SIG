@@ -23,6 +23,30 @@ export function codigoSiiPermitidoParaCompra(tipo: DocumentoCompraTipo, codigoSi
   return permitidos ? permitidos.includes(codigoSii) : true;
 }
 
+/** Transiciones admitidas por el flujo logístico de compras. */
+export function destinoDesdeDocumentoPermitido(
+  origen: DocumentoCompraTipo,
+  destino: DocumentoCompraTipo,
+) {
+  if (origen === "pedido") return destino === "entrada_mercaderia" || destino === "factura";
+  return origen === "entrada_mercaderia" && destino === "factura";
+}
+
+/** Costo neto unitario de una recepción, incluidos descuentos e IVA no recuperable. */
+export function costoUnitarioNetoEntrada(cantidad: number, montoNeto: number) {
+  if (!Number.isFinite(cantidad) || cantidad <= 0) return 0;
+  return montoNeto / cantidad;
+}
+
+/** Valor de GR-IR que corresponde a una cantidad facturada de una recepción. */
+export function montoGrIrParaCantidad(
+  cantidadBase: number,
+  montoNetoBase: number,
+  cantidadFacturada: number,
+) {
+  return costoUnitarioNetoEntrada(cantidadBase, montoNetoBase) * cantidadFacturada;
+}
+
 const lineaCompraSchema = z.object({
   glosa: z.string().trim().max(300).nullish(),
   productoId: uuid.nullish(),
@@ -93,5 +117,17 @@ export const traerDesdeDocumentoSchema = z.object({
   lineas: z
     .array(z.object({ lineaBaseId: uuid, cantidad: z.number().positive() }))
     .min(1, "Selecciona al menos una línea"),
+}).superRefine((v, ctx) => {
+  const ids = new Set<string>();
+  v.lineas.forEach((linea, i) => {
+    if (ids.has(linea.lineaBaseId)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["lineas", i, "lineaBaseId"],
+        message: "No se puede seleccionar dos veces la misma línea",
+      });
+    }
+    ids.add(linea.lineaBaseId);
+  });
 });
 export type TraerDesdeDocumentoInput = z.infer<typeof traerDesdeDocumentoSchema>;

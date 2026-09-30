@@ -3,7 +3,11 @@ import { describe, test } from "node:test";
 import {
   anularDocumentoCompraSchema,
   codigoSiiPermitidoParaCompra,
+  costoUnitarioNetoEntrada,
+  destinoDesdeDocumentoPermitido,
   guardarDocumentoCompraSchema,
+  montoGrIrParaCantidad,
+  traerDesdeDocumentoSchema,
 } from "@erp/shared";
 
 const UUID = "00000000-0000-4000-8000-000000000001";
@@ -86,4 +90,29 @@ describe("documentos de compra: reglas tributarias", () => {
     );
     assert.equal(anularDocumentoCompraSchema.safeParse({ motivo: "Error" }).success, false);
   });
+  test("solo admite las transiciones logísticas definidas", () => {
+    assert.equal(destinoDesdeDocumentoPermitido("pedido", "entrada_mercaderia"), true);
+    assert.equal(destinoDesdeDocumentoPermitido("pedido", "factura"), true);
+    assert.equal(destinoDesdeDocumentoPermitido("entrada_mercaderia", "factura"), true);
+    assert.equal(destinoDesdeDocumentoPermitido("entrada_mercaderia", "pedido"), false);
+    assert.equal(destinoDesdeDocumentoPermitido("pedido", "nota_credito"), false);
+  });
+
+  test("rechaza una línea base repetida al traer", () => {
+    const resultado = traerDesdeDocumentoSchema.safeParse({
+      documentoBaseId: UUID_BASE,
+      docTipoDestino: "entrada_mercaderia",
+      lineas: [
+        { lineaBaseId: UUID, cantidad: 1 },
+        { lineaBaseId: UUID, cantidad: 1 },
+      ],
+    });
+    assert.equal(resultado.success, false);
+  });
+
+  test("el costo de recepción y GR-IR usan el neto después de descuentos", () => {
+    assert.equal(costoUnitarioNetoEntrada(10, 900), 90);
+    assert.equal(montoGrIrParaCantidad(10, 900, 4), 360);
+  });
+
 });

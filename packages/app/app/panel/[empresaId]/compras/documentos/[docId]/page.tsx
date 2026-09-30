@@ -156,6 +156,7 @@ export default async function DocumentoCompraDetallePage({
             glosa: l.glosa,
             cantidadPendiente: Number(l.cantidadPendiente),
             precioUnitario: Number(l.precioUnitario),
+            esInventario: productos.find((p) => p.id === l.productoId)?.esInventario ?? false,
           }))}
       />
       <DocumentoCompraForm
@@ -170,6 +171,11 @@ export default async function DocumentoCompraDetallePage({
         hoy={hoy}
         config={config}
         lineasPendientes={tienePendiente ? lineasPendientes : undefined}
+        lineasFijas={
+          !!documento.documentoBaseId &&
+          documento.docTipo !== "nota_credito" &&
+          documento.docTipo !== "nota_debito"
+        }
         proveedores={terceros
           .filter((t) =>
             t.tipoTercero === "Proveedor" &&

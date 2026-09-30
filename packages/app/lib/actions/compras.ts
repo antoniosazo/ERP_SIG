@@ -47,7 +47,7 @@ function mensajeError(error: unknown): string {
 }
 
 function rev(empresaId: string, docId?: string) {
-  for (const slug of ["pedidos", "facturas", "notas-credito", "notas-debito"]) {
+  for (const slug of ["pedidos", "entradas", "facturas", "notas-credito", "notas-debito", "gr-ir"]) {
     revalidatePath(`/panel/${empresaId}/compras/${slug}`);
   }
   if (docId) revalidatePath(`/panel/${empresaId}/compras/documentos/${docId}`);

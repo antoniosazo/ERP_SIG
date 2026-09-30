@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import { db } from "../client";
 import type { Tx } from "../client";
 import { productoStock, productos, productosGrupos, stockMovimientos } from "../schema";
@@ -107,6 +107,20 @@ export async function aplicarReversaEntrada(
     .where(and(eq(stockMovimientos.id, movimientoOrigenId), eq(stockMovimientos.empresaId, empresaId)));
   if (!mov) throw new Error("El movimiento de stock a revertir no existe");
   if (mov.tipo !== "entrada") throw new Error("Solo se revierten movimientos de entrada");
+  const posteriores = await tx
+    .select({ id: stockMovimientos.id, origenId: stockMovimientos.origenId })
+    .from(stockMovimientos)
+    .where(and(
+      eq(stockMovimientos.empresaId, empresaId),
+      eq(stockMovimientos.productoId, mov.productoId),
+      gt(stockMovimientos.createdAt, mov.createdAt),
+    ));
+  if (posteriores.some((p) => p.origenId !== mov.origenId)) {
+    throw new Error(
+      "No se puede anular la entrada porque el artículo tiene movimientos de stock posteriores.",
+    );
+  }
+
 
   const [saldo] = await tx
     .select()
@@ -123,15 +137,23 @@ export async function aplicarReversaEntrada(
   const promPrev = saldo ? Number(saldo.costoPromedio) : 0;
   const cant = Number(mov.cantidad);
   const costoTotal = Number(mov.costoTotal);
+  if (!saldo || qtyPrev + 0.000001 < cant) {
+    throw new Error(
+      "No se puede anular la entrada porque parte de la mercadería ya no está disponible.",
+    );
+  }
   const nuevaQty = redondear(qtyPrev - cant, 6);
   const valor = qtyPrev * promPrev - costoTotal;
+  if (valor < -0.01) {
+    throw new Error("No se puede anular la entrada porque produciría un valor de inventario negativo.");
+  }
   const nuevoProm = nuevaQty > 0 ? redondear(Math.max(valor, 0) / nuevaQty) : 0;
 
   if (saldo) {
     await tx
       .update(productoStock)
       .set({
-        cantidad: (nuevaQty < 0 ? 0 : nuevaQty).toString(),
+        cantidad: nuevaQty.toString(),
         costoPromedio: nuevoProm.toString(),
         updatedAt: new Date(),
       })
@@ -146,7 +168,7 @@ export async function aplicarReversaEntrada(
     cantidad: cant.toString(),
     costoUnitario: mov.costoUnitario,
     costoTotal: costoTotal.toString(),
-    saldoCantidad: (nuevaQty < 0 ? 0 : nuevaQty).toString(),
+    saldoCantidad: nuevaQty.toString(),
     saldoCostoPromedio: nuevoProm.toString(),
     origenTabla: mov.origenTabla,
     origenId: mov.origenId,

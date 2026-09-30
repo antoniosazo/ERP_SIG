@@ -96,6 +96,7 @@ export function DocumentoCompraForm({
   productos,
   docsReferencia,
   lineasPendientes,
+  lineasFijas,
 }: {
   empresaId: string;
   docId: string;
@@ -119,6 +120,7 @@ export function DocumentoCompraForm({
   docsReferencia: Opcion[];
   /** Saldo pendiente por línea (cuando este documento viene de un pedido). */
   lineasPendientes?: Record<number, number>;
+  lineasFijas?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -126,6 +128,8 @@ export function DocumentoCompraForm({
   const [motivoAnulacion, setMotivoAnulacion] = useState("");
   const [fechaReversa, setFechaReversa] = useState(hoy);
   const readOnly = estado !== "borrador" || !puedeEditar;
+  const cabeceraOrigenFija = readOnly || !!lineasFijas;
+  const lineaReadOnly = readOnly || !!lineasFijas;
   // Las facturas no pasan por borrador: se contabilizan al guardarse, y ya contabilizadas solo
   // se editan el vencimiento y la fecha de contabilización.
   const esFactura = docTipo === "factura";
@@ -327,7 +331,7 @@ export function DocumentoCompraForm({
             }}
             opciones={proveedores}
             placeholder="Selecciona un proveedor"
-            disabled={readOnly}
+            disabled={cabeceraOrigenFija}
             invalido={!!errors.terceroId}
           />
             </div>
@@ -344,7 +348,7 @@ export function DocumentoCompraForm({
                 (watch("lineas") ?? []).forEach((_, i) => setValue(`lineas.${i}.productoId`, undefined));
               }
             }}
-            disabled={readOnly || docTipo === "entrada_mercaderia"}
+            disabled={cabeceraOrigenFija || docTipo === "entrada_mercaderia"}
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -388,7 +392,7 @@ export function DocumentoCompraForm({
           <Select
             value={watch("monedaId")}
             onValueChange={(v) => setValue("monedaId", v)}
-            disabled={readOnly}
+            disabled={cabeceraOrigenFija}
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -491,7 +495,7 @@ export function DocumentoCompraForm({
             onValueChange={(v) => elegirProducto(i, v)}
             opciones={productos}
             placeholder="Selecciona un producto"
-            disabled={readOnly}
+            disabled={lineaReadOnly}
             className="min-w-44"
           />
         );
@@ -502,7 +506,7 @@ export function DocumentoCompraForm({
             onValueChange={(v) => setValue(`lineas.${i}.cuentaImputacionId`, v ?? "", { shouldValidate: true })}
             opciones={cuentas}
             placeholder="Selecciona una cuenta"
-            disabled={readOnly}
+            disabled={lineaReadOnly}
             className="min-w-48"
           />
         );
@@ -513,7 +517,7 @@ export function DocumentoCompraForm({
             step="0.000001"
             className="w-24 text-right"
             {...register(`lineas.${i}.cantidad`, { valueAsNumber: true })}
-            disabled={readOnly}
+            disabled={lineaReadOnly}
           />
         );
       case "precioUnitario":
@@ -597,7 +601,7 @@ export function DocumentoCompraForm({
             onValueChange={(v) =>
               setValue(`lineas.${i}.categoriaContableId`, v === NINGUNA ? undefined : v)
             }
-            disabled={readOnly}
+            disabled={lineaReadOnly}
           >
             <SelectTrigger className="w-full min-w-40">
               <SelectValue placeholder="—" />
@@ -619,7 +623,7 @@ export function DocumentoCompraForm({
             onValueChange={(v) =>
               setValue(`lineas.${i}.centroCostoId`, v === NINGUNA ? undefined : v)
             }
-            disabled={readOnly}
+            disabled={lineaReadOnly}
           >
             <SelectTrigger className="w-full min-w-40">
               <SelectValue placeholder="—" />
@@ -695,7 +699,7 @@ export function DocumentoCompraForm({
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Líneas</CardTitle>
-          {!readOnly && (
+          {!readOnly && !lineasFijas && (
             <Button
               type="button"
               size="sm"
@@ -727,7 +731,7 @@ export function DocumentoCompraForm({
                   <TableHead key={c.id}>{c.label}</TableHead>
                 ))}
                 <TableHead className="text-right">Neto</TableHead>
-                {!readOnly && <TableHead />}
+                {!readOnly && !lineasFijas && <TableHead />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -739,7 +743,7 @@ export function DocumentoCompraForm({
                   <TableCell className="text-right tabular-nums">
                     {fmt(netoDe(lineas?.[i]))}
                   </TableCell>
-                  {!readOnly && (
+                  {!readOnly && !lineasFijas && (
                     <TableCell>
                       <Button
                         type="button"

@@ -1,5 +1,6 @@
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { boolean, integer, numeric, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, integer, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { idColumn, montoColumn, timestampsColumns } from "./columns.helpers";
 import { ivaRecuperableEnum } from "./enums";
 import { categoriasContables } from "./categorias-contables";
@@ -15,7 +16,9 @@ import { productos } from "./productos";
  * "traer" la línea a un documento posterior. `documentoBaseLineaId` da la trazabilidad
  * (línea de la que proviene esta).
  */
-export const documentosCompraLineas = pgTable("documentos_compra_lineas", {
+export const documentosCompraLineas = pgTable(
+  "documentos_compra_lineas",
+  {
   id: idColumn(),
   documentoCompraId: uuid("documento_compra_id")
     .notNull()
@@ -50,4 +53,14 @@ export const documentosCompraLineas = pgTable("documentos_compra_lineas", {
     { onDelete: "set null" },
   ),
   ...timestampsColumns,
-});
+  },
+  (t) => [
+    uniqueIndex("documentos_compra_lineas_documento_numero_unique").on(
+      t.documentoCompraId,
+      t.numeroLinea,
+    ),
+    check("documentos_compra_lineas_cantidad_positiva", sql`${t.cantidad} > 0`),
+    check("documentos_compra_lineas_pendiente_no_negativo", sql`${t.cantidadPendiente} >= 0`),
+    check("documentos_compra_lineas_pendiente_hasta_cantidad", sql`${t.cantidadPendiente} <= ${t.cantidad}`),
+  ],
+);
