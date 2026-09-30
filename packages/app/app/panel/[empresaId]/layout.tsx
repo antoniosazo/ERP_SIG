@@ -52,6 +52,7 @@ export default async function PanelEmpresaLayout({
 
   return (
     <PanelShell
+      empresaId={empresaId}
       menuBar={
         <PanelHeader
           empresaId={empresaId}

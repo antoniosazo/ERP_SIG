@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SearchIcon } from "lucide-react";
 import { GRUPOS, RESUMEN } from "@/components/panel/panel-nav";
+import { abrirPestana, alPedirBuscador } from "@/components/panel/workspace";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 type Destino = { label: string; href: string; grupo: string };
@@ -46,6 +47,9 @@ export function GlobalSearch({ empresaId }: { empresaId: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Ctrl K pulsado dentro de una pestaña (iframe) llega por el espacio de trabajo.
+  useEffect(() => alPedirBuscador(() => setAbierto(true)), []);
+
   useEffect(() => {
     if (!abierto) setQuery("");
   }, [abierto]);
@@ -58,7 +62,8 @@ export function GlobalSearch({ empresaId }: { empresaId: string }) {
 
   function ir(href: string) {
     setAbierto(false);
-    router.push(`/panel/${empresaId}${href}`);
+    const url = `/panel/${empresaId}${href}`;
+    if (!abrirPestana(url)) router.push(url);
   }
 
   return (

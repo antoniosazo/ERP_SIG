@@ -292,3 +292,12 @@
     @apply cursor-pointer;
   }
 }
+
+/* Espacio de trabajo con pestañas (components/panel/workspace.ts). Fuera de capas a propósito:
+   así le ganan a `hidden lg:block` y compañía sin !important. */
+html[data-embebido] [data-cromo] {
+  display: none;
+}
+html[data-workspace] [data-ws-hijos] {
+  display: none;
+}

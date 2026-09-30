@@ -4,6 +4,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { leerColorScheme } from "@/lib/color-scheme";
 import { leerUiTheme } from "@/lib/ui-theme";
+import { SCRIPT_MODO } from "@/lib/workspace-script";
+import { SalidaDeMarco } from "@/components/panel/workspace-bridge";
 import "./globals.css";
 
 // Geist queda enganchada al token Tailwind `font-sans` (--font-sans).
@@ -32,7 +34,11 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const [ui, scheme] = await Promise.all([leerUiTheme(), leerColorScheme()]);
   return (
-    <html lang="es" data-ui={ui} className={cn("h-full", scheme === "dark" && "dark")}>
+    // `suppressHydrationWarning`: SCRIPT_MODO marca el modo de pestañas en <html> antes de hidratar.
+    <html lang="es" data-ui={ui} className={cn("h-full", scheme === "dark" && "dark")} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_MODO }} />
+      </head>
       <body
         className={cn(
           fontSans.variable,
@@ -42,6 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         )}
       >
         {children}
+        <SalidaDeMarco />
         <Toaster scheme={scheme} />
       </body>
     </html>
