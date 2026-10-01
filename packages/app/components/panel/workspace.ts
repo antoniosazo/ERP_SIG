@@ -21,7 +21,8 @@ export type MensajeWs =
   | { tipo: "salir"; url: string }
   | { tipo: "tecla"; accion: AccionTecla }
   | { tipo: "historial" }
-  | { tipo: "buscar" };
+  | { tipo: "buscar" }
+  | { tipo: "sucio"; sucio: boolean };
 
 // ── Modo del documento ──────────────────────────────────────────────────────
 const oyentesModo = new Set<() => void>();

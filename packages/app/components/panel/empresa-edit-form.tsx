@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 import { editarEmpresaSchema, EMPRESA_ESTADO } from "@erp/shared";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { editarEmpresaAction } from "@/lib/actions/empresas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,17 +42,21 @@ export function EmpresaEditForm({
     handleSubmit,
     watch,
     setValue,
-    formState: { errors },
+    getValues,
+    reset,
+    formState: { errors, isDirty },
   } = useForm({
     resolver: zodResolver(editarEmpresaSchema),
     defaultValues: valoresIniciales,
   });
+  useCambiosSinGuardar(isDirty);
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
       const result = await editarEmpresaAction(empresaId, data);
       if (result.ok) {
         toast.success("Datos de la empresa actualizados");
+        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
         router.refresh();
       } else {
         toast.error(result.error);

@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 import { TIPO_TERCERO, editarTerceroSchema } from "@erp/shared";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { editarTerceroAction } from "@/lib/actions/terceros";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,10 +49,11 @@ export function TerceroGeneralForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, setValue, getValues, reset, formState: { errors, isDirty } } = useForm({
     resolver: zodResolver(editarTerceroSchema),
     defaultValues: valoresIniciales,
   });
+  useCambiosSinGuardar(isDirty);
 
   const bloqueado = watch("bloqueado");
 
@@ -60,6 +62,7 @@ export function TerceroGeneralForm({
       const r = await editarTerceroAction(empresaId, terceroId, data);
       if (r.ok) {
         toast.success("Datos del socio actualizados");
+        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
         router.refresh();
       } else {
         toast.error(r.error);

@@ -18,6 +18,7 @@ import {
   actualizarFechasDocumentoVentaAction,
   guardarDocumentoVentaAction,
 } from "@/lib/actions/ventas";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-venta-campos";
 import { VENTA_CLASE_META } from "@/lib/ventas";
 import { FlechaDetalle } from "@/components/panel/flecha-detalle";
@@ -155,11 +156,14 @@ export function DocumentoVentaForm({
     watch,
     setValue,
     control,
-    formState: { errors },
+    getValues,
+    reset,
+    formState: { errors, isDirty },
   } = useForm({
     resolver: zodResolver(guardarDocumentoVentaSchema),
     defaultValues: valoresIniciales,
   });
+  useCambiosSinGuardar(isDirty);
   const { fields, append, remove } = useFieldArray({ control, name: "lineas" });
   const lineas = watch("lineas");
   const esServicio = (watch("modalidad") ?? "Artículo") === "Servicio";
@@ -224,6 +228,7 @@ export function DocumentoVentaForm({
       const r = await guardarDocumentoVentaAction(empresaId, docId, data);
       if (r.ok) {
         toast.success(r.contabilizado ? "Factura guardada y contabilizada" : "Documento guardado");
+        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
         router.refresh();
       } else toast.error(r.error);
     });

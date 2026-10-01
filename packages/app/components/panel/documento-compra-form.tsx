@@ -20,6 +20,7 @@ import {
   actualizarFechasDocumentoCompraAction,
   guardarDocumentoCompraAction,
 } from "@/lib/actions/compras";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-compra-campos";
 import { COMPRA_TIPO_META } from "@/lib/compras";
 import { Badge } from "@/components/ui/badge";
@@ -157,11 +158,14 @@ export function DocumentoCompraForm({
     watch,
     setValue,
     control,
-    formState: { errors },
+    getValues,
+    reset,
+    formState: { errors, isDirty },
   } = useForm({
     resolver: zodResolver(guardarDocumentoCompraSchema),
     defaultValues: valoresIniciales,
   });
+  useCambiosSinGuardar(isDirty);
   const { fields, append, remove } = useFieldArray({ control, name: "lineas" });
   const lineas = watch("lineas");
   const esServicio = (watch("modalidad") ?? "Artículo") === "Servicio";
@@ -227,6 +231,7 @@ export function DocumentoCompraForm({
       const r = await guardarDocumentoCompraAction(empresaId, docId, { ...data, docTipo });
       if (r.ok) {
         toast.success(r.contabilizado ? "Factura guardada y contabilizada" : "Documento guardado");
+        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
         router.refresh();
       } else toast.error(r.error);
     });

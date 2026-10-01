@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { hayCambiosSinGuardar, suscribirCambios } from "@/components/panel/cambios-sin-guardar";
 import {
   accionDeTecla,
   dentroDeEmpresa,
@@ -18,7 +19,7 @@ import {
 
 /**
  * Lado embebido del espacio de trabajo: informa a la ventana principal la URL y el título de
- * la pestaña, le reenvía los atajos y le pide abrir en pestaña nueva los Ctrl+clic, clic medio
+ * la pestaña y si tiene cambios sin guardar, le reenvía los atajos y le pide abrir en pestaña nueva los Ctrl+clic, clic medio
  * y enlaces `target="_blank"`. No hace nada fuera de un iframe.
  */
 export function WorkspaceBridge({ empresaId }: { empresaId: string }) {
@@ -55,6 +56,14 @@ export function WorkspaceBridge({ empresaId }: { empresaId: string }) {
     registrarVisita(pathname + (query ? `?${query}` : ""));
     informar.current();
   }, [embebido, pathname, query]);
+
+  // Cambios sin guardar: la barra muestra ● y pide confirmación al cerrar la pestaña.
+  useEffect(() => {
+    if (!embebido) return;
+    const informarCambios = () => enviarAlPadre({ tipo: "sucio", sucio: hayCambiosSinGuardar() });
+    informarCambios();
+    return suscribirCambios(informarCambios);
+  }, [embebido]);
 
   useEffect(() => {
     if (!embebido) return;

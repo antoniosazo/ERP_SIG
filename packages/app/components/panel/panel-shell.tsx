@@ -14,6 +14,7 @@ import {
   modoWorkspace,
   suscribirModo,
 } from "@/components/panel/workspace";
+import { useGuardiaDeEnlaces } from "@/components/panel/cambios-sin-guardar";
 import { WorkspaceBridge } from "@/components/panel/workspace-bridge";
 import { WorkspaceTabs } from "@/components/panel/workspace-tabs";
 
@@ -48,6 +49,7 @@ export function PanelShell({
   const workspace = useSyncExternalStore(suscribirModo, modoWorkspace, modoServidor);
   const embebido = useSyncExternalStore(suscribirModo, modoEmbebido, modoServidor);
   useEffect(evaluarModo, []);
+  useGuardiaDeEnlaces();
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { PagoTipo } from "@erp/shared";
 import { documentosAbiertosAction, registrarPagoAction } from "@/lib/actions/pagos";
 import { PAGO_META } from "@/lib/pagos";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { MontoInput } from "@/components/panel/monto-input";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,16 @@ export function PagoForm({
   const [seleccion, setSeleccion] = useState<Record<string, string>>({}); // documentoId → monto
   const [medios, setMedios] = useState<MedioForm[]>([nuevoMedio(1)]);
   const [medioManual, setMedioManual] = useState(false);
+  // Cambios sin guardar: cualquier dato ingresado más allá de lo que venía preseleccionado.
+  useCambiosSinGuardar(
+    terceroId !== (terceroInicialId ?? "") ||
+      !!glosa ||
+      !!referencia ||
+      medioManual ||
+      medios.length > 1 ||
+      medios.some((m) => m.metodoPagoId || m.monto || m.referencia || m.chequeNumero || m.chequeBancoId || m.fechaCobro) ||
+      Object.keys(seleccion).some((id) => id !== documentoInicialId),
+  );
 
   function nuevoMedio(clave: number): MedioForm {
     return { clave, metodoPagoId: "", monto: "", referencia: "", chequeNumero: "", chequeBancoId: "", fechaCobro: "" };

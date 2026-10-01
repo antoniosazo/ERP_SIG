@@ -15,9 +15,10 @@ import {
   type AccionTecla,
   type MensajeWs,
 } from "@/components/panel/workspace";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
-type Pestana = { id: string; n: number; url: string; titulo: string };
+type Pestana = { id: string; n: number; url: string; titulo: string; sucia?: boolean };
 type Estado = {
   empresaId: string;
   pestanas: Pestana[]; // orden de la barra
@@ -30,13 +31,18 @@ type Accion =
   | { tipo: "activar"; id: string }
   | { tipo: "cerrar"; id: string }
   | { tipo: "nav"; id: string; url: string; titulo: string }
-  | { tipo: "tecla"; accion: AccionTecla };
+  | { tipo: "sucia"; id: string; sucia: boolean }
+  // Cerrar no pasa por aquí: puede requerir confirmación (ver `pedirCierre`).
+  | { tipo: "tecla"; accion: Exclude<AccionTecla, { tipo: "cerrar" }> };
 
 const clave = (empresaId: string) => `erp-pestanas:${empresaId}`;
 const rutaDe = (url: string) => url.split(/[?#]/)[0] ?? url;
 
 function activar(s: Estado, id: string): Estado {
-  return { ...s, activa: id, vivas: [id, ...s.vivas.filter((v) => v !== id)].slice(0, MAX_VIVAS) };
+  const orden = [id, ...s.vivas.filter((v) => v !== id)];
+  // Una pestaña con cambios sin guardar nunca pasa a reposo: se perdería lo escrito.
+  const sucias = new Set(s.pestanas.filter((p) => p.sucia).map((p) => p.id));
+  return { ...s, activa: id, vivas: orden.filter((v, i) => i < MAX_VIVAS || sucias.has(v)) };
 }
 
 function reducir(s: Estado, a: Accion): Estado {
@@ -68,9 +74,13 @@ function reducir(s: Estado, a: Accion): Estado {
       if (!p || (p.url === a.url && p.titulo === a.titulo)) return s;
       return { ...s, pestanas: s.pestanas.map((x) => (x.id === a.id ? { ...x, url: a.url, titulo: a.titulo } : x)) };
     }
+    case "sucia": {
+      const p = s.pestanas.find((x) => x.id === a.id);
+      if (!p || !!p.sucia === a.sucia) return s;
+      return { ...s, pestanas: s.pestanas.map((x) => (x.id === a.id ? { ...x, sucia: a.sucia } : x)) };
+    }
     case "tecla": {
       const { accion } = a;
-      if (accion.tipo === "cerrar") return reducir(s, { tipo: "cerrar", id: s.activa });
       const total = s.pestanas.length;
       const destino =
         accion.tipo === "ir"
@@ -129,6 +139,16 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
     estadoInicial,
   );
   const marcos = useRef(new Map<string, HTMLIFrameElement>());
+  const estado = useRef(s);
+  useEffect(() => {
+    estado.current = s;
+  });
+  const [confirmacion, setConfirmacion] = useState<{
+    titulo: string;
+    descripcion: string;
+    etiqueta: string;
+    accion: () => void;
+  } | null>(null);
   // Siempre hay al menos una pestaña: cerrar la última abre el Resumen.
   const activa = s.pestanas.find((p) => p.id === s.activa) ?? s.pestanas[0]!;
 
@@ -136,6 +156,40 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
     const u = new URL(url, window.location.href);
     dispatch({ tipo: "abrir", url: u.pathname + u.search + u.hash });
   }, []);
+
+  // Cerrar o salir con cambios sin guardar pide confirmación.
+  const pedirCierre = useCallback((id: string) => {
+    const p = estado.current.pestanas.find((x) => x.id === id);
+    if (!p?.sucia) return dispatch({ tipo: "cerrar", id });
+    setConfirmacion({
+      titulo: `¿Cerrar «${p.titulo}»?`,
+      descripcion: "Tiene cambios sin guardar que se perderán.",
+      etiqueta: "Cerrar sin guardar",
+      accion: () => dispatch({ tipo: "cerrar", id }),
+    });
+  }, []);
+
+  const salirA = useCallback(
+    (url: string) => {
+      const sucias = estado.current.pestanas.filter((p) => p.sucia);
+      if (sucias.length === 0) return router.push(url);
+      setConfirmacion({
+        titulo: "Hay pestañas con cambios sin guardar",
+        descripcion: `Si sales de esta empresa se perderán los cambios de: ${sucias.map((p) => p.titulo).join(", ")}.`,
+        etiqueta: "Salir sin guardar",
+        accion: () => router.push(url),
+      });
+    },
+    [router],
+  );
+
+  const onTecla = useCallback(
+    (accion: AccionTecla) => {
+      if (accion.tipo === "cerrar") pedirCierre(estado.current.activa);
+      else dispatch({ tipo: "tecla", accion });
+    },
+    [pedirCierre],
+  );
 
   const registrarMarco = useCallback((id: string, el: HTMLIFrameElement | null) => {
     if (el) marcos.current.set(id, el);
@@ -169,6 +223,15 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
 
   useEffect(() => registrarAbridor(abrir), [abrir]);
 
+  // Recargar o cerrar el navegador con pestañas con cambios: aviso nativo.
+  const haySucias = s.pestanas.some((p) => p.sucia);
+  useEffect(() => {
+    if (!haySucias) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [haySucias]);
+
   // Mensajes de las pestañas.
   useEffect(() => {
     function onMessage(e: MessageEvent) {
@@ -180,16 +243,19 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
       switch (m?.tipo) {
         case "nav":
           if (dentroDeEmpresa(rutaDe(m.url), empresaId)) dispatch({ tipo: "nav", id, url: m.url, titulo: m.titulo });
-          else router.push(m.url);
+          else salirA(m.url);
           break;
         case "abrir":
           abrir(m.url);
           break;
         case "salir":
-          router.push(m.url);
+          salirA(m.url);
           break;
         case "tecla":
-          dispatch({ tipo: "tecla", accion: m.accion });
+          onTecla(m.accion);
+          break;
+        case "sucio":
+          dispatch({ tipo: "sucia", id, sucia: m.sucio });
           break;
         case "historial":
           dispatch({ tipo: "activar", id });
@@ -201,7 +267,7 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [empresaId, abrir, router]);
+  }, [empresaId, abrir, salirA, onTecla]);
 
   // Atajos y enlaces del cromo (árbol, header): todo destino de la empresa abre pestaña nueva.
   useEffect(() => {
@@ -209,13 +275,20 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
       const accion = accionDeTecla(e);
       if (!accion) return;
       e.preventDefault();
-      dispatch({ tipo: "tecla", accion });
+      onTecla(accion);
     }
     function onClick(e: MouseEvent) {
       const enlace = enlaceDeClick(e);
-      if (!enlace || !dentroDeEmpresa(enlace.url.pathname, empresaId) || esRutaSuelta(enlace.url.pathname)) return;
-      e.preventDefault();
-      abrir(enlace.url.pathname + enlace.url.search + enlace.url.hash);
+      if (!enlace || esRutaSuelta(enlace.url.pathname)) return;
+      const destino = enlace.url.pathname + enlace.url.search + enlace.url.hash;
+      if (dentroDeEmpresa(enlace.url.pathname, empresaId)) {
+        e.preventDefault();
+        abrir(destino);
+      } else if (enlace.a.target !== "_blank" && estado.current.pestanas.some((p) => p.sucia)) {
+        // Salir de la empresa desmonta todas las pestañas.
+        e.preventDefault();
+        salirA(destino);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("click", onClick, true);
@@ -225,7 +298,7 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
       window.removeEventListener("click", onClick, true);
       window.removeEventListener("auxclick", onClick, true);
     };
-  }, [empresaId, abrir]);
+  }, [empresaId, abrir, salirA, onTecla]);
 
   // El tema claro/oscuro se alterna en la ventana principal: se replica en las pestañas.
   useEffect(() => {
@@ -249,7 +322,7 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
         activa={s.activa}
         vivas={s.vivas}
         onActivar={(id) => dispatch({ tipo: "activar", id })}
-        onCerrar={(id) => dispatch({ tipo: "cerrar", id })}
+        onCerrar={pedirCierre}
         onNueva={() => abrir(`/panel/${empresaId}`)}
       />
       <div className="relative min-h-0 flex-1">
@@ -257,6 +330,14 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
           <Marco key={p.id} pestana={p} visible={p.id === s.activa} registrar={registrarMarco} />
         ))}
       </div>
+      <ConfirmDialog
+        open={!!confirmacion}
+        onOpenChange={(o) => !o && setConfirmacion(null)}
+        title={confirmacion?.titulo ?? ""}
+        description={confirmacion?.descripcion}
+        confirmLabel={confirmacion?.etiqueta}
+        onConfirm={() => confirmacion?.accion()}
+      />
     </div>
   );
 }
@@ -336,11 +417,15 @@ function BarraPestanas({
                 type="button"
                 role="tab"
                 aria-selected={esActiva}
-                title={`${p.titulo}${atajo}${enReposo ? " · en reposo, se recarga al abrirla" : ""}`}
+                title={`${p.titulo}${atajo}${p.sucia ? " · cambios sin guardar" : ""}${enReposo ? " · en reposo, se recarga al abrirla" : ""}`}
                 onClick={() => onActivar(p.id)}
-                className={cn("min-w-0 flex-1 truncate py-1 pl-3 text-left", enReposo && "italic opacity-70")}
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-3 text-left",
+                  enReposo && "italic opacity-70",
+                )}
               >
-                {p.titulo}
+                {p.sucia && <span aria-label="Cambios sin guardar" className="size-2 shrink-0 rounded-full bg-amber-500" />}
+                <span className="truncate">{p.titulo}</span>
               </button>
               <button
                 type="button"

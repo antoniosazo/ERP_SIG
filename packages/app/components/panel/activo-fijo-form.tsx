@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 import { ACTIVO_FIJO_REGIMEN_DEPRECIACION, LIBRO_CONTABLE, crearActivoFijoSchema } from "@erp/shared";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { crearActivoFijoAction, editarActivoFijoAction } from "@/lib/actions/activos-fijos";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -97,11 +98,14 @@ export function ActivoFijoForm({
     handleSubmit,
     watch,
     setValue,
-    formState: { errors },
+    getValues,
+    reset,
+    formState: { errors, isDirty },
   } = useForm({
     resolver: zodResolver(crearActivoFijoSchema),
     defaultValues: valoresDe(activo ?? null),
   });
+  useCambiosSinGuardar(isDirty);
 
   const libroSeleccionado = watch("valoraciones.0.libro");
   const regimenSeleccionado = watch("valoraciones.0.regimenDepreciacion");
@@ -129,6 +133,7 @@ export function ActivoFijoForm({
         : await crearActivoFijoAction(empresaId, data);
       if (result.ok) {
         toast.success(activo ? "Activo actualizado" : "Activo creado");
+        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
         router.refresh();
         onSaved?.(result.id);
       } else {

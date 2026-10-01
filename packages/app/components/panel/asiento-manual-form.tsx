@@ -6,6 +6,7 @@ import { Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ASIENTO_MANUAL_TIPO, LIBRO_CONTABLE, TIPO_ASIENTO_LABEL, totalesAsiento, type AsientoManualTipo, type LibroContable } from "@erp/shared";
 import { eliminarBorradorAsientoAction, guardarAsientoManualAction } from "@/lib/actions/asientos";
+import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { MontoInput } from "@/components/panel/monto-input";
 import { SelectorBuscable, type OpcionBuscable } from "@/components/panel/selector-buscable";
 import { VolverBoton } from "@/components/panel/volver-boton";
@@ -77,6 +78,10 @@ export function AsientoManualForm({
     inicial.lineas.length ? inicial.lineas.map((l, i) => ({ ...l, clave: i + 1 })) : [lineaVacia(1), lineaVacia(2)],
   );
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
+  // Hay cambios sin guardar si algo difiere de como se abrió el formulario.
+  const firma = JSON.stringify({ fecha, glosa, tipo, libro, referencia, revertir, fechaReversa, lineas });
+  const [firmaInicial] = useState(firma);
+  useCambiosSinGuardar(firma !== firmaInicial);
 
   const cuentaPorId = new Map(cuentas.map((c) => [c.id, c]));
   const t = totalesAsiento(lineas);
