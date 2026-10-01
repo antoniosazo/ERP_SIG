@@ -32,6 +32,7 @@ type Accion =
   | { tipo: "cerrar"; id: string }
   | { tipo: "nav"; id: string; url: string; titulo: string }
   | { tipo: "sucia"; id: string; sucia: boolean }
+  | { tipo: "reordenar"; id: string; hacia: number }
   // Cerrar no pasa por aquí: puede requerir confirmación (ver `pedirCierre`).
   | { tipo: "tecla"; accion: Exclude<AccionTecla, { tipo: "cerrar" }> };
 
@@ -78,6 +79,14 @@ function reducir(s: Estado, a: Accion): Estado {
       const p = s.pestanas.find((x) => x.id === a.id);
       if (!p || !!p.sucia === a.sucia) return s;
       return { ...s, pestanas: s.pestanas.map((x) => (x.id === a.id ? { ...x, sucia: a.sucia } : x)) };
+    }
+    case "reordenar": {
+      const desde = s.pestanas.findIndex((p) => p.id === a.id);
+      if (desde < 0 || a.hacia < 0 || a.hacia >= s.pestanas.length || desde === a.hacia) return s;
+      const pestanas = [...s.pestanas];
+      const [p] = pestanas.splice(desde, 1);
+      pestanas.splice(a.hacia, 0, p!);
+      return { ...s, pestanas };
     }
     case "tecla": {
       const { accion } = a;
@@ -324,6 +333,7 @@ export function WorkspaceTabs({ empresaId }: { empresaId: string }) {
         onActivar={(id) => dispatch({ tipo: "activar", id })}
         onCerrar={pedirCierre}
         onNueva={() => abrir(`/panel/${empresaId}`)}
+        onReordenar={(id, hacia) => dispatch({ tipo: "reordenar", id, hacia })}
       />
       <div className="relative min-h-0 flex-1">
         {montadas.map((p) => (
@@ -376,6 +386,7 @@ function BarraPestanas({
   onActivar,
   onCerrar,
   onNueva,
+  onReordenar,
 }: {
   pestanas: Pestana[];
   activa: string;
@@ -383,8 +394,15 @@ function BarraPestanas({
   onActivar: (id: string) => void;
   onCerrar: (id: string) => void;
   onNueva: () => void;
+  onReordenar: (id: string, hacia: number) => void;
 }) {
   const activaRef = useRef<HTMLDivElement>(null);
+  const [arrastrando, setArrastrando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+  const terminarArrastre = () => {
+    setArrastrando(null);
+    setSobre(null);
+  };
   useEffect(() => {
     activaRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activa]);
@@ -400,6 +418,24 @@ function BarraPestanas({
             <div
               key={p.id}
               ref={esActiva ? activaRef : undefined}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", p.id);
+                setArrastrando(p.id);
+              }}
+              onDragOver={(e) => {
+                if (!arrastrando) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (sobre !== p.id) setSobre(p.id);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (arrastrando) onReordenar(arrastrando, i);
+                terminarArrastre();
+              }}
+              onDragEnd={terminarArrastre}
               onAuxClick={(e) => {
                 if (e.button === 1) {
                   e.preventDefault();
@@ -411,6 +447,8 @@ function BarraPestanas({
                 esActiva
                   ? "border-t-teal-500 bg-background font-medium text-foreground"
                   : "border-t-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+                arrastrando === p.id && "opacity-50",
+                arrastrando && arrastrando !== p.id && sobre === p.id && "bg-teal-500/15",
               )}
             >
               <button
