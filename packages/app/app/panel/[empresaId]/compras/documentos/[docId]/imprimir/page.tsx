@@ -64,7 +64,7 @@ export default async function ImprimirDocumentoCompraPage({
 
       <header className="flex items-start justify-between border-b-2 border-neutral-800 pb-3">
         <div>
-          <h1 className="text-lg font-semibold">{d.docTipo}</h1>
+          <h1 className="text-lg font-semibold">{d.docTipo === "pedido" ? "Orden de compra" : d.docTipo}</h1>
           <p className="text-sm text-neutral-600">
             {tipoDoc ? `${tipoDoc.codigoSii} — ${tipoDoc.nombre}` : ""}
           </p>
@@ -74,10 +74,12 @@ export default async function ImprimirDocumentoCompraPage({
             <span className="text-neutral-500">N° interno:</span>{" "}
             <span className="font-mono font-medium">{d.numeroInterno ?? "—"}</span>
           </p>
-          <p>
-            <span className="text-neutral-500">Folio SII:</span>{" "}
-            <span className="font-mono font-medium">{d.folio ?? "—"}</span>
-          </p>
+          {d.docTipo !== "pedido" && (
+            <p>
+              <span className="text-neutral-500">Folio SII:</span>{" "}
+              <span className="font-mono font-medium">{d.folio ?? "—"}</span>
+            </p>
+          )}
           <p>
             <span className="text-neutral-500">Estado:</span> {d.estado}
           </p>

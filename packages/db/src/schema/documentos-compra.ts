@@ -27,9 +27,10 @@ export const documentosCompra = pgTable(
     docTipo: documentoCompraTipoEnum("doc_tipo").notNull(),
     modalidad: documentoModalidadEnum("modalidad").notNull().default("Artículo"),
     numeroInterno: text("numero_interno"),
-    tipoDocumentoId: uuid("tipo_documento_id")
-      .notNull()
-      .references(() => tiposDocumento.id, { onDelete: "restrict" }),
+    /** Tipo SII del documento; nulo en el pedido (OC), que no es documento tributario. */
+    tipoDocumentoId: uuid("tipo_documento_id").references(() => tiposDocumento.id, {
+      onDelete: "restrict",
+    }),
     terceroId: uuid("tercero_id")
       .notNull()
       .references(() => terceros.id, { onDelete: "restrict" }),

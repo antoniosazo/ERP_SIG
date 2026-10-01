@@ -3,12 +3,18 @@ import { DOCUMENTO_COMPRA_TIPO, DOCUMENTO_MODALIDAD, IVA_RECUPERABLE, type Docum
 import { fechaISO, uuid } from "./primitives";
 
 /** Alta rápida de un documento de compra: tipo interno + tipo SII + proveedor. */
-export const crearDocumentoCompraSchema = z.object({
-  docTipo: z.enum(DOCUMENTO_COMPRA_TIPO),
-  tipoDocumentoId: uuid,
-  terceroId: uuid,
-  documentoBaseId: uuid.nullish(),
-});
+export const crearDocumentoCompraSchema = z
+  .object({
+    docTipo: z.enum(DOCUMENTO_COMPRA_TIPO),
+    tipoDocumentoId: uuid.nullish(),
+    terceroId: uuid,
+    documentoBaseId: uuid.nullish(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.docTipo !== "pedido" && !v.tipoDocumentoId) {
+      ctx.addIssue({ code: "custom", path: ["tipoDocumentoId"], message: "Selecciona el tipo de documento" });
+    }
+  });
 export type CrearDocumentoCompraInput = z.infer<typeof crearDocumentoCompraSchema>;
 
 /** Tipos SII válidos para documentos tributarios de compra. */
@@ -68,7 +74,7 @@ export const guardarDocumentoCompraSchema = z
   docTipo: z.enum(DOCUMENTO_COMPRA_TIPO),
   modalidad: z.enum(DOCUMENTO_MODALIDAD).default("Artículo"),
   terceroId: uuid,
-  tipoDocumentoId: uuid,
+  tipoDocumentoId: uuid.nullish(),
   folio: z.string().trim().max(40).nullish(),
   fechaEmision: fechaISO,
   fechaVencimiento: fechaISO,
@@ -83,6 +89,9 @@ export const guardarDocumentoCompraSchema = z
   lineas: z.array(lineaCompraSchema).min(1, "Agrega al menos una línea").max(200),
   })
   .superRefine((v, ctx) => {
+    if (v.docTipo !== "pedido" && !v.tipoDocumentoId) {
+      ctx.addIssue({ code: "custom", path: ["tipoDocumentoId"], message: "Selecciona el tipo de documento" });
+    }
     if (["factura", "nota_credito", "nota_debito"].includes(v.docTipo) && !v.folio?.trim()) {
       ctx.addIssue({ code: "custom", path: ["folio"], message: "Indica el folio SII" });
     }
@@ -114,10 +123,15 @@ export type AnularDocumentoCompraInput = z.infer<typeof anularDocumentoCompraSch
 export const traerDesdeDocumentoSchema = z.object({
   documentoBaseId: uuid,
   docTipoDestino: z.enum(DOCUMENTO_COMPRA_TIPO),
+  /** Tipo SII del documento nuevo: obligatorio al crear una factura, pues el pedido no lo tiene. */
+  tipoDocumentoId: uuid.nullish(),
   lineas: z
     .array(z.object({ lineaBaseId: uuid, cantidad: z.number().positive() }))
     .min(1, "Selecciona al menos una línea"),
 }).superRefine((v, ctx) => {
+  if (v.docTipoDestino === "factura" && !v.tipoDocumentoId) {
+    ctx.addIssue({ code: "custom", path: ["tipoDocumentoId"], message: "Selecciona el tipo de documento de la factura" });
+  }
   const ids = new Set<string>();
   v.lineas.forEach((linea, i) => {
     if (ids.has(linea.lineaBaseId)) {

@@ -5,7 +5,7 @@ export const COMPRA_TIPO_META: Record<
   DocumentoCompraTipo,
   { slug: string; titulo: string; singular: string; contabiliza: boolean }
 > = {
-  pedido: { slug: "pedidos", titulo: "Pedidos de compra", singular: "pedido", contabiliza: false },
+  pedido: { slug: "pedidos", titulo: "Órdenes de compra", singular: "pedido", contabiliza: false },
   entrada_mercaderia: {
     slug: "entradas",
     titulo: "Entradas de mercadería",

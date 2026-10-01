@@ -133,14 +133,19 @@ export default async function DocumentoCompraDetallePage({
         </div>
       )}
       <TypographyHeading
-        title={`${documento.numeroInterno ?? ""} ${documento.docTipo}`.trim()}
+        title={`${documento.numeroInterno ?? ""} ${documento.docTipo === "pedido" ? "orden de compra" : documento.docTipo}`.trim()}
         description={
           documento.docTipo === "factura"
             ? "Factura contabilizada automáticamente. Una vez contabilizada solo se editan la fecha de vencimiento y la de contabilización."
-            : "Documento de compra. Solo se edita en borrador; al contabilizar se genera el asiento."
+            : documento.docTipo === "pedido"
+              ? "Orden de compra: formaliza el pedido al proveedor y no es un documento tributario. El tipo SII y el folio se registran en la factura."
+              : "Documento de compra. Solo se edita en borrador; al contabilizar se genera el asiento."
         }
       />
       <DocumentoCompraToolbar
+        tiposFactura={tiposDoc
+          .filter((t) => CODIGOS_SII_COMPRA_POR_TIPO.factura?.includes(t.codigoSii) && (t.tipoOperacion === "Compra" || t.tipoOperacion === "Ambos"))
+          .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }))}
         empresaId={empresaId}
         factura={factura}
         docId={docId}
@@ -227,7 +232,7 @@ export default async function DocumentoCompraDetallePage({
           modalidad: documento.modalidad,
           docTipo: documento.docTipo,
           terceroId: documento.terceroId,
-          tipoDocumentoId: documento.tipoDocumentoId,
+          tipoDocumentoId: documento.tipoDocumentoId ?? undefined,
           folio: documento.folio ?? "",
           fechaEmision: documento.fechaEmision,
           fechaVencimiento: documento.fechaVencimiento ?? documento.fechaEmision,

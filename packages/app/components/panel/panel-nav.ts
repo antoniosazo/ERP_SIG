@@ -142,7 +142,7 @@ export const GRUPOS: Grupo[] = [
     icon: ShoppingBagIcon,
     items: [
       { href: "/compras/bandeja-sii", label: "Bandeja SII (XML)", icon: TrendingUpIcon },
-      { href: "/compras/pedidos", label: "Pedidos", icon: FileTextIcon },
+      { href: "/compras/pedidos", label: "Órdenes de compra", icon: FileTextIcon },
       { href: "/compras/entradas", label: "Entradas de mercadería", icon: PackageIcon },
       { href: "/compras/facturas", label: "Facturas", icon: FileTextIcon },
       { href: "/compras/notas-credito", label: "Notas de crédito", icon: FileTextIcon },

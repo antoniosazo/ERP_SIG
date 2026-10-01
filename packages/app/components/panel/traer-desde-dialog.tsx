@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SelectorBuscable } from "@/components/panel/selector-buscable";
 import {
   Table,
   TableBody,
@@ -38,6 +40,7 @@ export function TraerDesdeDialog({
   documentoBaseId,
   lineas,
   docTipoDestino,
+  tiposDocumento,
   boton,
   titulo,
 }: {
@@ -45,12 +48,16 @@ export function TraerDesdeDialog({
   documentoBaseId: string;
   lineas: Linea[];
   docTipoDestino: DocumentoCompraTipo;
+  /** Tipos SII entre los que elegir cuando el destino es una factura. */
+  tiposDocumento?: { id: string; label: string }[];
   boton: string;
   titulo: string;
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const pideTipo = docTipoDestino === "factura";
+  const [tipoDocumentoId, setTipoDocumentoId] = useState("");
   const [sel, setSel] = useState<Record<string, { on: boolean; cantidad: number }>>(() =>
     Object.fromEntries(
       lineas.map((l) => [l.id, { on: true, cantidad: l.cantidadPendiente }]),
@@ -65,10 +72,15 @@ export function TraerDesdeDialog({
       toast.error("Selecciona al menos una línea con cantidad.");
       return;
     }
+    if (pideTipo && !tipoDocumentoId) {
+      toast.error("Selecciona el tipo de documento de la factura.");
+      return;
+    }
     startTransition(async () => {
       const r = await traerDesdeDocumentoAction(empresaId, {
         documentoBaseId,
         docTipoDestino,
+        tipoDocumentoId: pideTipo ? tipoDocumentoId : null,
         lineas: elegidas,
       });
       if (r.ok) {
@@ -97,6 +109,17 @@ export function TraerDesdeDialog({
           <DialogHeader>
             <DialogTitle>{titulo}</DialogTitle>
           </DialogHeader>
+          {pideTipo && (
+            <div className="space-y-2">
+              <Label>Tipo de documento (SII)</Label>
+              <SelectorBuscable
+                value={tipoDocumentoId}
+                onValueChange={(v) => setTipoDocumentoId(v ?? "")}
+                opciones={tiposDocumento ?? []}
+                placeholder="Selecciona el tipo"
+              />
+            </div>
+          )}
           <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
             <Table>
               <TableHeader>

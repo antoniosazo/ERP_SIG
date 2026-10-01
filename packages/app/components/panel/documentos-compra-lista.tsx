@@ -89,6 +89,7 @@ export function DocumentosCompraLista({
   const [proveedorFiltro, setProveedorFiltro] = useState(filtros.terceroId);
   const [descartarId, setDescartarId] = useState<string | null>(null);
   const meta = COMPRA_TIPO_META[docTipo];
+  const esOC = docTipo === "pedido";
   const porEstado = useAgrupado(documentos, (d) => d.estado);
   const { expandidos, alternar } = useExpandidos(["borrador", "abierto", "contabilizado"]);
   const detalleHref = (id: string) => `/panel/${empresaId}/compras/documentos/${id}`;
@@ -105,9 +106,11 @@ export function DocumentosCompraLista({
   }
 
   function crear() {
-    if (!tipoDocumentoId || !terceroId) return toast.error("Elige explícitamente el tipo de documento y el proveedor.");
+    if (!terceroId || (!esOC && !tipoDocumentoId)) {
+      return toast.error(esOC ? "Elige el proveedor." : "Elige explícitamente el tipo de documento y el proveedor.");
+    }
     startTransition(async () => {
-      const r = await crearDocumentoCompraAction(empresaId, { docTipo, tipoDocumentoId, terceroId });
+      const r = await crearDocumentoCompraAction(empresaId, { docTipo, tipoDocumentoId: esOC ? null : tipoDocumentoId, terceroId });
       if (r.ok) {
         setAbierto(false);
         router.push(detalleHref(r.docId));
@@ -140,7 +143,7 @@ export function DocumentosCompraLista({
     <div className="space-y-4">
       <form className="grid gap-3 rounded-xl border p-3 md:grid-cols-2 xl:grid-cols-6" onSubmit={(e) => { e.preventDefault(); navegar({ pagina: "1" }); }}>
         <div className="space-y-1 xl:col-span-2">
-          <Label htmlFor="buscar-compra">Folio, número o proveedor</Label>
+          <Label htmlFor="buscar-compra">{esOC ? "Número o proveedor" : "Folio, número o proveedor"}</Label>
           <Input id="buscar-compra" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar…" />
         </div>
         <div className="space-y-1"><Label htmlFor="compra-desde">Desde</Label><Input id="compra-desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></div>
@@ -164,7 +167,7 @@ export function DocumentosCompraLista({
           <Button type="submit" className="bg-amber-400 text-amber-950 hover:bg-amber-500">Aplicar filtros</Button>
           <Button type="button" variant="outline" onClick={() => { setQ(""); setDesde(""); setHasta(""); setProveedorFiltro(""); router.push(pathname); }}>Limpiar</Button>
           <span className="text-sm text-muted-foreground">{total} registro(s)</span>
-          {puedeEditar && <Button type="button" className="ml-auto" onClick={() => setAbierto(true)} disabled={!proveedores.length || !tiposDocumento.length}>Nuevo {meta.singular}</Button>}
+          {puedeEditar && <Button type="button" className="ml-auto" onClick={() => setAbierto(true)} disabled={!proveedores.length || (!esOC && !tiposDocumento.length)}>Nuevo {meta.singular}</Button>}
         </div>
       </form>
 
@@ -175,20 +178,20 @@ export function DocumentosCompraLista({
       ) : (
         <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
           <Table>
-            <TableHeader><TableRow><TableHead>N° interno</TableHead><TableHead>Tipo / folio</TableHead><TableHead>Proveedor</TableHead><TableHead>Emisión</TableHead><TableHead>Vencimiento</TableHead><TableHead>Moneda</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Saldo</TableHead>{puedeEditar && <TableHead className="text-right">Acciones</TableHead>}</TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>N° interno</TableHead>{!esOC && <TableHead>Tipo / folio</TableHead>}<TableHead>Proveedor</TableHead><TableHead>Emisión</TableHead><TableHead>Vencimiento</TableHead><TableHead>Moneda</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Saldo</TableHead>{puedeEditar && <TableHead className="text-right">Acciones</TableHead>}</TableRow></TableHeader>
             <TableBody>
               {grupos.map((estado) => {
                 const items = porEstado.get(estado) ?? [];
                 const abiertoGrupo = expandidos.has(estado);
                 return <Fragment key={estado}>
-                  <FilaGrupo abierto={abiertoGrupo} onToggle={() => alternar(estado)} colSpan={puedeEditar ? 9 : 8}><Badge variant={badge(estado)}>{etiquetaEstado(estado)}</Badge><span className="text-muted-foreground">({items.length})</span></FilaGrupo>
+                  <FilaGrupo abierto={abiertoGrupo} onToggle={() => alternar(estado)} colSpan={(puedeEditar ? 9 : 8) - (esOC ? 1 : 0)}><Badge variant={badge(estado)}>{etiquetaEstado(estado)}</Badge><span className="text-muted-foreground">({items.length})</span></FilaGrupo>
                   {abiertoGrupo && items.map((d) => {
                     const vencida = d.estado === "contabilizado" && d.saldo > 0.01 && !!d.fechaVencimiento && d.fechaVencimiento < hoy;
                     return <TableRow key={d.id} className="cursor-pointer" role="link" tabIndex={0}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(detalleHref(d.id)); } }}
                       onClick={(e) => { if ((e.target as HTMLElement).closest("a,button")) return; router.push(detalleHref(d.id)); }}>
                       <TableCell className="font-mono font-medium"><Link href={detalleHref(d.id)} className="hover:underline">{d.numeroInterno ?? "—"}</Link></TableCell>
-                      <TableCell><div>{d.tipoDocumento}</div><div className="font-mono text-xs text-muted-foreground">Folio {d.folio ?? "—"}</div></TableCell>
+                      {!esOC && <TableCell><div>{d.tipoDocumento}</div><div className="font-mono text-xs text-muted-foreground">Folio {d.folio ?? "—"}</div></TableCell>}
                       <TableCell><TerceroEnlace empresaId={empresaId} terceroId={d.terceroId}>{d.proveedor}</TerceroEnlace></TableCell>
                       <TableCell>{d.fechaEmision}</TableCell>
                       <TableCell><span className={vencida ? "font-medium text-destructive" : "text-muted-foreground"}>{d.fechaVencimiento ?? "—"}</span>{vencida && <Badge variant="destructive" className="ml-2">Vencida</Badge>}</TableCell>
@@ -210,9 +213,9 @@ export function DocumentosCompraLista({
       {paginas > 1 && <div className="flex items-center justify-end gap-2"><Button type="button" variant="outline" disabled={pagina <= 1} onClick={() => navegar({ pagina: String(pagina - 1) })}>Anterior</Button><span className="text-sm text-muted-foreground">Página {pagina} de {paginas}</span><Button type="button" variant="outline" disabled={pagina >= paginas} onClick={() => navegar({ pagina: String(pagina + 1) })}>Siguiente</Button></div>}
 
       <Dialog open={abierto} onOpenChange={setAbierto}><DialogContent><DialogHeader><DialogTitle>Nuevo {meta.singular}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">Elige el tipo SII y el proveedor. La factura se contabilizará al guardar; los demás documentos se revisan desde su detalle.</p>
-        <div className="space-y-4"><div className="space-y-2"><Label>Tipo de documento (SII)</Label><SelectorBuscable value={tipoDocumentoId} onValueChange={(v) => setTipoDocumentoId(v ?? "")} opciones={tiposDocumento} placeholder="Selecciona el tipo" /></div><div className="space-y-2"><Label>Proveedor</Label><SelectorBuscable value={terceroId} onValueChange={(v) => setTerceroId(v ?? "")} opciones={proveedores} placeholder="Selecciona el proveedor" /></div></div>
-        <DialogFooter><Button variant="outline" onClick={() => setAbierto(false)}>Cancelar</Button><Button onClick={crear} disabled={isPending || !tipoDocumentoId || !terceroId}>{isPending ? "Creando…" : "Crear y abrir"}</Button></DialogFooter>
+        <p className="text-sm text-muted-foreground">{esOC ? "Elige el proveedor. La orden de compra no es un documento tributario: el tipo SII se define al facturar." : "Elige el tipo SII y el proveedor. La factura se contabilizará al guardar; los demás documentos se revisan desde su detalle."}</p>
+        <div className="space-y-4">{!esOC && <div className="space-y-2"><Label>Tipo de documento (SII)</Label><SelectorBuscable value={tipoDocumentoId} onValueChange={(v) => setTipoDocumentoId(v ?? "")} opciones={tiposDocumento} placeholder="Selecciona el tipo" /></div>}<div className="space-y-2"><Label>Proveedor</Label><SelectorBuscable value={terceroId} onValueChange={(v) => setTerceroId(v ?? "")} opciones={proveedores} placeholder="Selecciona el proveedor" /></div></div>
+        <DialogFooter><Button variant="outline" onClick={() => setAbierto(false)}>Cancelar</Button><Button onClick={crear} disabled={isPending || (!esOC && !tipoDocumentoId) || !terceroId}>{isPending ? "Creando…" : "Crear y abrir"}</Button></DialogFooter>
       </DialogContent></Dialog>
       <ConfirmDialog open={descartarId !== null} onOpenChange={(open) => !open && setDescartarId(null)} title={`Descartar ${meta.singular} pendiente`} description={`El documento quedará anulado en el historial y no podrá contabilizarse.`} confirmLabel="Descartar" onConfirm={descartar} />
     </div>

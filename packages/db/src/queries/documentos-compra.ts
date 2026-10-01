@@ -70,9 +70,12 @@ const PERIODO_BLOQUEA_COMPRA = new Set(["Bloqueado", "Bloqueado excepto ventas"]
 
 async function validarTipoDocumentoCompra(
   tx: Tx,
-  tipoDocumentoId: string,
+  tipoDocumentoId: string | null | undefined,
   docTipo: DocumentoCompraTipo,
 ) {
+  // El pedido (OC) no es documento tributario: no lleva tipo SII.
+  if (docTipo === "pedido") return null;
+  if (!tipoDocumentoId) throw new Error("Selecciona el tipo de documento.");
   const [tipo] = await tx
     .select({ codigoSii: tiposDocumento.codigoSii, tipoOperacion: tiposDocumento.tipoOperacion })
     .from(tiposDocumento)
@@ -600,7 +603,7 @@ export async function crearDocumentoCompra(
         empresaId,
         docTipo: input.docTipo,
         numeroInterno,
-        tipoDocumentoId: input.tipoDocumentoId,
+        tipoDocumentoId: input.docTipo === "pedido" ? null : input.tipoDocumentoId,
         terceroId: input.terceroId,
         fechaEmision: hoy,
         fechaContabilizacion: hoy,
@@ -770,8 +773,8 @@ async function guardarDocumentoCompraTx(
       .set({
         modalidad: input.modalidad,
         terceroId: input.terceroId,
-        tipoDocumentoId: input.tipoDocumentoId,
-        folio: input.folio || null,
+        tipoDocumentoId: antes.docTipo === "pedido" ? null : input.tipoDocumentoId,
+        folio: antes.docTipo === "pedido" ? null : input.folio || null,
         fechaEmision: input.fechaEmision,
         fechaVencimiento: input.fechaVencimiento,
         fechaContabilizacion: input.fechaContabilizacion,
@@ -895,6 +898,9 @@ export async function traerDesdeDocumento(
         `No se puede crear ${input.docTipoDestino} desde ${base.docTipo}.`,
       );
     }
+    if (input.docTipoDestino === "factura") {
+      await validarTipoDocumentoCompra(tx, input.tipoDocumentoId, "factura");
+    }
     if (input.docTipoDestino === "entrada_mercaderia") {
       const [empresa] = await tx
         .select({ monedaFuncionalId: empresas.monedaFuncionalId })
@@ -986,7 +992,7 @@ export async function traerDesdeDocumento(
         docTipo: input.docTipoDestino,
         modalidad: base.modalidad,
         numeroInterno,
-        tipoDocumentoId: base.tipoDocumentoId,
+        tipoDocumentoId: input.docTipoDestino === "factura" ? input.tipoDocumentoId : null,
         terceroId: base.terceroId,
         fechaEmision: hoy,
         fechaContabilizacion: hoy,

@@ -86,7 +86,7 @@ export async function ComprasListaPage({
             ? "Las facturas se guardan y contabilizan en una sola operación. Si una queda pendiente, puedes completarla, reintentarla o descartarla."
             : meta.contabiliza
               ? "Al contabilizar se genera el asiento. Solo se edita mientras está pendiente."
-              : "El pedido controla el saldo pendiente por línea y puede convertirse en recepción o factura."
+              : "La orden de compra formaliza el pedido al proveedor (no es un documento tributario). Controla el saldo pendiente por línea y puede convertirse en recepción o factura."
         }
       />
       <DocumentosCompraLista
@@ -109,7 +109,7 @@ export async function ComprasListaPage({
           id: d.id,
           numeroInterno: d.numeroInterno,
           docTipo: d.docTipo,
-          tipoDocumento: tipoNombre.get(d.tipoDocumentoId) ?? "—",
+          tipoDocumento: (d.tipoDocumentoId && tipoNombre.get(d.tipoDocumentoId)) || "—",
           folio: d.folio,
           proveedor: proveedorNombre.get(d.terceroId) ?? "—",
           terceroId: d.terceroId,

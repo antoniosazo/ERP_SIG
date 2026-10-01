@@ -365,6 +365,7 @@ export function DocumentoCompraForm({
           </Select>,
         );
       case "tipoDocumentoId":
+        if (esPedido) return null;
         return campo("Tipo de documento", selOpt("tipoDocumentoId", tiposDocumento, "Selecciona el tipo"));
       case "fechaEmision":
         return campo(
@@ -412,6 +413,7 @@ export function DocumentoCompraForm({
           </Select>,
         );
       case "folio":
+        if (esPedido) return null;
         return campo(ES_TRIBUTARIO.has(docTipo) ? "Folio SII *" : "Folio", <Input {...register("folio")} disabled={readOnly} aria-invalid={!!errors.folio} />, undefined, errors.folio?.message);
       case "documentoBaseId":
         if (docTipo !== "nota_credito" && docTipo !== "nota_debito") return null;
@@ -423,7 +425,7 @@ export function DocumentoCompraForm({
         );
       case "numAtCard":
         return campo(
-          "N° del documento del proveedor",
+          esPedido ? "Referencia del proveedor (cotización)" : "N° del documento del proveedor",
           <Input {...register("numAtCard")} disabled={readOnly} />,
         );
       case "tipoCambio":

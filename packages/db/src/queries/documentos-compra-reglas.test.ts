@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   anularDocumentoCompraSchema,
+  crearDocumentoCompraSchema,
   codigoSiiPermitidoParaCompra,
   costoUnitarioNetoEntrada,
   destinoDesdeDocumentoPermitido,
@@ -108,6 +109,21 @@ describe("documentos de compra: reglas tributarias", () => {
       ],
     });
     assert.equal(resultado.success, false);
+  });
+
+  test("la orden de compra no lleva tipo SII ni folio, pero la factura sí", () => {
+    const oc = { ...BASE, docTipo: "pedido" as const, modalidad: "Artículo" as const, tipoDocumentoId: null, folio: null };
+    assert.equal(guardarDocumentoCompraSchema.safeParse(oc).success, true);
+    assert.equal(guardarDocumentoCompraSchema.safeParse({ ...BASE, tipoDocumentoId: null }).success, false);
+    assert.equal(crearDocumentoCompraSchema.safeParse({ docTipo: "pedido", terceroId: UUID }).success, true);
+    assert.equal(crearDocumentoCompraSchema.safeParse({ docTipo: "factura", terceroId: UUID }).success, false);
+  });
+
+  test("traer a factura exige el tipo SII; a entrada no", () => {
+    const base = { documentoBaseId: UUID_BASE, lineas: [{ lineaBaseId: UUID, cantidad: 1 }] };
+    assert.equal(traerDesdeDocumentoSchema.safeParse({ ...base, docTipoDestino: "factura" }).success, false);
+    assert.equal(traerDesdeDocumentoSchema.safeParse({ ...base, docTipoDestino: "factura", tipoDocumentoId: UUID }).success, true);
+    assert.equal(traerDesdeDocumentoSchema.safeParse({ ...base, docTipoDestino: "entrada_mercaderia" }).success, true);
   });
 
   test("el costo de recepción y GR-IR usan el neto después de descuentos", () => {

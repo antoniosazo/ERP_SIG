@@ -36,6 +36,7 @@ export function DocumentoCompraToolbar({
   config,
   lineasPendientes,
   puedeVerContabilidad,
+  tiposFactura,
 }: {
   empresaId: string;
   factura: FacturaDatos;
@@ -45,6 +46,7 @@ export function DocumentoCompraToolbar({
   config: ConfigFormularioDoc;
   lineasPendientes: LineaPendiente[];
   puedeVerContabilidad: boolean;
+  tiposFactura: { id: string; label: string }[];
 }) {
   const generaAsiento =
     docTipo === "factura" ||
@@ -88,6 +90,7 @@ export function DocumentoCompraToolbar({
               documentoBaseId={docId}
               lineas={lineasFacturablesDirectas}
               docTipoDestino="factura"
+              tiposDocumento={tiposFactura}
               boton="Traer a factura"
               titulo="Traer líneas no inventariables del pedido a una factura"
             />
@@ -100,6 +103,7 @@ export function DocumentoCompraToolbar({
           documentoBaseId={docId}
           lineas={lineasPendientes}
           docTipoDestino="factura"
+          tiposDocumento={tiposFactura}
           boton="Traer a factura"
           titulo="Traer líneas de la recepción a una factura"
         />
