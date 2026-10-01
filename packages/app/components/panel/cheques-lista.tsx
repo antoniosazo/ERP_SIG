@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { depositarChequesAction, historialChequeAction, protestarChequeAction } from "@/lib/actions/cheques";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -218,6 +219,9 @@ export function ChequesLista({
                     <TableCell className="whitespace-nowrap text-right">
                       <span className="mr-1 inline-block align-middle">
                         <HistorialDocumentoDialog empresaId={empresaId} docId={c.id} historial={historialChequeAction} />
+                      </span>
+                      <span className="mr-1 inline-block align-middle">
+                        <MapaRelacionesDialog empresaId={empresaId} tabla="cheques" id={c.id} />
                       </span>
                       {c.estado === "depositado" && c.tipo === "Recibido" && (
                         <Button

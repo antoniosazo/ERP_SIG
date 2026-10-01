@@ -7,6 +7,9 @@ import {
   listarVidasUtilesSii,
   obtenerActivoFijoConDetalle,
 } from "@erp/db";
+import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
+import { puedeEditarFinanzas } from "@erp/shared";
 import { ActivoFijoFicha } from "@/components/panel/activo-fijo-ficha";
 import { TypographyHeading } from "@/components/ui/typography";
 
@@ -27,10 +30,14 @@ export default async function ActivoFijoFichaPage({
     listarVidasUtilesSii(empresaId),
   ]);
   if (!detalle) notFound();
+  const acceso = await obtenerAccesoEmpresa(empresaId);
 
   return (
     <>
       <TypographyHeading title={detalle.activo.descripcion} description={`Activo ${detalle.activo.codigo}`} />
+      {acceso && puedeEditarFinanzas(acceso.session.user.esAdminFirma, acceso.rol) && (
+        <div><MapaRelacionesDialog empresaId={empresaId} tabla="activos_fijos" id={activoId} /></div>
+      )}
       <ActivoFijoFicha
         empresaId={empresaId}
         detalle={detalle}

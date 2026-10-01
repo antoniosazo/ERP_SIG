@@ -4,6 +4,7 @@ import type { ConfigFormularioDoc } from "@erp/shared";
 import { AsientoDialog } from "@/components/panel/asiento-dialog";
 import { ConfigFormularioDialog } from "@/components/panel/config-formulario-dialog";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { Button } from "@/components/ui/button";
 import { VerFacturaBoton } from "@/components/panel/factura-vista";
 import type { FacturaDatos } from "@/lib/factura-vista";
@@ -31,6 +32,7 @@ export function DocumentoVentaToolbar({
       {puedeVerContabilidad && (<>
         <AsientoDialog empresaId={empresaId} docId={docId} />
         <HistorialDocumentoDialog empresaId={empresaId} docId={docId} />
+        <MapaRelacionesDialog empresaId={empresaId} tabla="documentos_venta" id={docId} />
       </>)}
       <VerFacturaBoton f={factura} />
       <Button

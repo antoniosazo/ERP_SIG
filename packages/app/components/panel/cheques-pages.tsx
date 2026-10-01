@@ -10,6 +10,7 @@ import {
 import { historialDepositoAction } from "@/lib/actions/cheques";
 import { AsientoTabla } from "@/components/panel/asiento-tabla";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { ChequesLista } from "@/components/panel/cheques-lista";
 import { DepositoAnularBoton } from "@/components/panel/deposito-anular-boton";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
@@ -144,6 +145,7 @@ export async function DepositoDetallePage({ empresaId, depositoId }: { empresaId
         <Badge variant={anulado ? "secondary" : "default"}>{anulado ? "Anulado" : "Contabilizado"}</Badge>
         {!anulado && <DepositoAnularBoton empresaId={empresaId} depositoId={deposito.id} />}
         <HistorialDocumentoDialog empresaId={empresaId} docId={deposito.id} historial={historialDepositoAction} />
+        <MapaRelacionesDialog empresaId={empresaId} tabla="depositos" id={deposito.id} />
         {anulado && deposito.motivoAnulacion && (
           <span className="text-sm text-muted-foreground">Motivo: {deposito.motivoAnulacion}</span>
         )}

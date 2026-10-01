@@ -43,3 +43,4 @@ export * from "./queries/activos-fijos-vidas-utiles-sii";
 export * from "./queries/activos-fijos-tributario";
 
 export * from "./queries/asientos-referencias";
+export * from "./queries/mapa-relaciones";

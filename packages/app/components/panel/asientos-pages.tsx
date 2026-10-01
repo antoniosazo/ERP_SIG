@@ -20,6 +20,7 @@ import { FilaEnlace } from "@/components/panel/fila-enlace";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
 import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import { referenciaDeLinea, rutaReferenciaAsiento, rutaListaAsientos } from "@/lib/asientos-navegacion";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -309,6 +310,7 @@ export async function AsientoDetallePage({ empresaId, asientoId, lista }: { empr
           </Button>
         )}
         <HistorialDocumentoDialog empresaId={empresaId} docId={a.id} historial={historialAsientoAction} />
+        <MapaRelacionesDialog empresaId={empresaId} tabla="asientos_contables" id={a.id} />
       </div>
 
       {(reversa || original) && (

@@ -8,6 +8,7 @@ import {
 import { AsientoDialog } from "@/components/panel/asiento-dialog";
 import { ConfigFormularioDialog } from "@/components/panel/config-formulario-dialog";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { ReclamoSiiDialog } from "@/components/panel/reclamo-sii-dialog";
 import { TraerDesdeDialog } from "@/components/panel/traer-desde-dialog";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ export function DocumentoCompraToolbar({
           historial={historialDocumentoCompraAction}
         />
       )}
+      {puedeVerContabilidad && <MapaRelacionesDialog empresaId={empresaId} tabla="documentos_compra" id={docId} />}
       {puedeVerContabilidad && docTipo === "factura" && <ReclamoSiiDialog empresaId={empresaId} docId={docId} />}
       {puedeVerContabilidad && pedidoAbierto && (
         <>

@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { obtenerDocumentoActivoFijoParaConsulta } from "@erp/db";
-import { uuid } from "@erp/shared";
+import { puedeEditarFinanzas, uuid } from "@erp/shared";
 import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { EnlaceDetalle } from "@/components/panel/enlace-detalle";
 import { VolverBoton } from "@/components/panel/volver-boton";
 import { TypographyHeading } from "@/components/ui/typography";
@@ -11,7 +12,8 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@
 export const dynamic = "force-dynamic";
 export default async function Page({ params }: { params: Promise<{ empresaId: string; documentoId: string }> }) {
   const { empresaId, documentoId } = await params;
-  if (!uuid.safeParse(documentoId).success || !await obtenerAccesoEmpresa(empresaId)) notFound();
+  const acceso = uuid.safeParse(documentoId).success ? await obtenerAccesoEmpresa(empresaId) : null;
+  if (!acceso) notFound();
   const detalle = await obtenerDocumentoActivoFijoParaConsulta(empresaId, documentoId);
   if (!detalle) notFound();
   const { documento: d, lineas } = detalle;
@@ -19,6 +21,7 @@ export default async function Page({ params }: { params: Promise<{ empresaId: st
   return <div className="space-y-4">
     <VolverBoton fallbackHref={`${base}/activos-fijos/activos`} />
     <TypographyHeading title={`${d.tipoDoc} N° ${d.numero} · ${d.anio}`} description={d.glosa ?? "Documento de activo fijo"} />
+    {puedeEditarFinanzas(acceso.session.user.esAdminFirma, acceso.rol) && <div><MapaRelacionesDialog empresaId={empresaId} tabla="activos_fijos_documentos" id={documentoId} /></div>}
     <Card><CardContent className="flex flex-wrap gap-4 pt-6 text-sm">
       <span>Fecha: {d.fecha}</span><span>Fecha contable: {d.fechaContabilizacion ?? "—"}</span><span>Estado: {d.estado}</span><span>Libro: {d.libro ?? "Todos"}</span>
       {d.asientoId && <EnlaceDetalle href={`${base}/contabilidad/asientos/${d.asientoId}`}>Ver asiento</EnlaceDetalle>}

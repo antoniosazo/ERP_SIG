@@ -12,6 +12,7 @@ import { PAGO_META } from "@/lib/pagos";
 import { historialPagoAction } from "@/lib/actions/pagos";
 import { AsientoTabla } from "@/components/panel/asiento-tabla";
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
+import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { PagoAnularBoton } from "@/components/panel/pago-anular-boton";
 import { PagoForm } from "@/components/panel/pago-form";
@@ -134,6 +135,7 @@ export async function PagoDetallePage({
         <Badge variant={anulado ? "secondary" : "default"}>{anulado ? "Anulado" : "Contabilizado"}</Badge>
         {!anulado && <PagoAnularBoton empresaId={empresaId} pagoId={pago.id} />}
         <HistorialDocumentoDialog empresaId={empresaId} docId={pago.id} historial={historialPagoAction} />
+        <MapaRelacionesDialog empresaId={empresaId} tabla="pagos" id={pago.id} />
         {anulado && pago.motivoAnulacion && (
           <span className="text-sm text-muted-foreground">Motivo: {pago.motivoAnulacion}</span>
         )}
