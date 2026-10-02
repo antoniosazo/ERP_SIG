@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { ChevronsUpDownIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,8 @@ export function SelectorBuscable({
   const [texto, setTexto] = useState("");
   const [activo, setActivo] = useState(0);
   const raiz = useRef<HTMLDivElement>(null);
+  const lista = useRef<HTMLUListElement>(null);
+  const [posicion, setPosicion] = useState<CSSProperties | null>(null);
   const valorActual = value ?? valor ?? null;
   const seleccionada = opciones.find((o) => o.id === valorActual);
 
@@ -52,10 +55,42 @@ export function SelectorBuscable({
     return base.slice(0, 80);
   }, [opciones, texto]);
 
+  // Las grillas y tablas recortan (overflow) lo que se dibuja dentro de ellas: la lista se saca
+  // al body y se posiciona sobre el campo. Dentro de un diálogo se queda en línea, porque el
+  // diálogo trata un clic fuera de él como cierre.
+  useLayoutEffect(() => {
+    if (!abierto || !raiz.current || raiz.current.closest('[role="dialog"]')) {
+      setPosicion(null);
+      return;
+    }
+    const campo = raiz.current;
+    const calcular = () => {
+      const r = campo.getBoundingClientRect();
+      const ancho = Math.max(r.width, 288);
+      const abajo = window.innerHeight - r.bottom;
+      const arriba = abajo < 200 && r.top > abajo;
+      setPosicion({
+        position: "fixed",
+        left: Math.max(8, Math.min(r.left, window.innerWidth - ancho - 8)),
+        width: ancho,
+        ...(arriba ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
+        maxHeight: Math.min(256, Math.max(120, (arriba ? r.top : abajo) - 12)),
+      });
+    };
+    calcular();
+    window.addEventListener("scroll", calcular, true);
+    window.addEventListener("resize", calcular);
+    return () => {
+      window.removeEventListener("scroll", calcular, true);
+      window.removeEventListener("resize", calcular);
+    };
+  }, [abierto]);
+
   useEffect(() => {
     if (!abierto) return;
     const cerrar = (e: MouseEvent) => {
-      if (!raiz.current?.contains(e.target as Node)) setAbierto(false);
+      const destino = e.target as Node;
+      if (!raiz.current?.contains(destino) && !lista.current?.contains(destino)) setAbierto(false);
     };
     document.addEventListener("mousedown", cerrar);
     return () => document.removeEventListener("mousedown", cerrar);
@@ -136,28 +171,38 @@ export function SelectorBuscable({
           )}
         </button>
       )}
-      {abierto && (
-        <ul className="absolute z-50 mt-1 max-h-64 w-full min-w-72 overflow-y-auto rounded-md border bg-popover p-1 text-sm shadow-md">
-          {filtradas.length === 0 ? (
-            <li className="px-2 py-1.5 text-muted-foreground">Sin coincidencias</li>
-          ) : (
-            filtradas.map((o, i) => (
-              <li
-                key={o.id}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  elegir(o);
-                }}
-                onMouseEnter={() => setActivo(i)}
-                className={cn("cursor-pointer rounded px-2 py-1.5", i === activo && "bg-accent text-accent-foreground")}
-              >
-                <div className="truncate">{o.label}</div>
-                {o.detalle && <div className="truncate text-xs text-muted-foreground">{o.detalle}</div>}
-              </li>
-            ))
-          )}
-        </ul>
-      )}
+      {abierto && (() => {
+        const opcionesLista = (
+          <ul
+            ref={lista}
+            style={posicion ? { ...posicion, pointerEvents: "auto" } : undefined}
+            className={cn(
+              "overflow-y-auto rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md",
+              posicion ? "z-[60]" : "absolute z-50 mt-1 max-h-64 w-full min-w-72",
+            )}
+          >
+            {filtradas.length === 0 ? (
+              <li className="px-2 py-1.5 text-muted-foreground">Sin coincidencias</li>
+            ) : (
+              filtradas.map((o, i) => (
+                <li
+                  key={o.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    elegir(o);
+                  }}
+                  onMouseEnter={() => setActivo(i)}
+                  className={cn("cursor-pointer rounded px-2 py-1.5", i === activo && "bg-accent text-accent-foreground")}
+                >
+                  <div className="truncate">{o.label}</div>
+                  {o.detalle && <div className="truncate text-xs text-muted-foreground">{o.detalle}</div>}
+                </li>
+              ))
+            )}
+          </ul>
+        );
+        return posicion ? createPortal(opcionesLista, document.body) : opcionesLista;
+      })()}
     </div>
   );
 }
