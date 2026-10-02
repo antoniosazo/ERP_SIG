@@ -13,11 +13,12 @@ import {
 } from "@erp/shared";
 import {
   anularDocumentoVentaAction,
-  contabilizarDocumentoVentaAction,
+  crearYGuardarDocumentoVentaAction,
   descartarFacturaPendienteAction,
   actualizarFechasDocumentoVentaAction,
   guardarDocumentoVentaAction,
 } from "@/lib/actions/ventas";
+import { etiquetaEstado, pasoSiguienteVenta, resumenErrores } from "@/lib/documentos-ux";
 import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-venta-campos";
 import { VENTA_CLASE_META } from "@/lib/ventas";
@@ -66,6 +67,11 @@ export type ProductoOpcion = Opcion & {
   glosaSugerida: string | null;
 };
 type FormValues = z.input<typeof guardarDocumentoVentaSchema>;
+/** Campos de cabecera que casi nunca se tocan: van plegados bajo "Más opciones". */
+const CAMPOS_SECUNDARIOS = new Set([
+  "monedaId", "tipoCambio", "descuentoGlobalPct", "condicionPagoDias", "numAtCard", "nombreCliente",
+  "vendedorId", "contactoId", "direccionFacturacion", "direccionDespacho", "glosa",
+]);
 const NINGUNA = "__none__";
 
 const fmt = (n: number) => n.toLocaleString("es-CL", { maximumFractionDigits: 4 });
@@ -104,7 +110,8 @@ export function DocumentoVentaForm({
   saldosReferencia,
 }: {
   empresaId: string;
-  docId: string;
+  /** null = documento nuevo: se crea recién al guardar. */
+  docId: string | null;
   estado: string;
   numeroInterno: string | null;
   clase: DocumentoVentaClase;
@@ -132,6 +139,8 @@ export function DocumentoVentaForm({
   const [anulacionAbierta, setAnulacionAbierta] = useState(false);
   const [motivoAnulacion, setMotivoAnulacion] = useState("");
   const [fechaReversa, setFechaReversa] = useState(hoy);
+  const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  const esNuevo = docId === null;
   const readOnly = estado !== "borrador" || !puedeEditar;
   // Las facturas no pasan por borrador: se contabilizan al guardarse, y ya contabilizadas solo
   // se editan el vencimiento y la fecha de contabilización.
@@ -223,18 +232,34 @@ export function DocumentoVentaForm({
     setValue("fechaVencimiento", sumarDiasISO(f, d), { shouldValidate: true });
   }
 
-  const onSubmit = handleSubmit((data) => {
-    startTransition(async () => {
-      const r = await guardarDocumentoVentaAction(empresaId, docId, data);
-      if (r.ok) {
-        toast.success(r.contabilizado ? "Factura guardada y contabilizada" : "Documento guardado");
-        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
-        router.refresh();
-      } else toast.error(r.error);
-    });
-  });
+  const enviar = (finalizar: boolean) =>
+    handleSubmit(
+      (data) => {
+        setErrorServidor(null);
+        startTransition(async () => {
+          const r = docId
+            ? await guardarDocumentoVentaAction(empresaId, docId, data, { finalizar })
+            : await crearYGuardarDocumentoVentaAction(empresaId, clase, data, { finalizar });
+          if (r.ok) {
+            toast.success(
+              r.contabilizado
+                ? esFactura ? "Factura guardada y contabilizada" : "Documento contabilizado"
+                : "Borrador guardado",
+            );
+            reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
+            if (docId) router.refresh();
+            else router.replace(`/panel/${empresaId}/ventas/documentos/${r.docId}`);
+          } else {
+            setErrorServidor(r.error);
+            toast.error(r.error);
+          }
+        });
+      },
+      () => setErrorServidor(null),
+    );
 
   function guardarFechas() {
+    if (!docId) return;
     startTransition(async () => {
       const r = await actualizarFechasDocumentoVentaAction(empresaId, docId, {
         fechaVencimiento: watch("fechaVencimiento") as string,
@@ -247,17 +272,8 @@ export function DocumentoVentaForm({
     });
   }
 
-  function contabilizar() {
-    startTransition(async () => {
-      const r = await contabilizarDocumentoVentaAction(empresaId, docId);
-      if (r.ok) {
-        toast.success("Documento contabilizado");
-        router.refresh();
-      } else toast.error(r.error);
-    });
-  }
-
   function anular() {
+    if (!docId) return;
     if (!motivoAnulacion.trim()) {
       toast.error("Indica el motivo de la anulación.");
       return;
@@ -276,10 +292,11 @@ export function DocumentoVentaForm({
   }
 
   function descartar() {
+    if (!docId) return;
     startTransition(async () => {
       const r = await descartarFacturaPendienteAction(empresaId, docId);
       if (r.ok) {
-        toast.success("Documento pendiente descartado");
+        toast.success("Borrador descartado");
         router.refresh();
       } else toast.error(r.error);
     });
@@ -471,6 +488,7 @@ export function DocumentoVentaForm({
       case "vendedorId":
         return campo("Vendedor", selOpt("vendedorId", vendedores, "Sin vendedor"));
       case "contactoId":
+        if (esNuevo) return null;
         return campo("Persona de contacto", selOpt("contactoId", contactos, "Sin contacto"));
       case "direccionFacturacion":
         return campo(
@@ -666,18 +684,43 @@ export function DocumentoVentaForm({
     }
   }
 
+  const resumen = resumenErrores(errors, CAMPOS_CABECERA, CAMPOS_LINEA);
+  const principales = camposCabecera.filter((c) => !CAMPOS_SECUNDARIOS.has(c.id));
+  const secundarios = camposCabecera.filter((c) => CAMPOS_SECUNDARIOS.has(c.id));
+  const masAbierto =
+    readOnly ||
+    !!(valoresIniciales.glosa || valoresIniciales.numAtCard || valoresIniciales.direccionFacturacion || valoresIniciales.direccionDespacho || valoresIniciales.vendedorId || Number(valoresIniciales.descuentoGlobalPct) > 0 || Number(valoresIniciales.tipoCambio) !== 1) ||
+    secundarios.some((c) => (errors as Record<string, unknown>)[c.id]);
+  const paso = pasoSiguienteVenta(estado, esNuevo);
+  const permiteBorrador = !esFactura;
+
   return (
     <>
-    <form onSubmit={onSubmit} className="space-y-4">
-      {Object.keys(errors).length > 0 && (
-        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          Revisa los campos marcados antes de guardar el documento.
+    <form
+      onSubmit={enviar(true)}
+      onKeyDown={(e) => {
+        // Enter dentro de un campo no debe contabilizar el documento por accidente.
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
+      }}
+      className="space-y-4"
+    >
+      {(resumen.length > 0 || errorServidor) && (
+        <div role="alert" className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          {errorServidor && <p className="font-medium">No se pudo guardar: {errorServidor}</p>}
+          {resumen.length > 0 && (
+            <>
+              <p className="font-medium">Revisa estos datos antes de guardar:</p>
+              <ul className="list-disc space-y-0.5 pl-5">
+                {resumen.map((r) => <li key={r}>{r}</li>)}
+              </ul>
+            </>
+          )}
         </div>
       )}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>
-            {numeroInterno} · {clase}
+            {numeroInterno ?? "Nuevo"} · {clase}
           </CardTitle>
           <Badge
             variant={
@@ -688,11 +731,12 @@ export function DocumentoVentaForm({
                   : "default"
             }
           >
-            {estado}
+            {esNuevo ? "Nuevo" : etiquetaEstado(estado)}
           </Badge>
         </CardHeader>
+        {paso && <p className="px-6 text-sm text-muted-foreground">{paso}</p>}
         <CardContent className="doc-hdr grid gap-4 @xl:grid-cols-3">
-          {camposCabecera.map((c) => {
+          {principales.map((c) => {
             const node = renderCabecera(c.id);
             return node == null ? null : (
               <div key={c.id} className="contents">
@@ -700,6 +744,23 @@ export function DocumentoVentaForm({
               </div>
             );
           })}
+          {secundarios.length > 0 && (
+            <details className="col-span-full" open={masAbierto}>
+              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                Más opciones (moneda, descuento, vendedor, direcciones, glosa)
+              </summary>
+              <div className="doc-hdr mt-3 grid gap-4 @xl:grid-cols-3">
+                {secundarios.map((c) => {
+                  const node = renderCabecera(c.id);
+                  return node == null ? null : (
+                    <div key={c.id} className="contents">
+                      {node}
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
         </CardContent>
       </Card>
 
@@ -797,11 +858,11 @@ export function DocumentoVentaForm({
         {!readOnly && (
           <>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : esFactura ? "Guardar y contabilizar" : "Guardar"}
+              {isPending ? "Guardando..." : "Guardar y contabilizar"}
             </Button>
-            {!esFactura && (
-              <Button type="button" variant="secondary" disabled={isPending} onClick={contabilizar}>
-                Contabilizar
+            {permiteBorrador && (
+              <Button type="button" variant="secondary" disabled={isPending} onClick={enviar(false)}>
+                Guardar borrador
               </Button>
             )}
           </>
@@ -811,12 +872,12 @@ export function DocumentoVentaForm({
             {isPending ? "Guardando..." : "Guardar fechas"}
           </Button>
         )}
-        {estado === "borrador" && puedeEditar && (
+        {!esNuevo && estado === "borrador" && puedeEditar && (
           <Button type="button" variant="outline" disabled={isPending} onClick={descartar}>
-            Descartar pendiente
+            Descartar borrador
           </Button>
         )}
-        {estado === "contabilizado" && puedeAnular && (
+        {!esNuevo && estado === "contabilizado" && puedeAnular && (
           <Button type="button" variant="destructive" disabled={isPending} onClick={() => setAnulacionAbierta(true)}>
             Anular
           </Button>

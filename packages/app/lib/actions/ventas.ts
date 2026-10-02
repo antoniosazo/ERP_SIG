@@ -4,11 +4,10 @@ import {
   actualizarFechasDocumentoVenta,
   anularDocumentoVenta,
   contabilizarDocumentoVenta,
-  crearDocumentoVenta,
   crearNotaCreditoDesdeFactura,
   descartarBorradorDocumentoVenta,
-  guardarDocumentoVenta,
-  guardarYContabilizarFacturaVenta,
+  crearYGuardarDocumentoVenta,
+  guardarDocumentoVentaYFinalizar,
   listarAuditoriaDeRegistro,
   obtenerAsientoVentaContabilizado,
   obtenerDocumentoVentaConLineas,
@@ -49,28 +48,14 @@ function rev(empresaId: string, docId?: string) {
   if (docId) revalidatePath(`/panel/${empresaId}/ventas/documentos/${docId}`);
 }
 
-export async function crearDocumentoVentaAction(
-  empresaId: string,
-  input: CrearDocumentoVentaInput,
-): Promise<DocVentaResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES);
-  const parsed = crearDocumentoVentaSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
-  }
-  try {
-    const doc = await crearDocumentoVenta(empresaId, parsed.data, auditCtx(session));
-    rev(empresaId);
-    return { ok: true, docId: doc.id };
-  } catch (error) {
-    return { ok: false, error: mensajeError(error) };
-  }
-}
+/** Las facturas de venta no tienen borrador: guardar siempre las contabiliza. */
+const finalizaAlGuardar = (clase: string, finalizar?: boolean) => clase === "Factura" || !!finalizar;
 
 export async function guardarDocumentoVentaAction(
   empresaId: string,
   docId: string,
   input: GuardarDocumentoVentaInput,
+  opciones: { finalizar?: boolean } = {},
 ): Promise<DocVentaResultado> {
   const session = await requireRolEnEmpresa(empresaId, ROLES);
   const parsed = guardarDocumentoVentaSchema.safeParse(input);
@@ -78,17 +63,46 @@ export async function guardarDocumentoVentaAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
   try {
-    const ctx = auditCtx(session);
     const detalle = await obtenerDocumentoVentaConLineas(docId, empresaId);
     if (!detalle) return { ok: false, error: "El documento no existe." };
-    if (detalle.documento.clase === "Factura") {
-      await guardarYContabilizarFacturaVenta(docId, empresaId, parsed.data, ctx);
-      rev(empresaId, docId);
-      return { ok: true, docId, contabilizado: true };
-    }
-    await guardarDocumentoVenta(docId, empresaId, parsed.data, ctx);
+    const r = await guardarDocumentoVentaYFinalizar(
+      docId,
+      empresaId,
+      parsed.data,
+      auditCtx(session),
+      finalizaAlGuardar(detalle.documento.clase, opciones.finalizar),
+    );
     rev(empresaId, docId);
-    return { ok: true, docId };
+    return { ok: true, docId, ...r };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+/** Alta y guardado en un solo paso: el documento no existe hasta que se guarda con éxito. */
+export async function crearYGuardarDocumentoVentaAction(
+  empresaId: string,
+  clase: CrearDocumentoVentaInput["clase"],
+  input: GuardarDocumentoVentaInput,
+  opciones: { finalizar?: boolean } = {},
+): Promise<DocVentaResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  const claseValida = crearDocumentoVentaSchema.shape.clase.safeParse(clase);
+  const parsed = guardarDocumentoVentaSchema.safeParse(input);
+  if (!claseValida.success) return { ok: false, error: "Clase de documento inválida" };
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  try {
+    const r = await crearYGuardarDocumentoVenta(
+      empresaId,
+      claseValida.data,
+      parsed.data,
+      auditCtx(session),
+      finalizaAlGuardar(claseValida.data, opciones.finalizar),
+    );
+    rev(empresaId, r.docId);
+    return { ok: true, ...r };
   } catch (error) {
     return { ok: false, error: mensajeError(error) };
   }
@@ -108,20 +122,6 @@ export async function actualizarFechasDocumentoVentaAction(
   }
   try {
     await actualizarFechasDocumentoVenta(docId, empresaId, input, auditCtx(session));
-    rev(empresaId, docId);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: mensajeError(error) };
-  }
-}
-
-export async function contabilizarDocumentoVentaAction(
-  empresaId: string,
-  docId: string,
-): Promise<DocVentaAccionResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES);
-  try {
-    await contabilizarDocumentoVenta(docId, empresaId, auditCtx(session));
     rev(empresaId, docId);
     return { ok: true };
   } catch (error) {

@@ -10,7 +10,7 @@ import { ConfigFormularioDialog } from "@/components/panel/config-formulario-dia
 import { HistorialDocumentoDialog } from "@/components/panel/historial-documento-dialog";
 import { MapaRelacionesDialog } from "@/components/panel/mapa-relaciones-dialog";
 import { ReclamoSiiDialog } from "@/components/panel/reclamo-sii-dialog";
-import { TraerDesdeDialog } from "@/components/panel/traer-desde-dialog";
+import { TraerDesdeDialog, type DestinoTraer } from "@/components/panel/traer-desde-dialog";
 import { Button } from "@/components/ui/button";
 import { VerFacturaBoton } from "@/components/panel/factura-vista";
 import type { FacturaDatos } from "@/lib/factura-vista";
@@ -59,74 +59,84 @@ export function DocumentoCompraToolbar({
   const pedidoAbierto = docTipo === "pedido" && estado === "abierto" && lineasPendientes.length > 0;
   const grpoPorFacturar =
     docTipo === "entrada_mercaderia" && estado === "contabilizado" && lineasPendientes.length > 0;
+  const pl = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+  const destinosPedido: DestinoTraer[] = [
+    ...(lineasInventario.length > 0
+      ? [{
+          docTipoDestino: "entrada_mercaderia" as const,
+          etiqueta: "Entrada de mercadería",
+          detalle: `${pl(lineasInventario.length, "línea de inventario", "líneas de inventario")} que llegan a bodega`,
+          lineas: lineasInventario,
+        }]
+      : []),
+    ...(lineasFacturablesDirectas.length > 0
+      ? [{
+          docTipoDestino: "factura" as const,
+          etiqueta: "Factura de compra",
+          detalle: `${pl(lineasFacturablesDirectas.length, "línea", "líneas")} que no son de inventario (servicios, gastos)`,
+          lineas: lineasFacturablesDirectas,
+          tiposDocumento: tiposFactura,
+        }]
+      : []),
+  ];
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-      <ConfigFormularioDialog config={config} origen="compra" docTipo={docTipo} />
-      {puedeVerContabilidad && generaAsiento && (
-        <AsientoDialog empresaId={empresaId} docId={docId} verAsiento={verAsientoCompraAction} />
-      )}
-      {puedeVerContabilidad && (
-        <HistorialDocumentoDialog
+      {puedeVerContabilidad && pedidoAbierto && destinosPedido.length > 0 && (
+        <TraerDesdeDialog
           empresaId={empresaId}
-          docId={docId}
-          historial={historialDocumentoCompraAction}
+          documentoBaseId={docId}
+          destinos={destinosPedido}
+          boton={destinosPedido.length > 1 ? "Continuar con…" : destinosPedido[0]!.docTipoDestino === "factura" ? "Traer a factura" : "Traer a entrada de mercadería"}
+          titulo={destinosPedido.length > 1 ? "Continuar la orden de compra" : `Crear ${destinosPedido[0]!.etiqueta.toLowerCase()} desde la orden`}
         />
-      )}
-      {puedeVerContabilidad && <MapaRelacionesDialog empresaId={empresaId} tabla="documentos_compra" id={docId} />}
-      {puedeVerContabilidad && docTipo === "factura" && <ReclamoSiiDialog empresaId={empresaId} docId={docId} />}
-      {puedeVerContabilidad && pedidoAbierto && (
-        <>
-          {lineasInventario.length > 0 && (
-            <TraerDesdeDialog
-              empresaId={empresaId}
-              documentoBaseId={docId}
-              lineas={lineasInventario}
-              docTipoDestino="entrada_mercaderia"
-              boton="Traer a recepción"
-              titulo="Traer líneas del pedido a una Entrada de Mercadería"
-            />
-          )}
-          {lineasFacturablesDirectas.length > 0 && (
-            <TraerDesdeDialog
-              empresaId={empresaId}
-              documentoBaseId={docId}
-              lineas={lineasFacturablesDirectas}
-              docTipoDestino="factura"
-              tiposDocumento={tiposFactura}
-              boton="Traer a factura"
-              titulo="Traer líneas no inventariables del pedido a una factura"
-            />
-          )}
-        </>
       )}
       {puedeVerContabilidad && grpoPorFacturar && (
         <TraerDesdeDialog
           empresaId={empresaId}
           documentoBaseId={docId}
-          lineas={lineasPendientes}
-          docTipoDestino="factura"
-          tiposDocumento={tiposFactura}
+          destinos={[{
+            docTipoDestino: "factura",
+            etiqueta: "Factura de compra",
+            detalle: `${pl(lineasPendientes.length, "línea", "líneas")} de la entrada`,
+            lineas: lineasPendientes,
+            tiposDocumento: tiposFactura,
+          }]}
           boton="Traer a factura"
-          titulo="Traer líneas de la recepción a una factura"
+          titulo="Crear factura desde la entrada de mercadería"
         />
       )}
-      <VerFacturaBoton f={factura} />
-      <Button
-        asChild
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        title="Imprimir documento"
-        aria-label="Imprimir documento"
-      >
-        <Link
-          href={`/panel/${empresaId}/compras/documentos/${docId}/imprimir`}
-          target="_blank"
-          rel="noopener"
+      <div className="ml-auto flex flex-wrap items-center gap-2" role="group" aria-label="Herramientas del documento">
+        <ConfigFormularioDialog config={config} origen="compra" docTipo={docTipo} />
+        {puedeVerContabilidad && generaAsiento && (
+          <AsientoDialog empresaId={empresaId} docId={docId} verAsiento={verAsientoCompraAction} />
+        )}
+        {puedeVerContabilidad && (
+          <HistorialDocumentoDialog
+            empresaId={empresaId}
+            docId={docId}
+            historial={historialDocumentoCompraAction}
+          />
+        )}
+        {puedeVerContabilidad && <MapaRelacionesDialog empresaId={empresaId} tabla="documentos_compra" id={docId} />}
+        {puedeVerContabilidad && docTipo === "factura" && <ReclamoSiiDialog empresaId={empresaId} docId={docId} />}
+        <VerFacturaBoton f={factura} />
+        <Button
+          asChild
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          title="Imprimir documento"
+          aria-label="Imprimir documento"
         >
-          <PrinterIcon />
-        </Link>
-      </Button>
+          <Link
+            href={`/panel/${empresaId}/compras/documentos/${docId}/imprimir`}
+            target="_blank"
+            rel="noopener"
+          >
+            <PrinterIcon />
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }

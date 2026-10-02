@@ -562,72 +562,79 @@ export async function crearDocumentoCompra(
   input: CrearDocumentoCompraInput,
   ctx?: AuditoriaCtx,
 ) {
-  return db.transaction(async (tx) => {
-    await validarTipoDocumentoCompra(tx, input.tipoDocumentoId, input.docTipo);
-    const [tercero] = await tx
-      .select({
-        monedaId: terceros.monedaId,
-        condicionPagoDias: terceros.condicionPagoDias,
-        tipoTercero: terceros.tipoTercero,
-        activo: terceros.activo,
-        bloqueado: terceros.bloqueado,
-      })
-      .from(terceros)
-      .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
-    if (!tercero) throw new Error("El proveedor no existe en esta empresa");
-    if (tercero.tipoTercero !== "Proveedor") {
-      throw new Error("El socio de negocio no es un proveedor");
-    }
-    if (!tercero.activo || tercero.bloqueado) throw new Error("El proveedor está inactivo o bloqueado");
+  return db.transaction((tx) => crearDocumentoCompraTx(tx, empresaId, input, ctx));
+}
 
-    const [empresa] = await tx.select({ monedaFuncionalId: empresas.monedaFuncionalId })
-      .from(empresas).where(eq(empresas.id, empresaId));
-    const monedaPreferida = tercero.monedaId ?? empresa?.monedaFuncionalId;
-    const [monedaEmpresa] = await tx
-      .select({ id: monedas.id })
-      .from(monedas)
-      .where(and(
-        eq(monedas.empresaId, empresaId),
-        ...(monedaPreferida ? [eq(monedas.id, monedaPreferida)] : []),
-      ))
-      .orderBy(asc(monedas.codigo))
-      .limit(1);
-    if (!monedaEmpresa) throw new Error("La empresa no tiene una moneda funcional válida configurada.");
+async function crearDocumentoCompraTx(
+  tx: Tx,
+  empresaId: string,
+  input: CrearDocumentoCompraInput,
+  ctx?: AuditoriaCtx,
+) {
+  await validarTipoDocumentoCompra(tx, input.tipoDocumentoId, input.docTipo);
+  const [tercero] = await tx
+    .select({
+      monedaId: terceros.monedaId,
+      condicionPagoDias: terceros.condicionPagoDias,
+      tipoTercero: terceros.tipoTercero,
+      activo: terceros.activo,
+      bloqueado: terceros.bloqueado,
+    })
+    .from(terceros)
+    .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
+  if (!tercero) throw new Error("El proveedor no existe en esta empresa");
+  if (tercero.tipoTercero !== "Proveedor") {
+    throw new Error("El socio de negocio no es un proveedor");
+  }
+  if (!tercero.activo || tercero.bloqueado) throw new Error("El proveedor está inactivo o bloqueado");
 
-    await sembrarSeriesCompra(tx, empresaId);
-    const numeroInterno = await siguienteCodigo(tx, empresaId, "compra", input.docTipo);
-    const hoy = new Date().toISOString().slice(0, 10);
-    const [doc] = await tx
-      .insert(documentosCompra)
-      .values({
-        empresaId,
-        docTipo: input.docTipo,
-        numeroInterno,
-        tipoDocumentoId: input.docTipo === "pedido" ? null : input.tipoDocumentoId,
-        terceroId: input.terceroId,
-        fechaEmision: hoy,
-        fechaContabilizacion: hoy,
-        fechaVencimiento: sumarDiasISO(hoy, tercero.condicionPagoDias ?? 0),
-        monedaId: monedaEmpresa.id,
-        condicionPagoDias: tercero.condicionPagoDias,
-        documentoBaseId: input.documentoBaseId ?? null,
-        usuarioCreacionId: ctx?.usuarioId ?? null,
-      })
-      .returning();
-    if (!doc) throw new Error("No se pudo crear el documento");
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "documentos_compra",
-        registroId: doc.id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "crear",
-        despues: doc,
-      });
-    }
-    return doc;
-  });
+  const [empresa] = await tx.select({ monedaFuncionalId: empresas.monedaFuncionalId })
+    .from(empresas).where(eq(empresas.id, empresaId));
+  const monedaPreferida = tercero.monedaId ?? empresa?.monedaFuncionalId;
+  const [monedaEmpresa] = await tx
+    .select({ id: monedas.id })
+    .from(monedas)
+    .where(and(
+      eq(monedas.empresaId, empresaId),
+      ...(monedaPreferida ? [eq(monedas.id, monedaPreferida)] : []),
+    ))
+    .orderBy(asc(monedas.codigo))
+    .limit(1);
+  if (!monedaEmpresa) throw new Error("La empresa no tiene una moneda funcional válida configurada.");
+
+  await sembrarSeriesCompra(tx, empresaId);
+  const numeroInterno = await siguienteCodigo(tx, empresaId, "compra", input.docTipo);
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [doc] = await tx
+    .insert(documentosCompra)
+    .values({
+      empresaId,
+      docTipo: input.docTipo,
+      numeroInterno,
+      tipoDocumentoId: input.docTipo === "pedido" ? null : input.tipoDocumentoId,
+      terceroId: input.terceroId,
+      fechaEmision: hoy,
+      fechaContabilizacion: hoy,
+      fechaVencimiento: sumarDiasISO(hoy, tercero.condicionPagoDias ?? 0),
+      monedaId: monedaEmpresa.id,
+      condicionPagoDias: tercero.condicionPagoDias,
+      documentoBaseId: input.documentoBaseId ?? null,
+      usuarioCreacionId: ctx?.usuarioId ?? null,
+    })
+    .returning();
+  if (!doc) throw new Error("No se pudo crear el documento");
+  if (ctx) {
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx,
+      tabla: "documentos_compra",
+      registroId: doc.id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "crear",
+      despues: doc,
+    });
+  }
+  return doc;
 }
 
 async function guardarDocumentoCompraTx(
@@ -826,47 +833,49 @@ export async function guardarDocumentoCompra(
 // ── Pedido: abrir / traer / cerrar ───────────────────────────────────────────
 
 export async function abrirPedidoCompra(id: string, empresaId: string, ctx?: AuditoriaCtx) {
-  return db.transaction(async (tx) => {
-    const [doc] = await tx
-      .select()
-      .from(documentosCompra)
-      .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
-      .for("update");
-    if (!doc) throw new Error("El documento no existe en esta empresa");
-    if (doc.docTipo !== "pedido") throw new Error("Solo se abren pedidos de compra");
-    if (doc.estado !== "borrador") throw new Error("El pedido ya no está en borrador");
+  return db.transaction((tx) => abrirPedidoCompraTx(tx, id, empresaId, ctx));
+}
 
-    const lineas = await tx
-      .select({ id: documentosCompraLineas.id, cantidad: documentosCompraLineas.cantidad })
-      .from(documentosCompraLineas)
-      .where(eq(documentosCompraLineas.documentoCompraId, id));
-    if (lineas.length === 0) throw new Error("El pedido no tiene líneas");
-    for (const l of lineas) {
-      await tx
-        .update(documentosCompraLineas)
-        .set({ cantidadPendiente: l.cantidad })
-        .where(eq(documentosCompraLineas.id, l.id));
-    }
+async function abrirPedidoCompraTx(tx: Tx, id: string, empresaId: string, ctx?: AuditoriaCtx) {
+  const [doc] = await tx
+    .select()
+    .from(documentosCompra)
+    .where(and(eq(documentosCompra.id, id), eq(documentosCompra.empresaId, empresaId)))
+    .for("update");
+  if (!doc) throw new Error("El documento no existe en esta empresa");
+  if (doc.docTipo !== "pedido") throw new Error("Solo se abren pedidos de compra");
+  if (doc.estado !== "borrador") throw new Error("El pedido ya no está en borrador");
 
-    const [act] = await tx
-      .update(documentosCompra)
-      .set({ estado: "abierto", updatedAt: new Date() })
-      .where(eq(documentosCompra.id, id))
-      .returning();
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "documentos_compra",
-        registroId: id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "cambio_estado",
-        antes: { estado: "borrador" },
-        despues: { estado: "abierto" },
-      });
-    }
-    return act!;
-  });
+  const lineas = await tx
+    .select({ id: documentosCompraLineas.id, cantidad: documentosCompraLineas.cantidad })
+    .from(documentosCompraLineas)
+    .where(eq(documentosCompraLineas.documentoCompraId, id));
+  if (lineas.length === 0) throw new Error("El pedido no tiene líneas");
+  for (const l of lineas) {
+    await tx
+      .update(documentosCompraLineas)
+      .set({ cantidadPendiente: l.cantidad })
+      .where(eq(documentosCompraLineas.id, l.id));
+  }
+
+  const [act] = await tx
+    .update(documentosCompra)
+    .set({ estado: "abierto", updatedAt: new Date() })
+    .where(eq(documentosCompra.id, id))
+    .returning();
+  if (ctx) {
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx,
+      tabla: "documentos_compra",
+      registroId: id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "cambio_estado",
+      antes: { estado: "borrador" },
+      despues: { estado: "abierto" },
+    });
+  }
+  return act!;
 }
 
 export async function traerDesdeDocumento(
@@ -2117,6 +2126,64 @@ export async function guardarYContabilizarFacturaCompra(
       }
     }
     return contabilizarDocumentoCompraTx(tx, id, empresaId, ctx);
+  });
+}
+
+/** Lleva un documento guardado a su estado siguiente: abre el pedido o contabiliza lo que genera asiento. */
+async function finalizarDocumentoCompraTx(tx: Tx, id: string, empresaId: string, docTipo: DocumentoCompraTipo, ctx: AuditoriaCtx) {
+  if (docTipo === "pedido") {
+    await abrirPedidoCompraTx(tx, id, empresaId, ctx);
+    return { abierto: true, contabilizado: false };
+  }
+  if (!GENERA_ASIENTO.has(docTipo)) throw new Error("Este tipo de documento no se finaliza.");
+  await contabilizarDocumentoCompraTx(tx, id, empresaId, ctx);
+  return { abierto: false, contabilizado: true };
+}
+
+export type ResultadoFinalizacion = { abierto: boolean; contabilizado: boolean };
+
+/** Guarda el borrador y, si `finalizar`, lo abre (pedido) o contabiliza (resto) en la misma transacción. */
+export async function guardarDocumentoCompraYFinalizar(
+  id: string,
+  empresaId: string,
+  input: GuardarDocumentoCompraInput,
+  ctx: AuditoriaCtx,
+  finalizar: boolean,
+): Promise<ResultadoFinalizacion> {
+  return db.transaction(async (tx) => {
+    const guardado = await guardarDocumentoCompraTx(tx, id, empresaId, input, ctx);
+    if (!finalizar) return { abierto: false, contabilizado: false };
+    return finalizarDocumentoCompraTx(tx, id, empresaId, guardado.docTipo, ctx);
+  });
+}
+
+/**
+ * Crea el documento recién al guardar por primera vez (sin borradores vacíos) y, si `finalizar`,
+ * lo abre o contabiliza. Todo en una transacción: si algo falla no queda nada guardado.
+ */
+export async function crearYGuardarDocumentoCompra(
+  empresaId: string,
+  input: GuardarDocumentoCompraInput,
+  ctx: AuditoriaCtx,
+  finalizar: boolean,
+): Promise<{ docId: string } & ResultadoFinalizacion> {
+  return db.transaction(async (tx) => {
+    const doc = await crearDocumentoCompraTx(
+      tx,
+      empresaId,
+      {
+        docTipo: input.docTipo,
+        tipoDocumentoId: input.tipoDocumentoId,
+        terceroId: input.terceroId,
+        documentoBaseId: input.documentoBaseId,
+      },
+      ctx,
+    );
+    await guardarDocumentoCompraTx(tx, doc.id, empresaId, input, ctx);
+    const estado = finalizar
+      ? await finalizarDocumentoCompraTx(tx, doc.id, empresaId, input.docTipo, ctx)
+      : { abierto: false, contabilizado: false };
+    return { docId: doc.id, ...estado };
   });
 }
 

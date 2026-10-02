@@ -2,14 +2,12 @@
 
 import {
   actualizarFechasDocumentoCompra,
-  abrirPedidoCompra,
   anularDocumentoCompra,
   cerrarPedidoCompra,
   contabilizarDocumentoCompra,
-  crearDocumentoCompra,
   descartarBorradorDocumentoCompra,
-  guardarDocumentoCompra,
-  guardarYContabilizarFacturaCompra,
+  crearYGuardarDocumentoCompra,
+  guardarDocumentoCompraYFinalizar,
   listarAuditoriaDeRegistro,
   obtenerAsientoCompraContabilizado,
   obtenerDocumentoCompraConLineas,
@@ -18,11 +16,9 @@ import {
 } from "@erp/db";
 import {
   anularDocumentoCompraSchema,
-  crearDocumentoCompraSchema,
   guardarDocumentoCompraSchema,
   traerDesdeDocumentoSchema,
   type AnularDocumentoCompraInput,
-  type CrearDocumentoCompraInput,
   type GuardarDocumentoCompraInput,
   type TraerDesdeDocumentoInput,
 } from "@erp/shared";
@@ -31,7 +27,7 @@ import { auditCtx, requireRolEnEmpresa } from "@/lib/auth-helpers";
 import type { AsientoVistaDTO, HistorialFila } from "@/lib/actions/ventas";
 
 export type DocCompraResultado =
-  | { ok: true; docId: string; contabilizado?: boolean }
+  | { ok: true; docId: string; contabilizado?: boolean; abierto?: boolean }
   | { ok: false; error: string };
 export type DocCompraAccionResultado = { ok: true } | { ok: false; error: string };
 
@@ -53,28 +49,14 @@ function rev(empresaId: string, docId?: string) {
   if (docId) revalidatePath(`/panel/${empresaId}/compras/documentos/${docId}`);
 }
 
-export async function crearDocumentoCompraAction(
-  empresaId: string,
-  input: CrearDocumentoCompraInput,
-): Promise<DocCompraResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES);
-  const parsed = crearDocumentoCompraSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
-  }
-  try {
-    const doc = await crearDocumentoCompra(empresaId, parsed.data, auditCtx(session));
-    rev(empresaId);
-    return { ok: true, docId: doc.id };
-  } catch (error) {
-    return { ok: false, error: mensajeError(error) };
-  }
-}
+/** Las facturas de compra no tienen borrador: guardar siempre las contabiliza. */
+const finalizaAlGuardar = (docTipo: string, finalizar?: boolean) => docTipo === "factura" || !!finalizar;
 
 export async function guardarDocumentoCompraAction(
   empresaId: string,
   docId: string,
   input: GuardarDocumentoCompraInput,
+  opciones: { finalizar?: boolean } = {},
 ): Promise<DocCompraResultado> {
   const session = await requireRolEnEmpresa(empresaId, ROLES);
   const parsed = guardarDocumentoCompraSchema.safeParse(input);
@@ -82,17 +64,42 @@ export async function guardarDocumentoCompraAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
   try {
-    const ctx = auditCtx(session);
     const detalle = await obtenerDocumentoCompraConLineas(docId, empresaId);
     if (!detalle) return { ok: false, error: "El documento no existe." };
-    if (detalle.documento.docTipo === "factura") {
-      await guardarYContabilizarFacturaCompra(docId, empresaId, parsed.data, ctx);
-      rev(empresaId, docId);
-      return { ok: true, docId, contabilizado: true };
-    }
-    await guardarDocumentoCompra(docId, empresaId, parsed.data, ctx);
+    const r = await guardarDocumentoCompraYFinalizar(
+      docId,
+      empresaId,
+      parsed.data,
+      auditCtx(session),
+      finalizaAlGuardar(detalle.documento.docTipo, opciones.finalizar),
+    );
     rev(empresaId, docId);
-    return { ok: true, docId };
+    return { ok: true, docId, ...r };
+  } catch (error) {
+    return { ok: false, error: mensajeError(error) };
+  }
+}
+
+/** Alta y guardado en un solo paso: el documento no existe hasta que se guarda con éxito. */
+export async function crearYGuardarDocumentoCompraAction(
+  empresaId: string,
+  input: GuardarDocumentoCompraInput,
+  opciones: { finalizar?: boolean } = {},
+): Promise<DocCompraResultado> {
+  const session = await requireRolEnEmpresa(empresaId, ROLES);
+  const parsed = guardarDocumentoCompraSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  try {
+    const r = await crearYGuardarDocumentoCompra(
+      empresaId,
+      parsed.data,
+      auditCtx(session),
+      finalizaAlGuardar(parsed.data.docTipo, opciones.finalizar),
+    );
+    rev(empresaId, r.docId);
+    return { ok: true, ...r };
   } catch (error) {
     return { ok: false, error: mensajeError(error) };
   }
@@ -112,20 +119,6 @@ export async function actualizarFechasDocumentoCompraAction(
   }
   try {
     await actualizarFechasDocumentoCompra(docId, empresaId, input, auditCtx(session));
-    rev(empresaId, docId);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: mensajeError(error) };
-  }
-}
-
-export async function abrirPedidoCompraAction(
-  empresaId: string,
-  docId: string,
-): Promise<DocCompraAccionResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES);
-  try {
-    await abrirPedidoCompra(docId, empresaId, auditCtx(session));
     rev(empresaId, docId);
     return { ok: true };
   } catch (error) {
@@ -161,20 +154,6 @@ export async function traerDesdeDocumentoAction(
     const doc = await traerDesdeDocumento(empresaId, parsed.data, auditCtx(session));
     rev(empresaId, doc.id);
     return { ok: true, docId: doc.id };
-  } catch (error) {
-    return { ok: false, error: mensajeError(error) };
-  }
-}
-
-export async function contabilizarDocumentoCompraAction(
-  empresaId: string,
-  docId: string,
-): Promise<DocCompraAccionResultado> {
-  const session = await requireRolEnEmpresa(empresaId, ROLES);
-  try {
-    await contabilizarDocumentoCompra(docId, empresaId, auditCtx(session));
-    rev(empresaId, docId);
-    return { ok: true };
   } catch (error) {
     return { ok: false, error: mensajeError(error) };
   }

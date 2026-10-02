@@ -73,9 +73,6 @@ export async function ComprasListaPage({
   const proveedorNombre = new Map(terceros.map((t) => [t.id, t.razonSocial]));
   const monedaCodigo = new Map(monedas.map((m) => [m.id, m.codigo]));
   const puedeEditar = puedeEditarFinanzas(acceso.session.user.esAdminFirma, acceso.rol);
-  const codigosPermitidos = CODIGOS_SII_COMPRA_POR_TIPO[docTipo]
-    ? new Set(CODIGOS_SII_COMPRA_POR_TIPO[docTipo])
-    : null;
 
   return (
     <>
@@ -83,9 +80,9 @@ export async function ComprasListaPage({
         title={meta.titulo}
         description={
           docTipo === "factura"
-            ? "Las facturas se guardan y contabilizan en una sola operación. Si una queda pendiente, puedes completarla, reintentarla o descartarla."
+            ? "Las facturas se guardan y contabilizan en una sola operación. Si una quedó en borrador, puedes completarla, reintentarla o descartarla."
             : meta.contabiliza
-              ? "Al contabilizar se genera el asiento. Solo se edita mientras está pendiente."
+              ? "Al contabilizar se genera el asiento. Solo se edita mientras está en borrador."
               : "La orden de compra formaliza el pedido al proveedor (no es un documento tributario). Controla el saldo pendiente por línea y puede convertirse en recepción o factura."
         }
       />
@@ -126,13 +123,6 @@ export async function ComprasListaPage({
             (!CODIGOS_SII_COMPRA_POR_TIPO[d.docTipo] || !!d.folio) &&
             (d.docTipo !== "nota_credito" && d.docTipo !== "nota_debito" || !!d.documentoBaseId),
         }))}
-        tiposDocumento={tiposDoc
-          .filter((t) =>
-            codigosPermitidos
-              ? codigosPermitidos.has(t.codigoSii)
-              : t.tipoOperacion === "Compra" || t.tipoOperacion === "Ambos",
-          )
-          .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }))}
         proveedoresFiltro={terceros
           .filter((t) => t.tipoTercero === "Proveedor")
           .map((t) => ({ id: t.id, label: `${t.razonSocial} (${t.rut})` }))}

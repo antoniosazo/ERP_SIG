@@ -6,23 +6,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DocumentoVentaClase } from "@erp/shared";
 import {
-  crearDocumentoVentaAction,
   descartarFacturaPendienteAction,
   reintentarFacturaPendienteAction,
 } from "@/lib/actions/ventas";
 import { VENTA_CLASE_META } from "@/lib/ventas";
+import { etiquetaEstado } from "@/lib/documentos-ux";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { SelectorBuscable } from "@/components/panel/selector-buscable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -68,7 +61,6 @@ function badge(estado: string): "default" | "secondary" | "destructive" {
   return "default";
 }
 
-const etiquetaEstado = (estado: string) => (estado === "borrador" ? "Pendiente" : estado);
 
 export function DocumentosVentaLista({
   empresaId,
@@ -78,7 +70,6 @@ export function DocumentosVentaLista({
   pagina,
   paginas,
   total,
-  tiposDocumento,
   clientes,
   clientesFiltro,
   puedeEditar,
@@ -91,7 +82,6 @@ export function DocumentosVentaLista({
   pagina: number;
   paginas: number;
   total: number;
-  tiposDocumento: Opcion[];
   clientes: Opcion[];
   clientesFiltro: Opcion[];
   puedeEditar: boolean;
@@ -100,9 +90,6 @@ export function DocumentosVentaLista({
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
-  const [abierto, setAbierto] = useState(false);
-  const [tipoDocumentoId, setTipoDocumentoId] = useState("");
-  const [terceroId, setTerceroId] = useState("");
   const [q, setQ] = useState(filtros.q);
   const [desde, setDesde] = useState(filtros.desde);
   const [hasta, setHasta] = useState(filtros.hasta);
@@ -128,20 +115,6 @@ export function DocumentosVentaLista({
     router.push(`${pathname}${actual.size ? `?${actual.toString()}` : ""}`);
   }
 
-  function crear() {
-    if (!tipoDocumentoId || !terceroId) {
-      toast.error("Elige explícitamente el tipo de documento y el cliente.");
-      return;
-    }
-    startTransition(async () => {
-      const r = await crearDocumentoVentaAction(empresaId, { clase, tipoDocumentoId, terceroId });
-      if (r.ok) {
-        setAbierto(false);
-        router.push(`/panel/${empresaId}/ventas/documentos/${r.docId}`);
-      } else toast.error(r.error);
-    });
-  }
-
   function reintentar(docId: string) {
     startTransition(async () => {
       const r = await reintentarFacturaPendienteAction(empresaId, docId);
@@ -156,7 +129,7 @@ export function DocumentosVentaLista({
     if (!descartarId) return;
     const r = await descartarFacturaPendienteAction(empresaId, descartarId);
     if (r.ok) {
-      toast.success("Factura pendiente descartada.");
+      toast.success("Borrador descartado.");
       setDescartarId(null);
       router.refresh();
     } else toast.error(r.error);
@@ -212,7 +185,7 @@ export function DocumentosVentaLista({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={TODOS}>Todos los estados</SelectItem>
-              <SelectItem value="borrador">Pendiente</SelectItem>
+              <SelectItem value="borrador">Borrador</SelectItem>
               <SelectItem value="contabilizado">Contabilizado</SelectItem>
               <SelectItem value="anulado">Anulado</SelectItem>
             </SelectContent>
@@ -232,16 +205,13 @@ export function DocumentosVentaLista({
             Limpiar
           </Button>
           <span className="text-sm text-muted-foreground">{total} registro(s)</span>
-          {puedeEditar && (
-            <Button
-              type="button"
-              className="ml-auto"
-              onClick={() => setAbierto(true)}
-              disabled={clientes.length === 0 || tiposDocumento.length === 0}
-            >
-              Nueva {singular}
+          {puedeEditar && (clientes.length > 0 ? (
+            <Button asChild className="ml-auto">
+              <Link href={`/panel/${empresaId}/ventas/documentos/nuevo?clase=${encodeURIComponent(clase)}`}>Nueva {singular}</Link>
             </Button>
-          )}
+          ) : (
+            <Button type="button" className="ml-auto" disabled>Nueva {singular}</Button>
+          ))}
         </div>
       </form>
 
@@ -377,45 +347,10 @@ export function DocumentosVentaLista({
         </div>
       )}
 
-      <Dialog open={abierto} onOpenChange={setAbierto}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nueva {singular}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Elige ambos datos. Se creará un pendiente para completar. Las facturas se contabilizan al guardar; las notas se revisan y contabilizan desde su detalle.
-          </p>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Tipo de documento (SII)</Label>
-              <SelectorBuscable
-                value={tipoDocumentoId}
-                onValueChange={(v) => setTipoDocumentoId(v ?? "")}
-                opciones={tiposDocumento}
-                placeholder="Selecciona el tipo"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Cliente</Label>
-              <SelectorBuscable
-                value={terceroId}
-                onValueChange={(v) => setTerceroId(v ?? "")}
-                opciones={clientes}
-                placeholder="Selecciona el cliente"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAbierto(false)}>Cancelar</Button>
-            <Button onClick={crear} disabled={isPending || !tipoDocumentoId || !terceroId}>
-              {isPending ? "Creando…" : "Crear y abrir"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <ConfirmDialog
         open={descartarId !== null}
         onOpenChange={(open) => !open && setDescartarId(null)}
-        title={`Descartar ${singular} pendiente`}
+        title={`Descartar ${singular} en borrador`}
         description={`La ${singular} quedará anulada en el historial y no podrá contabilizarse.`}
         confirmLabel="Descartar"
         onConfirm={descartar}

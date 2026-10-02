@@ -470,73 +470,80 @@ export async function crearDocumentoVenta(
   input: CrearDocumentoVentaInput,
   ctx?: AuditoriaCtx,
 ) {
-  return db.transaction(async (tx) => {
-    await validarTipoDocumentoVenta(tx, input.tipoDocumentoId, input.clase);
-    // Moneda funcional de la empresa por defecto.
-    const [tercero] = await tx
-      .select({
-        monedaId: terceros.monedaId,
-        condicionPagoDias: terceros.condicionPagoDias,
-        razonSocial: terceros.razonSocial,
-        tipoTercero: terceros.tipoTercero,
-        activo: terceros.activo,
-        bloqueado: terceros.bloqueado,
-      })
-      .from(terceros)
-      .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
-    if (!tercero || tercero.tipoTercero !== "Cliente") throw new Error("El cliente no existe en esta empresa");
-    if (!tercero.activo || tercero.bloqueado) throw new Error("El cliente está inactivo o bloqueado");
+  return db.transaction((tx) => crearDocumentoVentaTx(tx, empresaId, input, ctx));
+}
 
-    const [empresa] = await tx
-      .select({ monedaFuncionalId: empresas.monedaFuncionalId })
-      .from(empresas)
-      .where(eq(empresas.id, empresaId));
-    const monedaPreferida = tercero.monedaId ?? empresa?.monedaFuncionalId;
-    const [monedaEmpresa] = await tx
-      .select({ id: monedas.id })
-      .from(monedas)
-      .where(and(
-        eq(monedas.empresaId, empresaId),
-        ...(monedaPreferida ? [eq(monedas.id, monedaPreferida)] : []),
-      ))
-      .orderBy(asc(monedas.codigo))
-      .limit(1);
-    const monedaId = monedaEmpresa?.id;
-    if (!monedaId) throw new Error("La empresa no tiene una moneda funcional válida configurada.");
+async function crearDocumentoVentaTx(
+  tx: Tx,
+  empresaId: string,
+  input: CrearDocumentoVentaInput,
+  ctx?: AuditoriaCtx,
+) {
+  await validarTipoDocumentoVenta(tx, input.tipoDocumentoId, input.clase);
+  // Moneda funcional de la empresa por defecto.
+  const [tercero] = await tx
+    .select({
+      monedaId: terceros.monedaId,
+      condicionPagoDias: terceros.condicionPagoDias,
+      razonSocial: terceros.razonSocial,
+      tipoTercero: terceros.tipoTercero,
+      activo: terceros.activo,
+      bloqueado: terceros.bloqueado,
+    })
+    .from(terceros)
+    .where(and(eq(terceros.id, input.terceroId), eq(terceros.empresaId, empresaId)));
+  if (!tercero || tercero.tipoTercero !== "Cliente") throw new Error("El cliente no existe en esta empresa");
+  if (!tercero.activo || tercero.bloqueado) throw new Error("El cliente está inactivo o bloqueado");
 
-    const numeroInterno = await siguienteCodigo(tx, empresaId, "venta", "documento");
-    const hoy = new Date().toISOString().slice(0, 10);
-    const [doc] = await tx
-      .insert(documentosVenta)
-      .values({
-        empresaId,
-        numeroInterno,
-        clase: input.clase,
-        tipoDocumentoId: input.tipoDocumentoId,
-        terceroId: input.terceroId,
-        fechaEmision: hoy,
-        fechaContabilizacion: hoy,
-        fechaVencimiento: sumarDiasISO(hoy, tercero.condicionPagoDias ?? 0),
-        monedaId,
-        nombreCliente: tercero.razonSocial,
-        condicionPagoDias: tercero.condicionPagoDias,
-        usuarioCreacionId: ctx?.usuarioId ?? null,
-      })
-      .returning();
-    if (!doc) throw new Error("No se pudo crear el documento");
-    if (ctx) {
-      await registrarAuditoria(tx, {
-        empresaId,
-        ctx,
-        tabla: "documentos_venta",
-        registroId: doc.id,
-        etiqueta: etiquetaDoc(doc),
-        accion: "crear",
-        despues: doc,
-      });
-    }
-    return doc;
-  });
+  const [empresa] = await tx
+    .select({ monedaFuncionalId: empresas.monedaFuncionalId })
+    .from(empresas)
+    .where(eq(empresas.id, empresaId));
+  const monedaPreferida = tercero.monedaId ?? empresa?.monedaFuncionalId;
+  const [monedaEmpresa] = await tx
+    .select({ id: monedas.id })
+    .from(monedas)
+    .where(and(
+      eq(monedas.empresaId, empresaId),
+      ...(monedaPreferida ? [eq(monedas.id, monedaPreferida)] : []),
+    ))
+    .orderBy(asc(monedas.codigo))
+    .limit(1);
+  const monedaId = monedaEmpresa?.id;
+  if (!monedaId) throw new Error("La empresa no tiene una moneda funcional válida configurada.");
+
+  const numeroInterno = await siguienteCodigo(tx, empresaId, "venta", "documento");
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [doc] = await tx
+    .insert(documentosVenta)
+    .values({
+      empresaId,
+      numeroInterno,
+      clase: input.clase,
+      tipoDocumentoId: input.tipoDocumentoId,
+      terceroId: input.terceroId,
+      fechaEmision: hoy,
+      fechaContabilizacion: hoy,
+      fechaVencimiento: sumarDiasISO(hoy, tercero.condicionPagoDias ?? 0),
+      monedaId,
+      nombreCliente: tercero.razonSocial,
+      condicionPagoDias: tercero.condicionPagoDias,
+      usuarioCreacionId: ctx?.usuarioId ?? null,
+    })
+    .returning();
+  if (!doc) throw new Error("No se pudo crear el documento");
+  if (ctx) {
+    await registrarAuditoria(tx, {
+      empresaId,
+      ctx,
+      tabla: "documentos_venta",
+      registroId: doc.id,
+      etiqueta: etiquetaDoc(doc),
+      accion: "crear",
+      despues: doc,
+    });
+  }
+  return doc;
 }
 
 // ── Guardado (borrador) ──────────────────────────────────────────────────────
@@ -1321,6 +1328,48 @@ export async function guardarYContabilizarFacturaVenta(
       }
     }
     return contabilizarDocumentoVentaTx(tx, id, empresaId, ctx);
+  });
+}
+
+export type ResultadoFinalizacionVenta = { contabilizado: boolean };
+
+/** Guarda el borrador y, si `finalizar`, lo contabiliza en la misma transacción. */
+export async function guardarDocumentoVentaYFinalizar(
+  id: string,
+  empresaId: string,
+  input: GuardarDocumentoVentaInput,
+  ctx: AuditoriaCtx,
+  finalizar: boolean,
+): Promise<ResultadoFinalizacionVenta> {
+  return db.transaction(async (tx) => {
+    await guardarDocumentoVentaTx(tx, id, empresaId, input, ctx);
+    if (!finalizar) return { contabilizado: false };
+    await contabilizarDocumentoVentaTx(tx, id, empresaId, ctx);
+    return { contabilizado: true };
+  });
+}
+
+/**
+ * Crea el documento recién al guardar por primera vez (sin borradores vacíos) y, si `finalizar`,
+ * lo contabiliza. Todo en una transacción: si algo falla no queda nada guardado.
+ */
+export async function crearYGuardarDocumentoVenta(
+  empresaId: string,
+  clase: CrearDocumentoVentaInput["clase"],
+  input: GuardarDocumentoVentaInput,
+  ctx: AuditoriaCtx,
+  finalizar: boolean,
+): Promise<{ docId: string } & ResultadoFinalizacionVenta> {
+  return db.transaction(async (tx) => {
+    const doc = await crearDocumentoVentaTx(
+      tx,
+      empresaId,
+      { clase, tipoDocumentoId: input.tipoDocumentoId, terceroId: input.terceroId },
+      ctx,
+    );
+    await guardarDocumentoVentaTx(tx, doc.id, empresaId, input, ctx);
+    if (finalizar) await contabilizarDocumentoVentaTx(tx, doc.id, empresaId, ctx);
+    return { docId: doc.id, contabilizado: finalizar };
   });
 }
 

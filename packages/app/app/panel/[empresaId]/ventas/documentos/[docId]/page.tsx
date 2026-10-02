@@ -24,12 +24,14 @@ import {
   saldosNotaCreditoPorFactura,
 } from "@erp/db";
 import {
-  CODIGOS_SII_VENTA_POR_CLASE,
   configFormularioDocSchema,
   puedeEditarFinanzas,
 } from "@erp/shared";
 import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
 import { facturaDeDocumento } from "@/lib/factura-documento";
+import { opcionesFormularioVenta } from "@/lib/ventas-catalogos";
+import { cadenaDeDocumentos } from "@/lib/mapa-cadena";
+import { CadenaDocumentos } from "@/components/panel/cadena-documentos";
 import { CLAVE_FORM_DOC_VENTA } from "@/lib/documento-venta-campos";
 import { DocumentoVentaForm } from "@/components/panel/documento-venta-form";
 import { DocumentoVentaToolbar } from "@/components/panel/documento-venta-toolbar";
@@ -82,6 +84,7 @@ export default async function DocumentoVentaDetallePage({
     vendedores,
     productos,
     pagosAplicados,
+    cadena,
   ] = await Promise.all([
     listarTerceros(empresaId),
     listarTiposDocumento(),
@@ -98,6 +101,7 @@ export default async function DocumentoVentaDetallePage({
     listarUsuariosDeEmpresa(empresaId),
     listarProductosParaDocumento(empresaId),
     pagosDeDocumentoVenta(empresaId, docId),
+    puedeEditar ? cadenaDeDocumentos(empresaId, "documentos_venta", docId) : Promise.resolve(null),
   ]);
 
   const [empresa, productosDoc] = await Promise.all([
@@ -132,7 +136,11 @@ export default async function DocumentoVentaDetallePage({
     .filter((t) => t.codigoSii === "61")
     .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }));
   const saldoFactura = esFactura ? (saldos[docId] ?? Number(documento.montoTotal)) : 0;
-  const codigosPermitidos = new Set(CODIGOS_SII_VENTA_POR_CLASE[documento.clase]);
+  const opciones = opcionesFormularioVenta(
+    { terceros, tiposDoc, cuentas, categorias, centros, impuestos, monedas, productos, vendedores, facturas },
+    documento.clase,
+    { clienteActualId: documento.terceroId, excluirDocumentoId: docId },
+  );
   const hoy = new Date().toISOString().slice(0, 10);
 
   return (
@@ -152,6 +160,7 @@ export default async function DocumentoVentaDetallePage({
           )}
         </div>
       )}
+      {cadena && <div className="my-3"><CadenaDocumentos etapas={cadena} /></div>}
       <TypographyHeading
         title={`${documento.numeroInterno ?? ""} ${documento.clase}`.trim()}
         description={
@@ -179,46 +188,7 @@ export default async function DocumentoVentaDetallePage({
         hoy={hoy}
         config={config}
         contactos={contactos}
-        vendedores={vendedores.map((u) => ({ id: u.id, label: u.nombre }))}
-        productos={productos.map((p) => ({
-          id: p.id,
-          label: `${p.codigo} — ${p.nombre}`,
-          cuentaIngresoId: p.cuentaIngresoId,
-          impuestoId: p.impuestoId,
-          centroCostoId: p.centroCostoId,
-          categoriaContableId: p.categoriaContableId,
-          precioUnitario: p.precioUnitario,
-          glosaSugerida: p.glosaSugerida,
-        }))}
-        clientes={terceros
-          .filter((t) =>
-            t.tipoTercero === "Cliente" &&
-            ((t.activo && !t.bloqueado) || t.id === documento.terceroId),
-          )
-          .map((t) => ({
-            id: t.id,
-            label: t.razonSocial,
-            condicionPagoDias: t.condicionPagoDias,
-          }))}
-        tiposDocumento={tiposDoc
-          .filter((t) => codigosPermitidos.has(t.codigoSii))
-          .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }))}
-        cuentas={cuentas
-          .filter((c) => c.nivelImputable && c.activa)
-          .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}` }))}
-        categorias={categorias
-          .filter((c) => c.aplicaA === "Venta" || c.aplicaA === "Ambos")
-          .map((c) => ({ id: c.id, label: c.nombre }))}
-        centrosCosto={centros
-          .filter((c) => c.estado === "Activo")
-          .map((c) => ({ id: c.id, label: `${c.codigo} — ${c.nombre}` }))}
-        impuestos={impuestos
-          .filter((i) => i.activo && (i.aplicaA === "Venta" || i.aplicaA === "Ambos"))
-          .map((i) => ({ id: i.id, label: `${i.codigo} — ${i.nombre}`, tasa: Number(i.tasa) }))}
-        monedas={monedas.map((m) => ({ id: m.id, label: `${m.codigo} — ${m.nombre}` }))}
-        docsReferencia={facturas
-          .filter((f) => f.clase === "Factura" && f.id !== docId)
-          .map((f) => ({ id: f.id, label: `${f.numeroInterno ?? ""} folio ${f.folio ?? "—"}` }))}
+        {...opciones}
         saldosReferencia={saldos}
         valoresIniciales={{
           modalidad: documento.modalidad,

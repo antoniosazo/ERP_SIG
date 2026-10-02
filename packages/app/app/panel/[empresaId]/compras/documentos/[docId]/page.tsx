@@ -27,6 +27,9 @@ import {
 } from "@erp/shared";
 import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
 import { facturaDeDocumento } from "@/lib/factura-documento";
+import { opcionesFormularioCompra } from "@/lib/compras-catalogos";
+import { cadenaDeDocumentos } from "@/lib/mapa-cadena";
+import { CadenaDocumentos } from "@/components/panel/cadena-documentos";
 import { CLAVE_FORM_DOC_COMPRA } from "@/lib/documento-compra-campos";
 import { DocumentoCompraForm } from "@/components/panel/documento-compra-form";
 import { DocumentoCompraToolbar } from "@/components/panel/documento-compra-toolbar";
@@ -67,6 +70,7 @@ export default async function DocumentoCompraDetallePage({
     facturasReferencia,
     pagosAplicados,
     notasRelacionadas,
+    cadena,
   ] = await Promise.all([
       listarTerceros(empresaId),
       listarTiposDocumento(),
@@ -80,6 +84,7 @@ export default async function DocumentoCompraDetallePage({
       listarDocumentosCompra(empresaId, { docTipo: "factura", estado: "contabilizado" }),
       pagosDeDocumentoCompra(empresaId, docId),
       documento.docTipo === "factura" ? notasDeFacturaCompra(empresaId, docId) : Promise.resolve([]),
+      puedeEditar ? cadenaDeDocumentos(empresaId, "documentos_compra", docId) : Promise.resolve(null),
     ]);
 
   const [empresa, productosDoc] = await Promise.all([
@@ -108,9 +113,11 @@ export default async function DocumentoCompraDetallePage({
 
   const cfgParsed = configFormularioDocSchema.safeParse(configRaw ?? {});
   const config = cfgParsed.success ? cfgParsed.data : configFormularioDocSchema.parse({});
-  const codigosPermitidos = CODIGOS_SII_COMPRA_POR_TIPO[documento.docTipo]
-    ? new Set(CODIGOS_SII_COMPRA_POR_TIPO[documento.docTipo])
-    : null;
+  const opciones = opcionesFormularioCompra(
+    { terceros, tiposDoc, cuentas, categorias, centros, impuestos, monedas, productos, facturasReferencia },
+    documento.docTipo,
+    { proveedorActualId: documento.terceroId, excluirDocumentoId: docId },
+  );
   const hoy = new Date().toISOString().slice(0, 10);
 
   const tienePendiente =
@@ -132,6 +139,7 @@ export default async function DocumentoCompraDetallePage({
           {documento.documentoBaseId && <EnlaceDetalle href={`/panel/${empresaId}/compras/documentos/${documento.documentoBaseId}`}>Ver documento de origen</EnlaceDetalle>}
         </div>
       )}
+      {cadena && <div className="my-3"><CadenaDocumentos etapas={cadena} /></div>}
       <TypographyHeading
         title={`${documento.numeroInterno ?? ""} ${documento.docTipo === "pedido" ? "orden de compra" : documento.docTipo}`.trim()}
         description={
@@ -181,53 +189,7 @@ export default async function DocumentoCompraDetallePage({
           documento.docTipo !== "nota_credito" &&
           documento.docTipo !== "nota_debito"
         }
-        proveedores={terceros
-          .filter((t) =>
-            t.tipoTercero === "Proveedor" &&
-            ((t.activo && !t.bloqueado) || t.id === documento.terceroId),
-          )
-          .map((t) => ({
-            id: t.id,
-            label: t.razonSocial,
-            condicionPagoDias: t.condicionPagoDias,
-          }))}
-        tiposDocumento={tiposDoc
-          .filter((t) =>
-            codigosPermitidos
-              ? codigosPermitidos.has(t.codigoSii)
-              : t.tipoOperacion === "Compra" || t.tipoOperacion === "Ambos",
-          )
-          .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }))}
-        cuentas={cuentas
-          .filter((c) => c.nivelImputable && c.activa)
-          .map((c) => ({ id: c.id, label: `${c.codigoCuenta} — ${c.nombreCuenta}` }))}
-        categorias={categorias
-          .filter((c) => c.aplicaA === "Compra" || c.aplicaA === "Ambos")
-          .map((c) => ({
-            id: c.id,
-            label: c.nombre,
-            ivaRecuperableDefault: c.ivaRecuperableDefault,
-          }))}
-        centrosCosto={centros
-          .filter((c) => c.estado === "Activo")
-          .map((c) => ({ id: c.id, label: `${c.codigo} — ${c.nombre}` }))}
-        impuestos={impuestos
-          .filter((i) => i.activo && (i.aplicaA === "Compra" || i.aplicaA === "Ambos"))
-          .map((i) => ({ id: i.id, label: `${i.codigo} — ${i.nombre}`, tasa: Number(i.tasa) }))}
-        monedas={monedas.map((m) => ({ id: m.id, label: `${m.codigo} — ${m.nombre}` }))}
-        productos={productos.map((p) => ({
-          id: p.id,
-          label: `${p.codigo} — ${p.nombre}`,
-          cuentaImputacionId: p.cuentaImputacionId,
-          impuestoId: p.impuestoId,
-          centroCostoId: p.centroCostoId,
-          categoriaContableId: p.categoriaContableId,
-          precioUnitario: p.precioUnitario,
-          glosaSugerida: p.glosaSugerida,
-        }))}
-        docsReferencia={facturasReferencia
-          .filter((f) => f.terceroId === documento.terceroId && f.monedaId === documento.monedaId && f.id !== docId)
-          .map((f) => ({ id: f.id, label: `${f.numeroInterno ?? ""} · folio ${f.folio ?? "—"}` }))}
+        {...opciones}
         valoresIniciales={{
           modalidad: documento.modalidad,
           docTipo: documento.docTipo,

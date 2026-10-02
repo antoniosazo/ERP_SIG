@@ -13,13 +13,13 @@ import {
   type DocumentoCompraTipo,
 } from "@erp/shared";
 import {
-  abrirPedidoCompraAction,
   anularDocumentoCompraAction,
-  contabilizarDocumentoCompraAction,
+  crearYGuardarDocumentoCompraAction,
   descartarDocumentoCompraPendienteAction,
   actualizarFechasDocumentoCompraAction,
   guardarDocumentoCompraAction,
 } from "@/lib/actions/compras";
+import { etiquetaEstado, pasoSiguienteCompra, resumenErrores } from "@/lib/documentos-ux";
 import { useCambiosSinGuardar } from "@/components/panel/cambios-sin-guardar";
 import { aplicarConfig, CAMPOS_CABECERA, CAMPOS_LINEA } from "@/lib/documento-compra-campos";
 import { COMPRA_TIPO_META } from "@/lib/compras";
@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/table";
 
 export type Opcion = { id: string; label: string };
+export type DocReferenciaOpcion = Opcion & { terceroId: string; monedaId: string };
 export type ProveedorOpcion = Opcion & { condicionPagoDias?: number };
 export type ProductoCompraOpcion = Opcion & {
   cuentaImputacionId: string | null;
@@ -65,6 +66,8 @@ export type CategoriaOpcion = Opcion & { ivaRecuperableDefault: string | null };
 type FormValues = z.input<typeof guardarDocumentoCompraSchema>;
 const NINGUNA = "__none__";
 const ES_TRIBUTARIO = new Set<DocumentoCompraTipo>(["factura", "nota_credito", "nota_debito"]);
+/** Campos de cabecera que casi nunca se tocan: van plegados bajo "Más opciones". */
+const CAMPOS_SECUNDARIOS = new Set(["monedaId", "tipoCambio", "descuentoGlobalPct", "condicionPagoDias", "numAtCard", "glosa"]);
 
 const fmt = (n: number) => n.toLocaleString("es-CL", { maximumFractionDigits: 4 });
 
@@ -100,7 +103,8 @@ export function DocumentoCompraForm({
   lineasFijas,
 }: {
   empresaId: string;
-  docId: string;
+  /** null = documento nuevo: se crea recién al guardar. */
+  docId: string | null;
   docTipo: DocumentoCompraTipo;
   estado: string;
   numeroInterno: string | null;
@@ -118,7 +122,7 @@ export function DocumentoCompraForm({
   impuestos: (Opcion & { tasa: number })[];
   monedas: Opcion[];
   productos: ProductoCompraOpcion[];
-  docsReferencia: Opcion[];
+  docsReferencia: DocReferenciaOpcion[];
   /** Saldo pendiente por línea (cuando este documento viene de un pedido). */
   lineasPendientes?: Record<number, number>;
   lineasFijas?: boolean;
@@ -128,6 +132,8 @@ export function DocumentoCompraForm({
   const [anulacionAbierta, setAnulacionAbierta] = useState(false);
   const [motivoAnulacion, setMotivoAnulacion] = useState("");
   const [fechaReversa, setFechaReversa] = useState(hoy);
+  const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  const esNuevo = docId === null;
   const readOnly = estado !== "borrador" || !puedeEditar;
   const cabeceraOrigenFija = readOnly || !!lineasFijas;
   const lineaReadOnly = readOnly || !!lineasFijas;
@@ -135,7 +141,6 @@ export function DocumentoCompraForm({
   // se editan el vencimiento y la fecha de contabilización.
   const esFactura = docTipo === "factura";
   const fechasEditables = puedeEditar && esFactura && estado === "contabilizado";
-  const contabiliza = COMPRA_TIPO_META[docTipo].contabiliza;
   const esPedido = docTipo === "pedido";
 
   const tasaImpuesto = useMemo(() => new Map(impuestos.map((i) => [i.id, i.tasa])), [impuestos]);
@@ -185,6 +190,12 @@ export function DocumentoCompraForm({
     ];
   }, [colsLinea, esServicio]);
   const descGlobal = watch("descuentoGlobalPct");
+  const terceroActual = watch("terceroId");
+  const monedaActual = watch("monedaId");
+  const facturasQueSePuedenCorregir = useMemo(
+    () => docsReferencia.filter((f) => f.terceroId === terceroActual && f.monedaId === monedaActual),
+    [docsReferencia, terceroActual, monedaActual],
+  );
 
   const gFactor = 1 - (Number(descGlobal) || 0) / 100;
   const netoDe = (l: FormValues["lineas"][number] | undefined) =>
@@ -226,18 +237,35 @@ export function DocumentoCompraForm({
     setValue("fechaVencimiento", sumarDiasISO(f, d), { shouldValidate: true });
   }
 
-  const onSubmit = handleSubmit((data) => {
-    startTransition(async () => {
-      const r = await guardarDocumentoCompraAction(empresaId, docId, { ...data, docTipo });
-      if (r.ok) {
-        toast.success(r.contabilizado ? "Factura guardada y contabilizada" : "Documento guardado");
-        reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
-        router.refresh();
-      } else toast.error(r.error);
-    });
-  });
+  const enviar = (finalizar: boolean) =>
+    handleSubmit(
+      (data) => {
+        setErrorServidor(null);
+        startTransition(async () => {
+          const payload = { ...data, docTipo };
+          const r = docId
+            ? await guardarDocumentoCompraAction(empresaId, docId, payload, { finalizar })
+            : await crearYGuardarDocumentoCompraAction(empresaId, payload, { finalizar });
+          if (r.ok) {
+            toast.success(
+              r.contabilizado
+                ? esFactura ? "Factura guardada y contabilizada" : "Documento contabilizado"
+                : r.abierto ? "Orden de compra abierta" : "Borrador guardado",
+            );
+            reset(getValues()); // lo guardado pasa a ser la base: ya no hay cambios pendientes
+            if (docId) router.refresh();
+            else router.replace(`/panel/${empresaId}/compras/documentos/${r.docId}`);
+          } else {
+            setErrorServidor(r.error);
+            toast.error(r.error);
+          }
+        });
+      },
+      () => setErrorServidor(null),
+    );
 
   function guardarFechas() {
+    if (!docId) return;
     startTransition(async () => {
       const r = await actualizarFechasDocumentoCompraAction(empresaId, docId, {
         fechaVencimiento: watch("fechaVencimiento") as string,
@@ -250,27 +278,8 @@ export function DocumentoCompraForm({
     });
   }
 
-  function contabilizar() {
-    startTransition(async () => {
-      const r = await contabilizarDocumentoCompraAction(empresaId, docId);
-      if (r.ok) {
-        toast.success("Documento contabilizado");
-        router.refresh();
-      } else toast.error(r.error);
-    });
-  }
-
-  function abrirPedido() {
-    startTransition(async () => {
-      const r = await abrirPedidoCompraAction(empresaId, docId);
-      if (r.ok) {
-        toast.success("Pedido abierto");
-        router.refresh();
-      } else toast.error(r.error);
-    });
-  }
-
   function anular() {
+    if (!docId) return;
     if (!motivoAnulacion.trim()) return toast.error("Indica el motivo de la anulación.");
     startTransition(async () => {
       const r = await anularDocumentoCompraAction(empresaId, docId, {
@@ -286,10 +295,11 @@ export function DocumentoCompraForm({
   }
 
   function descartar() {
+    if (!docId) return;
     startTransition(async () => {
       const r = await descartarDocumentoCompraPendienteAction(empresaId, docId);
       if (r.ok) {
-        toast.success("Documento pendiente descartado");
+        toast.success("Borrador descartado");
         router.refresh();
       } else toast.error(r.error);
     });
@@ -369,7 +379,7 @@ export function DocumentoCompraForm({
         return campo("Tipo de documento", selOpt("tipoDocumentoId", tiposDocumento, "Selecciona el tipo"));
       case "fechaEmision":
         return campo(
-          "Fecha del documento",
+          esPedido ? "Fecha de la orden" : "Fecha del documento",
           <Input
             type="date"
             {...register("fechaEmision", { onChange: () => recomputarVencimiento() })}
@@ -380,12 +390,13 @@ export function DocumentoCompraForm({
         );
       case "fechaVencimiento":
         return campo(
-          "Fecha de vencimiento",
+          esPedido ? "Entrega esperada" : "Fecha de vencimiento",
           <Input type="date" {...register("fechaVencimiento")} disabled={readOnly && !fechasEditables} />,
           undefined,
           errors.fechaVencimiento?.message,
         );
       case "fechaContabilizacion":
+        if (esPedido) return null;
         return campo(
           "Fecha de contabilización",
           <Input type="date" {...register("fechaContabilizacion")} disabled={readOnly && !fechasEditables} />,
@@ -419,7 +430,7 @@ export function DocumentoCompraForm({
         if (docTipo !== "nota_credito" && docTipo !== "nota_debito") return null;
         return campo(
           "Factura que corrige *",
-          selOpt("documentoBaseId", docsReferencia, "Selecciona la factura"),
+          selOpt("documentoBaseId", facturasQueSePuedenCorregir, "Selecciona la factura"),
           undefined,
           errors.documentoBaseId?.message,
         );
@@ -666,18 +677,43 @@ export function DocumentoCompraForm({
     }
   }
 
+  const resumen = resumenErrores(errors, CAMPOS_CABECERA, CAMPOS_LINEA);
+  const principales = camposCabecera.filter((c) => !CAMPOS_SECUNDARIOS.has(c.id));
+  const secundarios = camposCabecera.filter((c) => CAMPOS_SECUNDARIOS.has(c.id));
+  const masAbierto =
+    readOnly ||
+    !!(valoresIniciales.glosa || valoresIniciales.numAtCard || Number(valoresIniciales.descuentoGlobalPct) > 0 || Number(valoresIniciales.tipoCambio) !== 1) ||
+    secundarios.some((c) => (errors as Record<string, unknown>)[c.id]);
+  const paso = pasoSiguienteCompra(docTipo, estado, esNuevo);
+  const permiteBorrador = !esFactura;
+
   return (
     <>
-    <form onSubmit={onSubmit} className="space-y-4">
-      {Object.keys(errors).length > 0 && (
-        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          Revisa los campos marcados antes de guardar el documento.
+    <form
+      onSubmit={enviar(true)}
+      onKeyDown={(e) => {
+        // Enter dentro de un campo no debe contabilizar el documento por accidente.
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
+      }}
+      className="space-y-4"
+    >
+      {(resumen.length > 0 || errorServidor) && (
+        <div role="alert" className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          {errorServidor && <p className="font-medium">No se pudo guardar: {errorServidor}</p>}
+          {resumen.length > 0 && (
+            <>
+              <p className="font-medium">Revisa estos datos antes de guardar:</p>
+              <ul className="list-disc space-y-0.5 pl-5">
+                {resumen.map((r) => <li key={r}>{r}</li>)}
+              </ul>
+            </>
+          )}
         </div>
       )}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>
-            {numeroInterno} · {COMPRA_TIPO_META[docTipo].singular}
+            {numeroInterno ?? "Nuevo"} · {COMPRA_TIPO_META[docTipo].singular}
           </CardTitle>
           <Badge
             variant={
@@ -688,11 +724,12 @@ export function DocumentoCompraForm({
                   : "default"
             }
           >
-            {estado}
+            {esNuevo ? "Nuevo" : etiquetaEstado(estado)}
           </Badge>
         </CardHeader>
+        {paso && <p className="px-6 text-sm text-muted-foreground">{paso}</p>}
         <CardContent className="doc-hdr grid gap-4 @xl:grid-cols-3">
-          {camposCabecera.map((c) => {
+          {principales.map((c) => {
             const node = renderCabecera(c.id);
             return node == null ? null : (
               <div key={c.id} className="contents">
@@ -700,6 +737,23 @@ export function DocumentoCompraForm({
               </div>
             );
           })}
+          {secundarios.length > 0 && (
+            <details className="col-span-full" open={masAbierto}>
+              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                Más opciones (moneda, descuento, condición de pago, glosa)
+              </summary>
+              <div className="doc-hdr mt-3 grid gap-4 @xl:grid-cols-3">
+                {secundarios.map((c) => {
+                  const node = renderCabecera(c.id);
+                  return node == null ? null : (
+                    <div key={c.id} className="contents">
+                      {node}
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
         </CardContent>
       </Card>
 
@@ -797,22 +851,15 @@ export function DocumentoCompraForm({
         {!readOnly && (
           <>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : esFactura ? "Guardar y contabilizar" : "Guardar"}
+              {isPending
+                ? "Guardando..."
+                : esPedido ? "Guardar y abrir" : "Guardar y contabilizar"}
             </Button>
-            {contabiliza && !esFactura ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={isPending}
-                onClick={contabilizar}
-              >
-                Contabilizar
+            {permiteBorrador && (
+              <Button type="button" variant="secondary" disabled={isPending} onClick={enviar(false)}>
+                Guardar borrador
               </Button>
-            ) : esPedido ? (
-              <Button type="button" variant="secondary" disabled={isPending} onClick={abrirPedido}>
-                Abrir pedido
-              </Button>
-            ) : null}
+            )}
           </>
         )}
         {fechasEditables && (
@@ -820,10 +867,10 @@ export function DocumentoCompraForm({
             {isPending ? "Guardando..." : "Guardar fechas"}
           </Button>
         )}
-        {estado === "borrador" && puedeEditar && (
-          <Button type="button" variant="outline" disabled={isPending} onClick={descartar}>Descartar pendiente</Button>
+        {!esNuevo && estado === "borrador" && puedeEditar && (
+          <Button type="button" variant="outline" disabled={isPending} onClick={descartar}>Descartar borrador</Button>
         )}
-        {estado !== "borrador" && estado !== "anulado" && puedeAnular && (
+        {!esNuevo && estado !== "borrador" && estado !== "anulado" && puedeAnular && (
           <Button type="button" variant="destructive" disabled={isPending} onClick={() => setAnulacionAbierta(true)}>Anular</Button>
         )}
         {estado === "contabilizado" && asientoCorrelativo != null && (

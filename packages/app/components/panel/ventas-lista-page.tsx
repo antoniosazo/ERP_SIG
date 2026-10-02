@@ -7,7 +7,6 @@ import {
   saldosDocumentos,
 } from "@erp/db";
 import {
-  CODIGOS_SII_VENTA_POR_CLASE,
   puedeEditarFinanzas,
   type DocumentoVentaClase,
 } from "@erp/shared";
@@ -76,7 +75,6 @@ export async function VentasListaPage({
   const clienteNombre = new Map(terceros.map((t) => [t.id, t.razonSocial]));
   const monedaCodigo = new Map(monedas.map((m) => [m.id, m.codigo]));
   const puedeEditar = puedeEditarFinanzas(acceso.session.user.esAdminFirma, acceso.rol);
-  const codigosPermitidos = new Set(CODIGOS_SII_VENTA_POR_CLASE[clase]);
 
   return (
     <>
@@ -84,8 +82,8 @@ export async function VentasListaPage({
         title={meta.titulo}
         description={
           clase === "Factura"
-            ? "Las facturas se guardan y contabilizan en una sola operación. Si una queda pendiente, puedes completarla, reintentarla o descartarla."
-            : "Al contabilizar se genera el asiento. Solo se edita mientras está pendiente."
+            ? "Las facturas se guardan y contabilizan en una sola operación. Si una quedó en borrador, puedes completarla, reintentarla o descartarla."
+            : "Al contabilizar se genera el asiento. Solo se edita mientras está en borrador."
         }
       />
       <DocumentosVentaLista
@@ -120,9 +118,6 @@ export async function VentasListaPage({
           estado: d.estado,
           puedeReintentar: d.estado === "borrador" && Number(d.montoTotal) > 0,
         }))}
-        tiposDocumento={tiposDoc
-          .filter((t) => codigosPermitidos.has(t.codigoSii))
-          .map((t) => ({ id: t.id, label: `${t.codigoSii} — ${t.nombre}` }))}
         clientesFiltro={terceros
           .filter((t) => t.tipoTercero === "Cliente")
           .map((t) => ({ id: t.id, label: `${t.razonSocial} (${t.rut})` }))}

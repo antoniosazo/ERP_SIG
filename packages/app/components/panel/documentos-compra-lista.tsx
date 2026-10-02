@@ -6,17 +6,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DocumentoCompraTipo } from "@erp/shared";
 import {
-  crearDocumentoCompraAction,
   descartarDocumentoCompraPendienteAction,
   reintentarFacturaCompraPendienteAction,
 } from "@/lib/actions/compras";
 import { COMPRA_TIPO_META } from "@/lib/compras";
+import { etiquetaEstado } from "@/lib/documentos-ux";
 import { TerceroEnlace } from "@/components/panel/tercero-enlace";
 import { SelectorBuscable } from "@/components/panel/selector-buscable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -48,7 +47,6 @@ function badge(estado: string): "default" | "secondary" | "destructive" {
   if (estado === "anulado") return "destructive";
   return "default";
 }
-const etiquetaEstado = (estado: string) => (estado === "borrador" ? "Pendiente" : estado);
 
 export function DocumentosCompraLista({
   empresaId,
@@ -58,7 +56,6 @@ export function DocumentosCompraLista({
   pagina,
   paginas,
   total,
-  tiposDocumento,
   proveedores,
   proveedoresFiltro,
   puedeEditar,
@@ -71,7 +68,6 @@ export function DocumentosCompraLista({
   pagina: number;
   paginas: number;
   total: number;
-  tiposDocumento: Opcion[];
   proveedores: Opcion[];
   proveedoresFiltro: Opcion[];
   puedeEditar: boolean;
@@ -80,9 +76,6 @@ export function DocumentosCompraLista({
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
-  const [abierto, setAbierto] = useState(false);
-  const [tipoDocumentoId, setTipoDocumentoId] = useState("");
-  const [terceroId, setTerceroId] = useState("");
   const [q, setQ] = useState(filtros.q);
   const [desde, setDesde] = useState(filtros.desde);
   const [hasta, setHasta] = useState(filtros.hasta);
@@ -105,19 +98,6 @@ export function DocumentosCompraLista({
     router.push(`${pathname}${params.size ? `?${params.toString()}` : ""}`);
   }
 
-  function crear() {
-    if (!terceroId || (!esOC && !tipoDocumentoId)) {
-      return toast.error(esOC ? "Elige el proveedor." : "Elige explícitamente el tipo de documento y el proveedor.");
-    }
-    startTransition(async () => {
-      const r = await crearDocumentoCompraAction(empresaId, { docTipo, tipoDocumentoId: esOC ? null : tipoDocumentoId, terceroId });
-      if (r.ok) {
-        setAbierto(false);
-        router.push(detalleHref(r.docId));
-      } else toast.error(r.error);
-    });
-  }
-
   function reintentar(docId: string) {
     startTransition(async () => {
       const r = await reintentarFacturaCompraPendienteAction(empresaId, docId);
@@ -132,7 +112,7 @@ export function DocumentosCompraLista({
     if (!descartarId) return;
     const r = await descartarDocumentoCompraPendienteAction(empresaId, descartarId);
     if (r.ok) {
-      toast.success("Documento pendiente descartado.");
+      toast.success("Borrador descartado.");
       setDescartarId(null);
       router.refresh();
     } else toast.error(r.error);
@@ -157,7 +137,7 @@ export function DocumentosCompraLista({
             <SelectTrigger className="w-44" aria-label="Filtrar por estado"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={TODOS}>Todos los estados</SelectItem>
-              <SelectItem value="borrador">Pendiente</SelectItem>
+              <SelectItem value="borrador">Borrador</SelectItem>
               {docTipo === "pedido" && <SelectItem value="abierto">Abierto</SelectItem>}
               {docTipo !== "pedido" && <SelectItem value="contabilizado">Contabilizado</SelectItem>}
               {(docTipo === "pedido" || docTipo === "entrada_mercaderia") && <SelectItem value="cerrado">Cerrado</SelectItem>}
@@ -167,7 +147,9 @@ export function DocumentosCompraLista({
           <Button type="submit" className="bg-amber-400 text-amber-950 hover:bg-amber-500">Aplicar filtros</Button>
           <Button type="button" variant="outline" onClick={() => { setQ(""); setDesde(""); setHasta(""); setProveedorFiltro(""); router.push(pathname); }}>Limpiar</Button>
           <span className="text-sm text-muted-foreground">{total} registro(s)</span>
-          {puedeEditar && <Button type="button" className="ml-auto" onClick={() => setAbierto(true)} disabled={!proveedores.length || (!esOC && !tiposDocumento.length)}>Nuevo {meta.singular}</Button>}
+          {puedeEditar && (proveedores.length
+            ? <Button asChild className="ml-auto"><Link href={`/panel/${empresaId}/compras/documentos/nuevo?docTipo=${docTipo}`}>Nuevo {meta.singular}</Link></Button>
+            : <Button type="button" className="ml-auto" disabled>Nuevo {meta.singular}</Button>)}
         </div>
       </form>
 
@@ -212,12 +194,7 @@ export function DocumentosCompraLista({
       )}
       {paginas > 1 && <div className="flex items-center justify-end gap-2"><Button type="button" variant="outline" disabled={pagina <= 1} onClick={() => navegar({ pagina: String(pagina - 1) })}>Anterior</Button><span className="text-sm text-muted-foreground">Página {pagina} de {paginas}</span><Button type="button" variant="outline" disabled={pagina >= paginas} onClick={() => navegar({ pagina: String(pagina + 1) })}>Siguiente</Button></div>}
 
-      <Dialog open={abierto} onOpenChange={setAbierto}><DialogContent><DialogHeader><DialogTitle>Nuevo {meta.singular}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">{esOC ? "Elige el proveedor. La orden de compra no es un documento tributario: el tipo SII se define al facturar." : "Elige el tipo SII y el proveedor. La factura se contabilizará al guardar; los demás documentos se revisan desde su detalle."}</p>
-        <div className="space-y-4">{!esOC && <div className="space-y-2"><Label>Tipo de documento (SII)</Label><SelectorBuscable value={tipoDocumentoId} onValueChange={(v) => setTipoDocumentoId(v ?? "")} opciones={tiposDocumento} placeholder="Selecciona el tipo" /></div>}<div className="space-y-2"><Label>Proveedor</Label><SelectorBuscable value={terceroId} onValueChange={(v) => setTerceroId(v ?? "")} opciones={proveedores} placeholder="Selecciona el proveedor" /></div></div>
-        <DialogFooter><Button variant="outline" onClick={() => setAbierto(false)}>Cancelar</Button><Button onClick={crear} disabled={isPending || (!esOC && !tipoDocumentoId) || !terceroId}>{isPending ? "Creando…" : "Crear y abrir"}</Button></DialogFooter>
-      </DialogContent></Dialog>
-      <ConfirmDialog open={descartarId !== null} onOpenChange={(open) => !open && setDescartarId(null)} title={`Descartar ${meta.singular} pendiente`} description={`El documento quedará anulado en el historial y no podrá contabilizarse.`} confirmLabel="Descartar" onConfirm={descartar} />
+      <ConfirmDialog open={descartarId !== null} onOpenChange={(open) => !open && setDescartarId(null)} title={`Descartar ${meta.singular} en borrador`} description={`El documento quedará anulado en el historial y no podrá contabilizarse.`} confirmLabel="Descartar" onConfirm={descartar} />
     </div>
   );
 }
