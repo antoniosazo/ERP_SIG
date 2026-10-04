@@ -1,1 +1,0 @@
-ALTER TABLE "documentos_compra" ALTER COLUMN "tipo_documento_id" DROP NOT NULL;

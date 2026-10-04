@@ -3,7 +3,6 @@ import test from "node:test";
 import type { Tx } from "../client";
 
 test("la auditoría de creación identifica el asiento y resume sus líneas", async () => {
-  process.env.DATABASE_URL ??= "postgresql://test:test@localhost/test";
   const { registrarAuditoriaCreacionAsiento } = await import("./asientos");
   const respuestas = [
     [{

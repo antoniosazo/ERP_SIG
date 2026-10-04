@@ -32,9 +32,8 @@ const monedaReporteDistinta = {
 };
 
 /**
- * Lo que completa el usuario en el asistente de alta de empresa (módulo 4.9-A).
- * `firmaContableId` NO forma parte de este schema — la asigna el servidor a partir
- * de la sesión (`requireAdminFirma`), nunca se confía en un valor enviado por el cliente.
+ * Lo que completa el usuario en el asistente de alta de empresa (módulo 4.9-A). La firma
+ * no viaja: la empresa se crea en la base de la firma de la sesión.
  */
 export const empresaFormSchema = z
   .object(camposEmpresaBase)
@@ -48,7 +47,7 @@ export type EmpresaFormInput = z.infer<typeof empresaFormSchema>;
  * contable — ver packages/db/src/queries/empresas.ts.
  */
 export const crearEmpresaSchema = z
-  .object({ firmaContableId: uuid, ...camposEmpresaBase })
+  .object(camposEmpresaBase)
   .refine(monedaReporteDistinta.refine, monedaReporteDistinta.opts);
 
 export type CrearEmpresaInput = z.infer<typeof crearEmpresaSchema>;

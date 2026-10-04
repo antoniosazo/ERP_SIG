@@ -1,5 +1,7 @@
 export * from "./schema";
 export * from "./client";
+export * from "./plataforma/bases";
+export * as plataforma from "./plataforma/schema";
 export * from "./queries/firmas";
 export * from "./queries/empresas";
 export * from "./queries/asientos";
@@ -35,6 +37,7 @@ export * from "./queries/terceros";
 export * from "./queries/periodos";
 export * from "./queries/catalogos";
 export * from "./queries/usuarios";
+export * from "./queries/usuarios-gestion";
 export * from "./queries/preferencias-formulario";
 export * from "./queries/activos-fijos-clases";
 export * from "./queries/activos-fijos";

@@ -1,4 +1,0 @@
-CREATE UNIQUE INDEX "documentos_compra_lineas_documento_numero_unique" ON "documentos_compra_lineas" USING btree ("documento_compra_id","numero_linea");--> statement-breakpoint
-ALTER TABLE "documentos_compra_lineas" ADD CONSTRAINT "documentos_compra_lineas_cantidad_positiva" CHECK ("documentos_compra_lineas"."cantidad" > 0);--> statement-breakpoint
-ALTER TABLE "documentos_compra_lineas" ADD CONSTRAINT "documentos_compra_lineas_pendiente_no_negativo" CHECK ("documentos_compra_lineas"."cantidad_pendiente" >= 0);--> statement-breakpoint
-ALTER TABLE "documentos_compra_lineas" ADD CONSTRAINT "documentos_compra_lineas_pendiente_hasta_cantidad" CHECK ("documentos_compra_lineas"."cantidad_pendiente" <= "documentos_compra_lineas"."cantidad");

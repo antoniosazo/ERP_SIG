@@ -2,21 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { ROL, invitarUsuarioSchema } from "@erp/shared";
+import { invitarUsuarioSchema } from "@erp/shared";
 import type { z } from "zod";
 import { invitarUsuarioAction } from "@/lib/actions/usuarios";
+import { AsignacionesEmpresas } from "@/components/asignaciones-empresas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { LinkGenerado } from "@/components/link-generado";
 
 type Opcion = { id: string; label: string };
@@ -25,12 +19,11 @@ type FormValues = z.input<typeof invitarUsuarioSchema>;
 
 export function InvitarUsuarioForm({ empresas }: { empresas: Opcion[] }) {
   const [isPending, startTransition] = useTransition();
-  const [tokenGenerado, setTokenGenerado] = useState<string | null>(null);
+  const [invitacion, setInvitacion] = useState<{ email: string; token: string | null } | null>(null);
 
   const {
     register,
     handleSubmit,
-    control,
     watch,
     setValue,
     reset,
@@ -45,15 +38,14 @@ export function InvitarUsuarioForm({ empresas }: { empresas: Opcion[] }) {
     } satisfies FormValues,
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: "empresas" });
   const esAdminFirma = watch("esAdminFirma");
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
       const result = await invitarUsuarioAction(data);
       if (result.ok) {
-        toast.success(`Usuario "${data.nombre}" invitado`);
-        setTokenGenerado(result.token);
+        toast.success(result.yaTeniaCuenta ? "Se le dio acceso a esta firma" : `Usuario "${data.nombre}" invitado`);
+        setInvitacion({ email: data.email.trim().toLowerCase(), token: result.token });
         reset();
       } else {
         toast.error(result.error);
@@ -64,7 +56,7 @@ export function InvitarUsuarioForm({ empresas }: { empresas: Opcion[] }) {
   return (
     <div className="space-y-4">
       <form onSubmit={onSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="nombre">Nombre</Label>
             <Input id="nombre" {...register("nombre")} />
@@ -81,85 +73,35 @@ export function InvitarUsuarioForm({ empresas }: { empresas: Opcion[] }) {
           <input type="checkbox" className="size-4" {...register("esAdminFirma")} />
           Administrador de la firma (gestiona usuarios y los datos de la firma)
         </label>
+        <p className="text-xs text-muted-foreground">
+          Si el email ya tiene una cuenta activa en otra firma, se le da acceso a esta con esa misma cuenta (un solo email y contraseña para varias firmas).
+        </p>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Empresas asignadas y rol en cada una</Label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => append({ empresaId: empresas[0]?.id ?? "", rol: "Contador" })}
-              disabled={empresas.length === 0}
-            >
-              Agregar empresa
-            </Button>
-          </div>
-
-          {fields.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              {esAdminFirma
-                ? "Sin empresas asignadas (opcional para un Administrador de firma)."
-                : "Agrega al menos una empresa."}
-            </p>
-          )}
-
-          {fields.map((field, index) => (
-            <div key={field.id} className="flex items-end gap-2">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs text-muted-foreground">Empresa</Label>
-                <Select
-                  value={watch(`empresas.${index}.empresaId`)}
-                  onValueChange={(value) => setValue(`empresas.${index}.empresaId`, value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {empresas.map((empresa) => (
-                      <SelectItem key={empresa.id} value={empresa.id}>
-                        {empresa.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-40 space-y-1">
-                <Label className="text-xs text-muted-foreground">Rol</Label>
-                <Select
-                  value={watch(`empresas.${index}.rol`)}
-                  onValueChange={(value) =>
-                    setValue(`empresas.${index}.rol`, value as FormValues["empresas"][number]["rol"])
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROL.map((rol) => (
-                      <SelectItem key={rol} value={rol}>
-                        {rol}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)}>
-                Quitar
-              </Button>
-            </div>
-          ))}
-          {errors.empresas && typeof errors.empresas.message === "string" && (
-            <p className="text-sm text-destructive">{errors.empresas.message}</p>
-          )}
-        </div>
+        <AsignacionesEmpresas
+          empresas={empresas}
+          value={watch("empresas")}
+          onChange={(v) => setValue("empresas", v, { shouldValidate: true })}
+          esAdminFirma={!!esAdminFirma}
+          error={typeof errors.empresas?.message === "string" ? errors.empresas.message : undefined}
+        />
 
         <Button type="submit" disabled={isPending}>
           {isPending ? "Invitando..." : "Invitar"}
         </Button>
       </form>
 
-      {tokenGenerado && <LinkGenerado token={tokenGenerado} />}
+      {invitacion?.token && (
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Invitación para {invitacion.email}:</p>
+          <LinkGenerado token={invitacion.token} />
+        </div>
+      )}
+      {invitacion && !invitacion.token && (
+        <p className="rounded-md border bg-muted/50 p-4 text-sm">
+          <span className="font-medium">{invitacion.email}</span> ya tenía una cuenta: ahora también tiene acceso a esta firma. Inicia sesión con su email y
+          contraseña de siempre, y elige esta firma; no hay link que enviar.
+        </p>
+      )}
     </div>
   );
 }

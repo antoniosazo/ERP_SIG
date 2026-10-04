@@ -1,1 +1,0 @@
-ALTER TABLE "periodos_contables" ALTER COLUMN "estado" SET DEFAULT 'Bloqueado';

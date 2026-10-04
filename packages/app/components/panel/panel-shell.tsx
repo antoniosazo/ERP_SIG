@@ -34,6 +34,7 @@ export function PanelShell({
   sidebar,
   mobileTopBar,
   mobileTabBar,
+  contextoFirma,
   children,
 }: {
   empresaId: string;
@@ -41,6 +42,7 @@ export function PanelShell({
   sidebar: ReactNode;
   mobileTopBar: ReactNode;
   mobileTabBar: ReactNode;
+  contextoFirma?: ReactNode;
   children: ReactNode;
 }) {
   const { treeCollapsed } = usePanelShell();
@@ -62,6 +64,8 @@ export function PanelShell({
       <div data-cromo className="lg:hidden">
         {!embebido && mobileTopBar}
       </div>
+
+      {contextoFirma}
 
       {/* Cuerpo: árbol (solo escritorio) + área de trabajo */}
       <div className="flex min-h-0 flex-1">

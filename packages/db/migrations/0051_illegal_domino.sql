@@ -1,2 +1,0 @@
-ALTER TABLE "documentos_venta" ADD COLUMN "asiento_reversa_id" uuid;--> statement-breakpoint
-ALTER TABLE "documentos_venta" ADD CONSTRAINT "documentos_venta_asiento_reversa_id_asientos_contables_id_fk" FOREIGN KEY ("asiento_reversa_id") REFERENCES "public"."asientos_contables"("id") ON DELETE set null ON UPDATE no action;

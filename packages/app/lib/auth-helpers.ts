@@ -1,5 +1,7 @@
 import { obtenerEmpresa, type AuditoriaCtx } from "@erp/db";
+import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { rutaInicial } from "@/lib/inicio";
 import type { Session } from "next-auth";
 
 type Empresa = NonNullable<Awaited<ReturnType<typeof obtenerEmpresa>>>;
@@ -18,6 +20,18 @@ export async function obtenerSesion(): Promise<Session | null> {
   return auth();
 }
 
+/**
+ * Sesión con una firma activa, para páginas que consultan la base de la firma: sin sesión va al
+ * login y, si todavía no eligió firma, a donde la elige. Layouts y páginas redirigen al mismo
+ * destino, así que no importa cuál responda primero.
+ */
+export async function obtenerSesionDeFirma(): Promise<Session> {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  if (!session.user.firmaContableId) redirect(rutaInicial(session.user));
+  return session;
+}
+
 /** Exige sesión. Lanza si no hay — úsalo al inicio de Server Actions que escriben datos. */
 export async function requireSession(): Promise<Session> {
   const session = await auth();
@@ -28,6 +42,7 @@ export async function requireSession(): Promise<Session> {
 /** Exige que el usuario sea Administrador de la firma (gestión de usuarios, datos de la firma). */
 export async function requireAdminFirma(): Promise<Session> {
   const session = await requireSession();
+  if (!session.user.firmaContableId) throw new Error("Elige primero la firma con la que vas a trabajar");
   if (!session.user.esAdminFirma) {
     throw new Error("Se requiere ser Administrador de la firma para esta acción");
   }
@@ -45,9 +60,11 @@ export async function obtenerAccesoEmpresa(
 ): Promise<{ session: Session; empresa: Empresa; rol: string | null } | null> {
   const session = await auth();
   if (!session?.user) return null;
+  if (!session.user.firmaContableId) redirect(rutaInicial(session.user));
 
+  // La consulta va a la base de la firma de la sesión: una empresa de otra firma no existe ahí.
   const empresa = await obtenerEmpresa(empresaId);
-  if (!empresa || empresa.firmaContableId !== session.user.firmaContableId) return null;
+  if (!empresa) return null;
 
   const asignacion = session.user.empresas.find((e) => e.empresaId === empresaId);
   if (!session.user.esAdminFirma && !asignacion) return null;
@@ -62,11 +79,10 @@ export async function requireRolEnEmpresa(
 ): Promise<Session> {
   const session = await requireSession();
   if (session.user.esAdminFirma) {
-    // El atajo de Admin de firma solo aplica a empresas de SU PROPIA firma: sin este
-    // chequeo, el admin de una firma podría operar sobre empresas de otra firma con solo
-    // conocer su empresaId (cross-tenant).
+    // El atajo de Admin de firma solo aplica a empresas de SU firma: la consulta va a la
+    // base de la firma de la sesión, donde una empresa de otra firma no existe.
     const empresa = await obtenerEmpresa(empresaId);
-    if (!empresa || empresa.firmaContableId !== session.user.firmaContableId) {
+    if (!empresa) {
       throw new Error("No tienes el rol necesario para esta acción en esta empresa");
     }
     return session;

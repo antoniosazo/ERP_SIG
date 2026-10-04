@@ -9,25 +9,24 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/migrate.ts",
-    "db:seed": "tsx seed.ts",
-    "db:studio": "drizzle-kit studio",
-    "bootstrap-firma": "tsx scripts/bootstrap-firma.ts",
-    "test": "tsx --test src/queries/*.test.ts"
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts && drizzle-kit generate --config drizzle.plataforma.config.ts",
+    "db:migrate": "tsx scripts/migrar.ts",
+    "test": "tsx --test src/queries/*.test.ts src/plataforma/*.test.ts",
+    "pg:local": "tsx scripts/pg-local.ts",
+    "crear-firma": "tsx scripts/crear-firma.ts"
   },
   "dependencies": {
     "@erp/shared": "workspace:*",
-    "@neondatabase/serverless": "^1.1.0",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
-    "ws": "^8.18.0"
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/ws": "^8.5.13",
+    "@types/pg": "^8.23.1",
     "dotenv": "^16.4.5",
     "drizzle-kit": "^0.31.10",
+    "embedded-postgres": "18.4.0-beta.17",
     "tsx": "^4.19.2",
     "typescript": "^5.9.0"
   }

@@ -34,18 +34,13 @@ function mensajeError(error: unknown): string {
  * de la plantilla elegida y abre el primer periodo contable (ver
  * packages/db/src/queries/empresas.ts). Solo Administrador de la firma.
  *
- * `firmaContableId` se toma de la sesión, nunca del formulario — evita que un input
- * manipulado cree una empresa bajo otra firma.
+ * La empresa se crea en la base de la firma de la sesión: un input manipulado no puede
+ * crearla bajo otra firma.
  */
-export async function crearEmpresaAction(
-  input: Omit<CrearEmpresaInput, "firmaContableId">,
-): Promise<CrearEmpresaResultado> {
+export async function crearEmpresaAction(input: CrearEmpresaInput): Promise<CrearEmpresaResultado> {
   const session = await requireAdminFirma();
 
-  const parsed = crearEmpresaSchema.safeParse({
-    ...input,
-    firmaContableId: session.user.firmaContableId,
-  });
+  const parsed = crearEmpresaSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
@@ -63,8 +58,7 @@ export type EditarEmpresaResultado = { ok: true } | { ok: false; error: string }
 
 /**
  * Edición de los "Detalles de la empresa" desde el entorno por empresa (Módulo 4.9-A).
- * Requiere rol Administrador en la empresa (o ser Administrador de la firma). El
- * `firmaContableId` sale de la sesión, nunca del formulario.
+ * Requiere rol Administrador en la empresa (o ser Administrador de la firma).
  */
 export async function editarEmpresaAction(
   empresaId: string,
@@ -78,7 +72,7 @@ export async function editarEmpresaAction(
   }
 
   try {
-    await actualizarEmpresa(empresaId, session.user.firmaContableId, parsed.data, auditCtx(session));
+    await actualizarEmpresa(empresaId, parsed.data, auditCtx(session));
     revalidatePath(`/panel/${empresaId}`, "layout");
     revalidatePath("/admin/empresas");
     return { ok: true };
@@ -103,7 +97,7 @@ export async function editarVisualizacionAction(
   }
 
   try {
-    await actualizarVisualizacionEmpresa(empresaId, session.user.firmaContableId, parsed.data, auditCtx(session));
+    await actualizarVisualizacionEmpresa(empresaId, parsed.data, auditCtx(session));
     revalidatePath(`/panel/${empresaId}`, "layout");
     return { ok: true };
   } catch (error) {

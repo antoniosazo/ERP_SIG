@@ -48,7 +48,8 @@ export function LoginForm() {
     startTransition(async () => {
       const result = await loginAction(data);
       if (result.ok) {
-        router.push("/admin/empresas");
+        // La raíz decide la página de inicio según el rol (superadmin, admin de firma, resto).
+        router.push("/");
         router.refresh();
       } else {
         setErrorGeneral(result.error);

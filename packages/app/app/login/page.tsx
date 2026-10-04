@@ -2,10 +2,11 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { obtenerSesion } from "@/lib/auth-helpers";
 import { LoginForm } from "@/components/login-form";
+import { rutaInicial } from "@/lib/inicio";
 
 export default async function LoginPage() {
   const session = await obtenerSesion();
-  if (session?.user) redirect("/admin/empresas");
+  if (session?.user) redirect(rutaInicial(session.user));
 
   return (
     <div className="flex min-h-screen flex-col bg-white lg:flex-row">

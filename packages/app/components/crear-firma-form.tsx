@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { FIRMA_ESTADO, PLAN_CONTRATADO, crearFirmaConAdminSchema } from "@erp/shared";
+import { PLAN_CONTRATADO, crearFirmaConAdminSchema } from "@erp/shared";
 import type { z } from "zod";
 import { crearFirmaConAdminAction } from "@/lib/actions/firmas";
 import { Button } from "@/components/ui/button";
@@ -21,14 +21,14 @@ import { LinkGenerado } from "@/components/link-generado";
 
 type FormValues = z.input<typeof crearFirmaConAdminSchema>;
 
-export function CrearFirmaForm() {
+export function CrearFirmaForm({ onCreated }: { onCreated?: () => void }) {
   const [isPending, startTransition] = useTransition();
-  const [tokenGenerado, setTokenGenerado] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<{ token: string | null; yaTeniaCuenta: boolean } | null>(null);
 
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     setValue,
     reset,
     formState: { errors },
@@ -39,14 +39,16 @@ export function CrearFirmaForm() {
       admin: { nombre: "", email: "" },
     } satisfies FormValues,
   });
+  const planContratado = useWatch({ control, name: "firma.planContratado" });
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
       const result = await crearFirmaConAdminAction(data);
       if (result.ok) {
         toast.success(`Firma "${data.firma.razonSocial}" creada`);
-        setTokenGenerado(result.token);
+        setResultado({ token: result.token, yaTeniaCuenta: result.yaTeniaCuenta });
         reset();
+        onCreated?.();
       } else {
         toast.error(result.error);
       }
@@ -76,7 +78,7 @@ export function CrearFirmaForm() {
         <div className="space-y-2 sm:max-w-xs">
           <Label htmlFor="planContratado">Plan contratado</Label>
           <Select
-            value={watch("firma.planContratado")}
+            value={planContratado}
             onValueChange={(v) => setValue("firma.planContratado", v as FormValues["firma"]["planContratado"])}
           >
             <SelectTrigger id="planContratado" className="w-full">
@@ -114,10 +116,15 @@ export function CrearFirmaForm() {
       </div>
 
       <Button type="submit" disabled={isPending}>
-        {isPending ? "Creando..." : "Crear firma"}
+        {isPending ? "Creando la firma y su base… (puede tardar un minuto)" : "Crear firma"}
       </Button>
 
-      {tokenGenerado && <LinkGenerado token={tokenGenerado} />}
+      {resultado?.token && <LinkGenerado token={resultado.token} />}
+      {resultado && !resultado.token && (
+        <p className="rounded-md border bg-muted/50 p-4 text-sm">
+          Ese administrador ya tenía una cuenta: ahora también administra esta firma. Entra con su email y contraseña de siempre y elige la firma; no hay link que enviar.
+        </p>
+      )}
     </form>
   );
 }

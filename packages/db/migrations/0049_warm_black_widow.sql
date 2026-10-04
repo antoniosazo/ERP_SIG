@@ -1,1 +1,0 @@
-DROP INDEX "cartolas_formatos_empresa_banco_unique";

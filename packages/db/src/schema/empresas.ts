@@ -1,18 +1,14 @@
 import { boolean, date, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { idColumn, timestampsColumns } from "./columns.helpers";
 import { empresaEstadoEnum } from "./enums";
-import { firmasContables } from "./firmas-contables";
 import { monedas } from "./monedas";
 import { planCuentasPlantillas } from "./plan-cuentas-plantillas";
 
-/** 3.1 — Empresas cliente de la firma contable. */
+/** 3.1 — Empresas cliente de la firma contable (la base entera es de una sola firma). */
 export const empresas = pgTable(
   "empresas",
   {
     id: idColumn(),
-    firmaContableId: uuid("firma_contable_id")
-      .notNull()
-      .references(() => firmasContables.id, { onDelete: "restrict" }),
     rut: text("rut").notNull(),
     razonSocial: text("razon_social").notNull(),
     giro: text("giro").notNull(),
@@ -42,5 +38,5 @@ export const empresas = pgTable(
     decimalesTipoCambio: integer("decimales_tipo_cambio").notNull().default(6),
     ...timestampsColumns,
   },
-  (t) => [unique("empresas_firma_rut_unique").on(t.firmaContableId, t.rut)],
+  (t) => [unique("empresas_rut_unique").on(t.rut)],
 );

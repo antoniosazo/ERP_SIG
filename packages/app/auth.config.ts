@@ -22,7 +22,8 @@ export default {
       const requiereSesion =
         pathname.startsWith("/admin") ||
         pathname.startsWith("/panel") ||
-        pathname.startsWith("/superadmin");
+        pathname.startsWith("/superadmin") ||
+        pathname.startsWith("/elegir-firma");
       if (!requiereSesion) return true;
       return logueado;
     },

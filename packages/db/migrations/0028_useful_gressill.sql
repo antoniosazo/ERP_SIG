@@ -1,1 +1,0 @@
-ALTER TABLE "sii_credenciales" ADD COLUMN "rut_titular_certificado" text;

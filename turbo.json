@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "AUTH_SECRET", "SII_ENCRYPTION_KEY", "CRON_SECRET"],
+      "env": ["PLATAFORMA_DATABASE_URL", "FIRMAS_PROVEEDOR", "FIRMAS_DATABASE_URL", "FIRMAS_CONEXION_KEY", "FIRMAS_DB_POOL_MAX", "NEON_API_KEY", "NEON_ORG_ID", "NEON_REGION", "AUTH_SECRET", "SII_ENCRYPTION_KEY", "CRON_SECRET"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "dev": {

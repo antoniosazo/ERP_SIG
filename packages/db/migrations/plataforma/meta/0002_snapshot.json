@@ -1,0 +1,489 @@
+{
+  "id": "53128926-32ec-4333-80d3-486a37085561",
+  "prevId": "bf5712b3-ba5e-415e-ab5e-a2409c545943",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.firmas_contables": {
+      "name": "firmas_contables",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "rut": {
+          "name": "rut",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "razon_social": {
+          "name": "razon_social",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_contratado": {
+          "name": "plan_contratado",
+          "type": "plan_contratado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Basico'"
+        },
+        "estado": {
+          "name": "estado",
+          "type": "firma_estado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Activa'"
+        },
+        "proveedor": {
+          "name": "proveedor",
+          "type": "base_proveedor",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "neon_proyecto_id": {
+          "name": "neon_proyecto_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "base_datos": {
+          "name": "base_datos",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conexion_cifrada": {
+          "name": "conexion_cifrada",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estado_base": {
+          "name": "estado_base",
+          "type": "base_firma_estado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pendiente'"
+        },
+        "version_esquema": {
+          "name": "version_esquema",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "migrada_en": {
+          "name": "migrada_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_migracion": {
+          "name": "error_migracion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "firmas_contables_rut_unique": {
+          "name": "firmas_contables_rut_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "rut"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.membresias_firma": {
+      "name": "membresias_firma",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "firma_contable_id": {
+          "name": "firma_contable_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "es_admin_firma": {
+          "name": "es_admin_firma",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "membresia_estado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Activa'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "membresias_firma_firma_idx": {
+          "name": "membresias_firma_firma_idx",
+          "columns": [
+            {
+              "expression": "firma_contable_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "membresias_firma_usuario_id_usuarios_id_fk": {
+          "name": "membresias_firma_usuario_id_usuarios_id_fk",
+          "tableFrom": "membresias_firma",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "membresias_firma_firma_contable_id_firmas_contables_id_fk": {
+          "name": "membresias_firma_firma_contable_id_firmas_contables_id_fk",
+          "tableFrom": "membresias_firma",
+          "tableTo": "firmas_contables",
+          "columnsFrom": [
+            "firma_contable_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "membresias_firma_usuario_firma_unique": {
+          "name": "membresias_firma_usuario_firma_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "usuario_id",
+            "firma_contable_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tokens_acceso": {
+      "name": "tokens_acceso",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "token_tipo",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expira_en": {
+          "name": "expira_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usado_en": {
+          "name": "usado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tokens_acceso_usuario_id_usuarios_id_fk": {
+          "name": "tokens_acceso_usuario_id_usuarios_id_fk",
+          "tableFrom": "tokens_acceso",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "tokens_acceso_token_unique": {
+          "name": "tokens_acceso_token_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios": {
+      "name": "usuarios",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "usuario_estado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Invitado'"
+        },
+        "es_super_admin": {
+          "name": "es_super_admin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "usuarios_email_lower_unique": {
+          "name": "usuarios_email_lower_unique",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.base_firma_estado": {
+      "name": "base_firma_estado",
+      "schema": "public",
+      "values": [
+        "pendiente",
+        "lista",
+        "error"
+      ]
+    },
+    "public.base_proveedor": {
+      "name": "base_proveedor",
+      "schema": "public",
+      "values": [
+        "neon",
+        "servidor"
+      ]
+    },
+    "public.firma_estado": {
+      "name": "firma_estado",
+      "schema": "public",
+      "values": [
+        "Activa",
+        "Suspendida"
+      ]
+    },
+    "public.membresia_estado": {
+      "name": "membresia_estado",
+      "schema": "public",
+      "values": [
+        "Activa",
+        "Suspendida"
+      ]
+    },
+    "public.plan_contratado": {
+      "name": "plan_contratado",
+      "schema": "public",
+      "values": [
+        "Basico",
+        "Profesional",
+        "Enterprise"
+      ]
+    },
+    "public.token_tipo": {
+      "name": "token_tipo",
+      "schema": "public",
+      "values": [
+        "invitacion",
+        "reset_password"
+      ]
+    },
+    "public.usuario_estado": {
+      "name": "usuario_estado",
+      "schema": "public",
+      "values": [
+        "Invitado",
+        "Activo",
+        "Suspendido"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

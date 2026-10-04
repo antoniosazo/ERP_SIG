@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
-import { listarEmpresasDeFirma, listarMonedasDeEmpresa, periodoDe } from "@erp/db";
+import { listarEmpresas, listarMonedasDeEmpresa, periodoDe } from "@erp/db";
 import { obtenerAccesoEmpresa } from "@/lib/auth-helpers";
 import { leerColorScheme } from "@/lib/color-scheme";
 import { MobileTabBar } from "@/components/panel/mobile-tab-bar";
+import { ContextoFirmaBanner } from "@/components/contexto-firma-banner";
 import { MobileTopBar } from "@/components/panel/mobile-top-bar";
 import { PanelHeader } from "@/components/panel/panel-header";
 import { PanelShell } from "@/components/panel/panel-shell";
@@ -32,12 +33,12 @@ export default async function PanelEmpresaLayout({
   const [scheme, monedas, todasLasEmpresas, periodo] = await Promise.all([
     leerColorScheme(),
     listarMonedasDeEmpresa(empresaId).catch(() => []),
-    listarEmpresasDeFirma(session.user.firmaContableId),
+    listarEmpresas(),
     periodoDe(empresaId, hoy).catch(() => null),
   ]);
   const monedaFuncional =
     monedas.find((m) => m.id === empresa.monedaFuncionalId)?.codigo ?? null;
-  const rolTxt = rol ?? (session.user.esAdminFirma ? "Admin firma" : null);
+  const rolTxt = session.user.firmaVistaNombre ? "Superadmin" : rol ?? (session.user.esAdminFirma ? "Admin firma" : null);
   const periodoLabel = periodo
     ? `${MESES_ABREV[periodo.mes - 1]} ${periodo.anio} · ${ESTADO_PERIODO[periodo.estado] ?? periodo.estado}`
     : null;
@@ -64,6 +65,8 @@ export default async function PanelEmpresaLayout({
           userName={session.user.name ?? "—"}
           rolLabel={rolTxt}
           scheme={scheme}
+          puedeVerFirma={session.user.esAdminFirma}
+          puedeCambiarFirma={session.user.firmas.length > 1 && !session.user.esSuperAdmin}
         />
       }
       sidebar={<PanelSidebar empresaId={empresaId} />}
@@ -71,6 +74,7 @@ export default async function PanelEmpresaLayout({
         <MobileTopBar razonSocial={empresa.razonSocial} userName={session.user.name ?? "—"} scheme={scheme} />
       }
       mobileTabBar={<MobileTabBar empresaId={empresaId} razonSocial={empresa.razonSocial} />}
+      contextoFirma={session.user.firmaVistaNombre ? <ContextoFirmaBanner nombre={session.user.firmaVistaNombre} /> : null}
     >
       {children}
     </PanelShell>

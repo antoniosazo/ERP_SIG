@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { obtenerEmpresaConDetalle } from "@erp/db";
 import { PERIODO_ESTADOS_ABIERTOS } from "@erp/shared";
-import { obtenerSesion } from "@/lib/auth-helpers";
+import { obtenerSesionDeFirma } from "@/lib/auth-helpers";
 import { PlanCuentasTree } from "@/components/plan-cuentas-tree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ export default async function EmpresaDetallePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await obtenerSesion();
+  const session = await obtenerSesionDeFirma();
   if (!session?.user) notFound();
 
   const detalle = await obtenerEmpresaConDetalle(id);
@@ -31,9 +31,7 @@ export default async function EmpresaDetallePage({
   const { empresa, cuentas, periodos } = detalle;
 
   const tieneAcceso =
-    session.user.esAdminFirma ||
-    (empresa.firmaContableId === session.user.firmaContableId &&
-      session.user.empresas.some((a) => a.empresaId === empresa.id));
+    session.user.esAdminFirma || session.user.empresas.some((a) => a.empresaId === empresa.id);
   if (!tieneAcceso) notFound();
 
   return (

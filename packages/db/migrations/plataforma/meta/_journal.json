@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790982134433,
+      "tag": "0000_fluffy_jubilee",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791053938886,
+      "tag": "0001_usuarios_email_minusculas",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791055054610,
+      "tag": "0002_membresias_por_firma",
+      "breakpoints": true
+    }
+  ]
+}

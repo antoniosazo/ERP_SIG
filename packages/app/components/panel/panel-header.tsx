@@ -20,6 +20,8 @@ export function PanelHeader({
   userName,
   rolLabel,
   scheme,
+  puedeVerFirma,
+  puedeCambiarFirma,
 }: {
   empresaId: string;
   empresas: EmpresaOpcion[];
@@ -30,6 +32,8 @@ export function PanelHeader({
   userName: string;
   rolLabel: string | null;
   scheme: ColorScheme;
+  puedeVerFirma: boolean;
+  puedeCambiarFirma: boolean;
 }) {
   const { toggleTree } = usePanelShell();
 
@@ -45,7 +49,7 @@ export function PanelHeader({
         <PanelLeftIcon className="size-4" />
       </button>
       <Image src="/login.png" alt="Tessora ERP" width={28} height={28} className="shrink-0" />
-      <EmpresaSwitcher empresas={empresas} actual={empresaActual} />
+      <EmpresaSwitcher empresas={empresas} actual={empresaActual} puedeVerFirma={puedeVerFirma} puedeCambiarFirma={puedeCambiarFirma} />
 
       {periodoLabel && (
         <div className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground sm:flex">

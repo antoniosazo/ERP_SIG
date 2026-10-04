@@ -1,1 +1,0 @@
-ALTER TABLE "activos_fijos_documentos_lineas" ADD COLUMN "dep_acumulada_retirada" numeric(18, 4) DEFAULT '0' NOT NULL;

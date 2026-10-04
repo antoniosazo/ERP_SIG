@@ -1,37 +1,14 @@
-import { boolean, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text } from "drizzle-orm/pg-core";
 import { idColumn, timestampsColumns } from "./columns.helpers";
-import { usuarioEstadoEnum } from "./enums";
-import { firmasContables } from "./firmas-contables";
 
 /**
- * 3.5 — Usuarios (staff de la firma contable). `passwordHash` queda null mientras el
- * usuario está en estado "Invitado" (ver módulo de Usuarios y Roles / tokens_acceso).
- * `mfaHabilitado` del ERD se omite: no hay MFA en esta fase.
- *
- * `esAdminFirma` es un flag a nivel de firma, distinto del `rol` por-empresa de
- * `usuario_empresa`: administrar usuarios y los datos de la propia firma (4.9-E) son
- * acciones de firma, no de una empresa cliente en particular — sin este flag no habría
- * forma de que el primer Administrador (sin empresas asignadas todavía) pudiera
- * gestionar nada. Descubierto al implementar el bootstrap; no estaba en el plan original.
- *
- * `esSuperAdmin` es un nivel por encima de `esAdminFirma`: el operador del sistema
- * (no un cliente de la firma) que puede crear otras firmas contables. `esAdminFirma`
- * administra SU firma; no debe poder dar de alta firmas ajenas.
+ * Reflejo, en la base de la firma, de las cuentas de usuario de la plataforma (donde viven
+ * credenciales, estado y permisos de firma). Existe para que auditoría, documentos y roles
+ * por empresa referencien y muestren al usuario sin consultar otra base. Mismo `id`.
  */
-export const usuarios = pgTable(
-  "usuarios",
-  {
-    id: idColumn(),
-    firmaContableId: uuid("firma_contable_id")
-      .notNull()
-      .references(() => firmasContables.id, { onDelete: "restrict" }),
-    nombre: text("nombre").notNull(),
-    email: text("email").notNull(),
-    passwordHash: text("password_hash"),
-    estado: usuarioEstadoEnum("estado").notNull().default("Invitado"),
-    esAdminFirma: boolean("es_admin_firma").notNull().default(false),
-    esSuperAdmin: boolean("es_super_admin").notNull().default(false),
-    ...timestampsColumns,
-  },
-  (t) => [unique("usuarios_email_unique").on(t.email)],
-);
+export const usuarios = pgTable("usuarios", {
+  id: idColumn(),
+  nombre: text("nombre").notNull(),
+  email: text("email").notNull(),
+  ...timestampsColumns,
+});

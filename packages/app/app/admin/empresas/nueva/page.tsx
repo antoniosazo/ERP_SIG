@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { listarMonedasPlantilla, listarPlanCuentasPlantillas } from "@erp/db";
-import { obtenerSesion } from "@/lib/auth-helpers";
+import { obtenerSesionDeFirma } from "@/lib/auth-helpers";
 import { EmpresaForm } from "@/components/empresa-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TypographyHeading } from "@/components/ui/typography";
@@ -8,7 +8,7 @@ import { TypographyHeading } from "@/components/ui/typography";
 export const dynamic = "force-dynamic";
 
 export default async function NuevaEmpresaPage() {
-  const session = await obtenerSesion();
+  const session = await obtenerSesionDeFirma();
   if (!session?.user.esAdminFirma) redirect("/admin/empresas");
 
   const [monedas, plantillas] = await Promise.all([
