@@ -7,6 +7,9 @@ config({ path: path.resolve(process.cwd(), "../../.env") });
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@erp/db", "@erp/shared"],
+  // La app crea y migra la base de cada firma: las migraciones (SQL + journal) deben viajar en el despliegue.
+  outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
+  outputFileTracingIncludes: { "/**": ["../db/migrations/**/*"] },
   async headers() {
     return [
       {

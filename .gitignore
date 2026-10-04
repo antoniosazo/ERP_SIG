@@ -17,3 +17,4 @@ chrome-net-export-log*.json
 
 # Postgres local de desarrollo
 .pgdata/
+.env.vercel

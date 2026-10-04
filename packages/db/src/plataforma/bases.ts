@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { asc, eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -16,9 +17,18 @@ import { firmasContables } from "./schema";
  * esté "lista", la app no la usa.
  */
 
-// Rutas calculadas al usarse (solo scripts): dentro del bundle de la app no hay carpeta de migraciones.
-const carpetaMigraciones = (esquema: "plataforma" | "firma") =>
-  path.resolve(import.meta.dirname, "..", "..", "migrations", esquema);
+// En scripts `import.meta.dirname` existe; dentro del bundle de la app no, y se busca desde el cwd
+// (next.config incluye packages/db/migrations en el despliegue).
+function carpetaMigraciones(esquema: "plataforma" | "firma"): string {
+  const candidatas = [
+    import.meta.dirname ? path.resolve(import.meta.dirname, "..", "..", "migrations", esquema) : null,
+    path.resolve(process.cwd(), "..", "db", "migrations", esquema),
+    path.resolve(process.cwd(), "packages", "db", "migrations", esquema),
+  ].filter((c): c is string => c !== null);
+  const encontrada = candidatas.find((c) => existsSync(path.join(c, "meta", "_journal.json")));
+  if (!encontrada) throw new Error(`No se encontró la carpeta de migraciones "${esquema}" (probé: ${candidatas.join(", ")}).`);
+  return encontrada;
+}
 
 function variable(nombre: string): string {
   const valor = process.env[nombre];
