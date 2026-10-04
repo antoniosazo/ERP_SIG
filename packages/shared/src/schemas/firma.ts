@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FIRMA_ESTADO, PLAN_CONTRATADO } from "../enums";
 import { esRutValido } from "../rut";
+import { emailNormalizado } from "./primitives";
 
 export const crearFirmaContableSchema = z.object({
   rut: z
@@ -23,12 +24,16 @@ export const actualizarFirmaContableSchema = z.object({
 
 export type ActualizarFirmaContableInput = z.infer<typeof actualizarFirmaContableSchema>;
 
+/** El administrador de una firma solo puede corregir su razón social. */
+export const actualizarPerfilFirmaSchema = actualizarFirmaContableSchema.pick({ razonSocial: true });
+export type ActualizarPerfilFirmaInput = z.infer<typeof actualizarPerfilFirmaSchema>;
+
 /** Alta de una firma contable nueva junto con su primer Administrador (solo superadmin). */
 export const crearFirmaConAdminSchema = z.object({
   firma: crearFirmaContableSchema,
   admin: z.object({
     nombre: z.string().min(1, "Nombre requerido").max(200),
-    email: z.email("Email inválido"),
+    email: emailNormalizado,
   }),
 });
 

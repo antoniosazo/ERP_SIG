@@ -1,1 +1,0 @@
-ALTER TABLE "plan_cuentas" ADD COLUMN "activa" boolean DEFAULT true NOT NULL;

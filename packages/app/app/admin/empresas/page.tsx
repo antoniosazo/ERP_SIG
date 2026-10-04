@@ -1,15 +1,15 @@
 import { redirect } from "next/navigation";
-import { listarEmpresasDeFirma } from "@erp/db";
-import { obtenerSesion } from "@/lib/auth-helpers";
+import { listarEmpresas } from "@erp/db";
+import { obtenerSesionDeFirma } from "@/lib/auth-helpers";
 import { EmpresasGrid } from "@/components/empresas-grid";
 
 export const dynamic = "force-dynamic";
 
 export default async function EmpresasPage() {
-  const session = await obtenerSesion();
+  const session = await obtenerSesionDeFirma();
   if (!session?.user) redirect("/login");
 
-  const todasLasEmpresas = await listarEmpresasDeFirma(session.user.firmaContableId);
+  const todasLasEmpresas = await listarEmpresas();
 
   // Administrador de la firma ve toda la cartera; el resto solo las empresas que tiene asignadas.
   const empresas = session.user.esAdminFirma

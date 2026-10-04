@@ -1,1 +1,0 @@
-ALTER TABLE "plan_cuentas" DROP COLUMN "admite_moneda_extranjera";

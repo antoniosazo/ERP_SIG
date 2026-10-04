@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { listarEmpresasConXmlSii } from "@erp/db";
+import { conFirma, listarEmpresasConXmlSii, listarFirmasContables } from "@erp/db";
 import { descargarXmlABandeja } from "@/lib/sii/descarga-xml";
 
 export const dynamic = "force-dynamic";
@@ -28,19 +28,19 @@ export async function GET(request: Request) {
     return Response.json({ error: "No autorizado." }, { status: 401 });
   }
 
-  const empresas = await listarEmpresasConXmlSii();
-  const resultados: { empresaId: string; rut: string; ok: boolean; detalle: string }[] = [];
-  // Una por una: el SII limita las sesiones concurrentes por RUT y los portales legacy no toleran ráfagas.
-  for (const e of empresas) {
-    const tieneCredencial = e.metodoAuth === "certificado" ? e.tieneCertificado : e.tieneClave;
-    if (!tieneCredencial) continue;
-    const r = await descargarXmlABandeja(e.empresaId, DIAS_VENTANA);
-    resultados.push({
-      empresaId: e.empresaId,
-      rut: e.rut,
-      ok: r.ok,
-      detalle: r.ok ? r.detalle : r.error,
+  const resultados: { firmaId: string; empresaId: string; rut: string; ok: boolean; detalle: string }[] = [];
+  const firmas = (await listarFirmasContables()).filter((f) => f.estado === "Activa" && f.estadoBase === "lista");
+  // Una firma y una empresa a la vez: el SII limita las sesiones concurrentes por RUT y los
+  // portales legacy no toleran ráfagas. Cada firma corre en su propia base.
+  for (const firma of firmas) {
+    await conFirma(firma.id, async () => {
+      for (const e of await listarEmpresasConXmlSii()) {
+        const tieneCredencial = e.metodoAuth === "certificado" ? e.tieneCertificado : e.tieneClave;
+        if (!tieneCredencial) continue;
+        const r = await descargarXmlABandeja(e.empresaId, DIAS_VENTANA);
+        resultados.push({ firmaId: firma.id, empresaId: e.empresaId, rut: e.rut, ok: r.ok, detalle: r.ok ? r.detalle : r.error });
+      }
     });
   }
-  return Response.json({ empresas: resultados.length, resultados });
+  return Response.json({ firmas: firmas.length, empresas: resultados.length, resultados });
 }

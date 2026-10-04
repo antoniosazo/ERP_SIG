@@ -1,1 +1,0 @@
-ALTER TABLE "activos_fijos" ALTER COLUMN "clase_id" DROP NOT NULL;

@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790947883171,
+      "tag": "0000_pink_lord_hawal",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791053949795,
+      "tag": "0001_emails_minusculas_reflejo",
+      "breakpoints": true
+    }
+  ]
+}

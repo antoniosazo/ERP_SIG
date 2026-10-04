@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChevronDownIcon } from "lucide-react";
+import { cambiarDeFirmaAction } from "@/lib/actions/acceso-firmas";
 import { formatearRut } from "@erp/shared";
 import {
   DropdownMenu,
@@ -17,9 +18,15 @@ export type EmpresaOpcion = { id: string; razonSocial: string; rut: string };
 export function EmpresaSwitcher({
   empresas,
   actual,
+  puedeVerFirma = false,
+  puedeCambiarFirma = false,
 }: {
   empresas: EmpresaOpcion[];
   actual: EmpresaOpcion;
+  /** Admin de firma o superadmin dentro de una firma: ofrece volver a la página de la firma. */
+  puedeVerFirma?: boolean;
+  /** Pertenece a varias firmas: ofrece volver a elegir con cuál trabajar. */
+  puedeCambiarFirma?: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -47,6 +54,18 @@ export function EmpresaSwitcher({
         <DropdownMenuItem asChild>
           <Link href="/admin/empresas">Ver todas las empresas</Link>
         </DropdownMenuItem>
+        {puedeVerFirma && (
+          <DropdownMenuItem asChild>
+            <Link href="/admin/firmas">Ir a la firma</Link>
+          </DropdownMenuItem>
+        )}
+        {puedeCambiarFirma && (
+          <DropdownMenuItem asChild>
+            <form action={cambiarDeFirmaAction}>
+              <button type="submit" className="w-full text-left">Cambiar de firma</button>
+            </form>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

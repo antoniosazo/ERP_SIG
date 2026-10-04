@@ -37,7 +37,6 @@ import {
   DOCUMENTO_VENTA_CLASE,
   DOCUMENTO_VENTA_ESTADO,
   EMPRESA_ESTADO,
-  FIRMA_ESTADO,
   IMPUESTO_TIPO,
   IVA_RECUPERABLE,
   SERIE_AMBITO,
@@ -55,17 +54,12 @@ import {
   CUENTA_MODO_MONEDA,
   DETERMINACION_CONTEXTO,
   DETERMINACION_ROL,
-  PLAN_CONTRATADO,
   ROL,
   TIPO_CAMBIO_ORIGEN,
   TIPO_OPERACION_DOCUMENTO,
   TIPO_TERCERO,
-  TOKEN_TIPO,
-  USUARIO_ESTADO,
 } from "@erp/shared";
 
-export const planContratadoEnum = pgEnum("plan_contratado", [...PLAN_CONTRATADO]);
-export const firmaEstadoEnum = pgEnum("firma_estado", [...FIRMA_ESTADO]);
 export const empresaEstadoEnum = pgEnum("empresa_estado", [...EMPRESA_ESTADO]);
 export const monedaTipoEnum = pgEnum("moneda_tipo", [...MONEDA_TIPO]);
 export const tipoCambioOrigenEnum = pgEnum("tipo_cambio_origen", [...TIPO_CAMBIO_ORIGEN]);
@@ -86,8 +80,6 @@ export const asientoTipoEnum = pgEnum("asiento_tipo", [...ASIENTO_TIPO]);
 export const asientoEstadoEnum = pgEnum("asiento_estado", [...ASIENTO_ESTADO]);
 export const libroContableEnum = pgEnum("libro_contable", [...LIBRO_CONTABLE]);
 export const rolEnum = pgEnum("rol", [...ROL]);
-export const usuarioEstadoEnum = pgEnum("usuario_estado", [...USUARIO_ESTADO]);
-export const tokenTipoEnum = pgEnum("token_tipo", [...TOKEN_TIPO]);
 export const auditoriaAccionEnum = pgEnum("auditoria_accion", [...AUDITORIA_ACCION]);
 export const impuestoTipoEnum = pgEnum("impuesto_tipo", [...IMPUESTO_TIPO]);
 export const direccionTipoEnum = pgEnum("direccion_tipo", [...DIRECCION_TIPO]);

@@ -1,74 +1,56 @@
 import { redirect } from "next/navigation";
-import { listarEmpresasDeFirma, listarUsuariosDeFirma } from "@erp/db";
-import { obtenerSesion } from "@/lib/auth-helpers";
+import { listarEmpresas, listarUsuariosDeFirma } from "@erp/db";
+import { obtenerSesionDeFirma } from "@/lib/auth-helpers";
 import { InvitarUsuarioForm } from "@/components/invitar-usuario-form";
-import { ResetearPasswordButton } from "@/components/resetear-password-button";
-import { Badge } from "@/components/ui/badge";
+import { UsuariosLista, type UsuarioFila } from "@/components/usuarios-lista";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TypographyHeading } from "@/components/ui/typography";
 
 export const dynamic = "force-dynamic";
 
 export default async function UsuariosPage() {
-  const session = await obtenerSesion();
+  const session = await obtenerSesionDeFirma();
   if (!session?.user.esAdminFirma) redirect("/admin/empresas");
 
   const [usuarios, empresas] = await Promise.all([
     listarUsuariosDeFirma(session.user.firmaContableId),
-    listarEmpresasDeFirma(session.user.firmaContableId),
+    listarEmpresas(),
   ]);
+  const opcionesEmpresa = empresas.map((e) => ({ id: e.id, label: e.razonSocial }));
+  const filas: UsuarioFila[] = usuarios.map((u) => ({
+    id: u.id,
+    nombre: u.nombre,
+    email: u.email,
+    estado: u.estado,
+    esAdminFirma: u.esAdminFirma,
+    esSuperAdmin: u.esSuperAdmin,
+    otrasFirmas: u.otrasFirmas,
+    asignaciones: u.asignaciones,
+    invitacionVencida: u.invitacionVencida,
+  }));
 
   return (
     <>
       <TypographyHeading
         title="Usuarios de la firma"
-        description="Alta de contadores por invitación (4.9-E) — sin envío automático de email: copia el link generado y envíalo tú mismo."
+        description="Invita a contadores, asígnales empresas y roles, y suspende a quien deje de trabajar con la firma. No se envía email: copia el link que se genera y envíaselo tú."
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Invitar contador</CardTitle>
+          <CardTitle>Invitar usuario</CardTitle>
         </CardHeader>
         <CardContent>
-          <InvitarUsuarioForm empresas={empresas.map((e) => ({ id: e.id, label: e.razonSocial }))} />
+          <InvitarUsuarioForm empresas={opcionesEmpresa} />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Usuarios ({usuarios.length})</CardTitle>
+          <CardTitle>Usuarios ({filas.length})</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {usuarios.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aún no hay usuarios invitados.</p>
-          ) : (
-            usuarios.map((usuario) => (
-              <div key={usuario.id} className="space-y-2 border-b pb-4 last:border-b-0 last:pb-0">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">
-                      {usuario.nombre}{" "}
-                      {usuario.esAdminFirma && <Badge className="ml-1">Admin firma</Badge>}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{usuario.email}</p>
-                  </div>
-                  <Badge variant={usuario.estado === "Activo" ? "default" : "secondary"}>
-                    {usuario.estado}
-                  </Badge>
-                </div>
-                {usuario.asignaciones.length > 0 && (
-                  <ul className="text-sm text-muted-foreground">
-                    {usuario.asignaciones.map((a) => (
-                      <li key={a.empresaId}>
-                        {a.empresaNombre} — {a.rol}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <ResetearPasswordButton usuarioId={usuario.id} />
-              </div>
-            ))
-          )}
+        <CardContent>
+          <UsuariosLista usuarios={filas} empresas={opcionesEmpresa} yoId={session.user.id} actorEsSuperAdmin={session.user.esSuperAdmin} />
         </CardContent>
       </Card>
     </>

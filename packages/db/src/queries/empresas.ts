@@ -54,7 +54,6 @@ export async function crearEmpresaConInicializacion(
     const [empresa] = await tx
       .insert(empresas)
       .values({
-        firmaContableId: input.firmaContableId,
         rut: input.rut,
         razonSocial: input.razonSocial,
         giro: input.giro,
@@ -120,27 +119,17 @@ export async function listarEmpresas() {
   return db.select().from(empresas).orderBy(asc(empresas.razonSocial));
 }
 
-export async function listarEmpresasDeFirma(firmaContableId: string) {
-  return db
-    .select()
-    .from(empresas)
-    .where(eq(empresas.firmaContableId, firmaContableId))
-    .orderBy(asc(empresas.razonSocial));
-}
-
 export async function obtenerEmpresa(empresaId: string) {
   const [empresa] = await db.select().from(empresas).where(eq(empresas.id, empresaId));
   return empresa ?? null;
 }
 
 /**
- * Edición de los "Detalles de la empresa" (Módulo 4.9-A). El `where` exige también
- * `firmaContableId` para que una firma no pueda editar una empresa de otra firma
- * aunque conozca el UUID. `monedaReporteId` ausente => se limpia a null.
+ * Edición de los "Detalles de la empresa" (Módulo 4.9-A). La base es de una sola firma:
+ * una empresa de otra firma no existe aquí aunque se conozca su UUID. `monedaReporteId` ausente => se limpia a null.
  */
 export async function actualizarEmpresa(
   empresaId: string,
-  firmaContableId: string,
   input: EditarEmpresaInput,
   ctx?: AuditoriaCtx,
 ) {
@@ -171,7 +160,7 @@ export async function actualizarEmpresa(
         estado: input.estado,
         updatedAt: new Date(),
       })
-      .where(and(eq(empresas.id, empresaId), eq(empresas.firmaContableId, firmaContableId)))
+      .where(eq(empresas.id, empresaId))
       .returning();
     if (!empresa) {
       throw new Error("No se pudo actualizar la empresa (no existe o no pertenece a la firma)");
@@ -192,10 +181,9 @@ export async function actualizarEmpresa(
   });
 }
 
-/** Configuración de "Visualización" (separadores y decimales). `where` con firmaContableId. */
+/** Configuración de "Visualización" (separadores y decimales). */
 export async function actualizarVisualizacionEmpresa(
   empresaId: string,
-  firmaContableId: string,
   input: EditarVisualizacionInput,
   ctx?: AuditoriaCtx,
 ) {
@@ -219,7 +207,7 @@ export async function actualizarVisualizacionEmpresa(
         decimalesTipoCambio: input.decimalesTipoCambio,
         updatedAt: new Date(),
       })
-      .where(and(eq(empresas.id, empresaId), eq(empresas.firmaContableId, firmaContableId)))
+      .where(eq(empresas.id, empresaId))
       .returning();
     if (!empresa) {
       throw new Error("No se pudo actualizar la empresa (no existe o no pertenece a la firma)");

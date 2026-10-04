@@ -1,1 +1,0 @@
-ALTER TYPE "public"."determinacion_rol" ADD VALUE 'costo_venta';

@@ -4,6 +4,8 @@ import { signIn, signOut } from "@/auth";
 import { activarCuentaConToken } from "@erp/db";
 import { activarCuentaSchema, loginSchema, type ActivarCuentaInput, type LoginInput } from "@erp/shared";
 import { AuthError } from "next-auth";
+import { cookies } from "next/headers";
+import { COOKIE_FIRMA_ACTIVA } from "@/lib/firma-activa";
 
 export type AccionResultado = { ok: true } | { ok: false; error: string };
 
@@ -14,6 +16,7 @@ export async function loginAction(input: LoginInput): Promise<AccionResultado> {
   }
 
   try {
+    (await cookies()).delete(COOKIE_FIRMA_ACTIVA);
     await signIn("credentials", { ...parsed.data, redirect: false });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -26,6 +29,7 @@ export async function loginAction(input: LoginInput): Promise<AccionResultado> {
 }
 
 export async function logoutAction() {
+  (await cookies()).delete(COOKIE_FIRMA_ACTIVA);
   await signOut({ redirectTo: "/login" });
 }
 

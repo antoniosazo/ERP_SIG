@@ -1,12 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useId, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { FIRMA_ESTADO, PLAN_CONTRATADO, actualizarFirmaContableSchema } from "@erp/shared";
 import type { z } from "zod";
-import { actualizarFirmaContableAction } from "@/lib/actions/firmas";
+import { actualizarFirmaContableAction, actualizarFirmaSuperAdminAction } from "@/lib/actions/firmas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,24 +20,38 @@ import {
 
 type FormValues = z.input<typeof actualizarFirmaContableSchema>;
 
-export function EditarFirmaForm({ valoresIniciales }: { valoresIniciales: FormValues }) {
+export function EditarFirmaForm({
+  valoresIniciales,
+  firmaId,
+  onSaved,
+}: {
+  valoresIniciales: FormValues;
+  firmaId?: string;
+  onSaved?: () => void;
+}) {
   const [isPending, startTransition] = useTransition();
+  const id = useId();
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     setValue,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(actualizarFirmaContableSchema),
     defaultValues: valoresIniciales,
   });
+  const planContratado = useWatch({ control, name: "planContratado" });
+  const estado = useWatch({ control, name: "estado" });
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
-      const result = await actualizarFirmaContableAction(data);
+      const result = firmaId
+        ? await actualizarFirmaSuperAdminAction(firmaId, data)
+        : await actualizarFirmaContableAction({ razonSocial: data.razonSocial });
       if (result.ok) {
         toast.success("Firma actualizada");
+        onSaved?.();
       } else {
         toast.error(result.error);
       }
@@ -47,21 +61,22 @@ export function EditarFirmaForm({ valoresIniciales }: { valoresIniciales: FormVa
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="razonSocial">Razón social</Label>
-        <Input id="razonSocial" {...register("razonSocial")} />
+        <Label htmlFor={`${id}-razonSocial`}>Razón social</Label>
+        <Input id={`${id}-razonSocial`} {...register("razonSocial")} />
         {errors.razonSocial && (
           <p className="text-sm text-destructive">{errors.razonSocial.message}</p>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {firmaId && (
+        <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="planContratado">Plan contratado</Label>
+          <Label htmlFor={`${id}-planContratado`}>Plan contratado</Label>
           <Select
-            value={watch("planContratado")}
+            value={planContratado}
             onValueChange={(value) => setValue("planContratado", value as FormValues["planContratado"])}
           >
-            <SelectTrigger id="planContratado" className="w-full">
+            <SelectTrigger id={`${id}-planContratado`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -75,12 +90,12 @@ export function EditarFirmaForm({ valoresIniciales }: { valoresIniciales: FormVa
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="estado">Estado</Label>
+          <Label htmlFor={`${id}-estado`}>Estado</Label>
           <Select
-            value={watch("estado")}
+            value={estado}
             onValueChange={(value) => setValue("estado", value as FormValues["estado"])}
           >
-            <SelectTrigger id="estado" className="w-full">
+            <SelectTrigger id={`${id}-estado`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -92,7 +107,14 @@ export function EditarFirmaForm({ valoresIniciales }: { valoresIniciales: FormVa
             </SelectContent>
           </Select>
         </div>
-      </div>
+        </div>
+      )}
+
+      {firmaId && estado === "Suspendida" && (
+        <p className="text-sm text-destructive">
+          La suspensión bloquea nuevos accesos. Las sesiones abiertas se revisan en un plazo de hasta 5 minutos.
+        </p>
+      )}
 
       <Button type="submit" disabled={isPending}>
         {isPending ? "Guardando..." : "Guardar cambios"}

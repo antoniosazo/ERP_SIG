@@ -1,21 +1,31 @@
 import type { DefaultSession } from "next-auth";
 
 type EmpresaAsignada = { empresaId: string; rol: string };
+type FirmaAcceso = { id: string; nombre: string; esAdminFirma: boolean };
 
 declare module "next-auth" {
   interface User {
-    firmaContableId: string;
-    esAdminFirma: boolean;
     esSuperAdmin: boolean;
-    empresas: EmpresaAsignada[];
+    /** Firmas a las que entra la cuenta (membresías vigentes de firmas activas). */
+    firmas: FirmaAcceso[];
+    /** Rol por empresa en cada una de esas firmas. */
+    empresasPorFirma: Record<string, EmpresaAsignada[]>;
   }
 
   interface Session {
     user: {
       id: string;
+      /** Firma con la que se trabaja ahora; vacía mientras quien tiene varias aún no elige. */
       firmaContableId: string;
+      firmaNombre: string | null;
+      /** Nombre de la firma abierta por un superadmin (lo avisa un banner); null para el resto. */
+      firmaVistaNombre: string | null;
+      /** Todas las firmas a las que entra, para elegir o cambiar. */
+      firmas: FirmaAcceso[];
+      /** En la firma activa. */
       esAdminFirma: boolean;
       esSuperAdmin: boolean;
+      /** Rol por empresa en la firma activa. */
       empresas: EmpresaAsignada[];
     } & DefaultSession["user"];
   }

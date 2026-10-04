@@ -6,3 +6,9 @@ export const fechaISO = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (formato esperado AAAA-MM-DD)");
 
 export const uuid = z.uuid("Identificador inválido");
+
+/**
+ * Email de una cuenta: sin espacios y en minúsculas, para que `A@x.cl` y `a@x.cl` sean la misma
+ * cuenta tanto al registrarla como al iniciar sesión.
+ */
+export const emailNormalizado = z.string().trim().toLowerCase().pipe(z.email("Email inválido"));
